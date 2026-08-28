@@ -1,0 +1,27 @@
+{
+  "providers": {
+    "zai": {
+      "models": [
+        {
+          "id": "glm-5.3-flash",
+          "name": "GLM-5.3-Flash",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 1000000,
+          "maxTokens": 131072,
+          "thinkingLevelMap": { "off": null, "minimal": null },
+          "samplingParams": { "temperature": 1, "top_p": 0.95 },
+          "cost": { "input": 0.15, "cacheRead": 0.03, "cacheWrite": 0, "output": 0.5 },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsReasoningEffort": false,
+            "maxTokensField": "max_tokens",
+            "thinkingFormat": "zai",
+            "zaiToolStream": true
+          }
+        }
+      ]
+    }
+  }
+}

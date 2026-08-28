@@ -1,0 +1,12 @@
+{
+  "lastChangelogVersion": "0.84.3",
+  "theme": "dark",
+  "defaultProvider": "zai",
+  "defaultModel": "glm-5.2",
+  "defaultThinkingLevel": "off",
+  "packages": [
+    "npm:pi-session-analyzer",
+    "npm:pi-token-burden"
+  ],
+  "hideThinkingBlock": true
+}

@@ -1,0 +1,847 @@
+# Harness Changelog — pi portable config
+
+Append-only log of harness-engineering changes for continuous improvement.
+Dates are ISO. Each entry: what changed, why, risk, portability impact.
+
+Entry format:
+```
+### YYYY-MM-DD — <title>
+- Changed: <path> — <before> → <after>
+- Why: <cache / tokens / reliability / focus / portability>
+- Measured: <concrete before→after numbers (bytes/tokens/files); "unchanged" if N/A>
+- Risk: low|med|high
+- Portability: clean|fixed|attention
+```
+
+---
+
+### 2026-08-11 — Portable config migration (office macOS → home Linux)
+
+Adopted the curated office `.pi` into the home machine and made the config
+fully portable. Driven by `pi-harness-engineer.md` + the office `skills-audit.md`.
+
+- **Adopted** (`.pi/agent/` office copy → `~/.pi/agent/`):
+  `AGENTS.md`, `skills/{ponytail,ponytail-review,frontend-design,refactoring-ui,brainstorming,systematic-debugging}/`,
+  `skills-audit.md`, `skills-archive.tar.gz`, `zen-provider.template.json`.
+  Kept existing `browser-tools` + `youtube-transcript` (merged, not replaced).
+- **settings.json**: `defaultThinkingLevel` max → **medium** (token efficiency; office's curated default).
+- **AGENTS.md**: dropped hardcoded `~/Barikoi/` (path-agnostic); skill list generalized
+  (no hardcoded count) + added the two tool skills.
+- **Neutralized** stale `~/.agents/skills` (7 legacy skills pi auto-scans) → renamed
+  `~/.agents/skills.disabled.<ts>`. Matches office audit end-state; removes always-on
+  description tax from skills that were never used (per skills-audit.md §2).
+- **Created** portable infra (all inside `~/.pi/agent/`):
+  `PORTABILITY.md`, `setup.sh` (idempotent per-machine), `bundle.sh` (GDrive tarball),
+  this `CHANGELOG.md`.
+- **Not bundled** (machine-local/auto-regenerated): `bin/{fd,rg}`, `npm/node_modules/`,
+  `sessions/`, logs. See PORTABILITY.md.
+- **Why**: one `.pi` config, identical on every Linux/macOS box, replace-only sync,
+  no env vars, minimal always-on tokens, cache-stable prefix.
+- **Risk**: low. All changes reversible; full backup at `~/.pi-backups/pi-agent.pre-portable.<ts>.tar.gz`.
+- **Portability**: fixed (was: macOS-only binary in `bin/`, hardcoded `~/Barikoi/`,
+  `.agents` leakage). Now clean.
+
+**Always-on token cost (post-change):** AGENTS.md ~960 tok + 8 skill descriptions
+(~430 tok) ≈ **~1.4 K tok/session**; bodies stay on-demand. `defaultThinkingLevel`
+medium cuts reasoning-token burn vs `max`.
+
+**Next measurement:** `/reload` or fresh session; confirm exactly 8 skills load
+(0 from `.agents`); try `bundle.sh` → dry-run extract on a temp dir to validate.
+
+---
+
+### 2026-08-11 — skills + slash commands + frontend-design pattern-audit fix
+
+Response to: "create a harness-engineering skill, document the arch, and give the
+COMPLETE slash-command solution for changelog/bump/commit (previously incomplete);
+frontend-design keeps not following existing design patterns."
+
+Grounded in evidence: session history shows commit-message asks in 117/264
+sessions, design-mismatch language in 56, changelog in 45; plus user self-report.
+
+- **Created skill `harness-engineer`** (`skills/harness-engineer/SKILL.md`): the
+  portable inspect→diagnose→propose→implement→log methodology; auto-trigger +
+  `/skill:harness-engineer`; points at HARNESS-ARCHITECTURE.md for current state.
+- **Created `HARNESS-ARCHITECTURE.md`**: living map of the harness (layout, skill
+  discovery incl. the `~/.agents` caveat, prefix composition, token budget,
+  persistence loop, portability contract) so future sessions resume from known state.
+- **Created 4 slash commands** (`prompts/`, token-cheap — NOT in always-on prefix):
+  `/commit` (one conventional commit msg from `git diff --cached`), `/changelog`
+  (Keep-a-Changelog entry from commits since last tag), `/bump [patch|minor|major]`
+  (semver in package.json + lockfile), `/ship` (changelog→bump→commit orchestrator).
+- **Fixed frontend-design root cause** (`skills/frontend-design/SKILL.md`): added a
+  MANDATORY **Pattern Audit** first step (read siblings, extract tokens/spacing/color/
+  typography/component-patterns, reproduce exactly) that OVERRIDES the skill's
+  "BOLD/distinctive/unforgettable" directives whenever an existing UI exists.
+  Retuned the `description` to signal pattern-first. The old novelty bias was the
+  reason new UI never matched existing AntD dashboards. Qualifying note added that
+  the creative/aesthetic exploration is GREENFIELD-only.
+- **Updated** `bundle.sh` (now bundles `prompts/` + `HARNESS-ARCHITECTURE.md`) and
+  `AGENTS.md` (added harness-engineer, fixed frontend-design blurb, listed slash cmds).
+- **Why**: close the completeness gap; make repetitive workflows one keystroke; kill
+  the recurring design-mismatch failure at its source; keep continuity portable.
+- **Risk**: low–med. Skill/prompt additions are additive. The frontend-design edit
+  is a behavior change (deliberate) — old behavior recoverable from the bundle backup
+  or `skills-archive.tar.gz` (pre-change snapshot also in `~/.pi-backups/`).
+- **Portability**: clean. All new files use `~`/relative paths; no OS-only commands;
+  no env vars. Validated by the portability quick-check.
+
+**Always-on cost now:** AGENTS.md ~1.05 K tok + 9 skill descriptions ~570 tok ≈ **~1.6 K tok/session**. Prompt templates add 0 (autocomplete-only).
+
+**Next measurement:** fresh session → `/skill:harness-engineer` loads; `/commit`,
+`/changelog`, `/bump`, `/release` appear in `/` autocomplete; on a real AntD task,
+frontend-design reads siblings before generating.
+
+---
+
+### 2026-08-11 — rename `/ship` → `/release`; explicit package.json + lockfile version step
+
+- **Renamed** `prompts/ship.md` → `prompts/release.md` (`/ship` → `/release`). `ship` implied deploy/publish; this command only *prepares* a release (no tag/push/publish). Alternatives considered: `/cut-release`, `/prerelease`.
+- **Strengthened** step 2 of `/release`: now explicitly updates `package.json` `version` AND the lockfile version when present — `package-lock.json` (npm: root `version` + `packages[""].version`); `pnpm-lock.yaml` / `yarn.lock` noted as non-version-storing (re-sync on next install).
+- **Updated** cross-refs: `AGENTS.md`, `HARNESS-ARCHITECTURE.md`, `skills-audit.md` (Rev 6 final-state box).
+- **Why:** accuracy + discoverability; the lockfile detail removes the ambiguity the user flagged.
+- **Risk:** low — reversible; `ship.md` recoverable from `~/.pi-backups/`.
+- **Portability:** clean (no new paths / OS-only commands).
+
+---
+
+### 2026-08-11 — bundle.sh excludes skills/**/node_modules (−97% bundle) + `Measured:` field
+
+- **Changed:** `bundle.sh` — `tar -czf "$OUT" -C "$AGENT" $INC` → `tar -czf "$OUT" --exclude='node_modules' -C "$AGENT" $INC` (one flag; GNU tar + BSD tar/macOS both support it).
+- **Changed:** `PORTABILITY.md` + `HARNESS-ARCHITECTURE.md` — portability contract now lists `skills/**/node_modules/` as NOT bundled (regenerable via each skill's own `npm install`).
+- **Changed:** `CHANGELOG.md` format + `skills/harness-engineer/SKILL.md` output format — added a **`Measured:`** field (concrete before→after numbers) so every future entry is evidence, not opinion. Skill set unchanged → no `skills-audit.md` revision.
+- **Why:** portability + tokens. `skills/browser-tools/node_modules` was 125 MB of regenerable deps (puppeteer-core, jsdom, cheerio, `@mozilla/readability`, turndown…) silently tarred into every portable bundle. Restorable on-target via browser-tools' documented one-time `npm install`. The `Measured:` field closes the self-rewrite loop with real signal (the skill's own rule 6, applied at the meta level).
+- **Measured:** portable bundle **17,448 KB → 452 KB** (−16,996 KB, **97% smaller**); **11,647 files** removed; `skills/browser-tools/web-fetch.mjs` (the headless URL→markdown extractor) still bundled — only its deps need reinstall on target. Always-on prefix byte-stable: AGENTS.md 5,627 B unchanged; 9 skill descriptions untouched.
+- **Risk:** low. Reversible (drop `--exclude`). On a fresh target, `browser-tools`/`web-fetch.mjs` need `npm install` in the skill dir — already in the skill's Setup section.
+- **Portability:** fixed (was: ~125 MB of regenerable deps shipped per Google-Drive sync). Now clean.
+
+---
+
+### 2026-08-11 — pin Node LTS (engines.node ≥ 22 + .nvmrc)
+
+- **Changed:** `skills/browser-tools/package.json` — added `"engines": { "node": ">=22" }` (was: none). True dep floor is Node 20.18.1 (cheerio); pinned to 22 to require a current LTS, not EOL Node 20.
+- **Changed:** new `~/.pi/agent/.nvmrc` = `22` — makes `nvm use` inside the harness dir reproducible (covers the per-skill `npm install` restore step that the bundle.sh fix made load-bearing).
+- **Changed:** `bundle.sh` — `.nvmrc` added to bundled FILES; `PORTABILITY.md` — documented the Node-LTS contract + `nvm alias default 22` tip for running `pi` from any dir.
+- **Why:** reliability/portability. Once `node_modules` stopped shipping (prior entry), `npm install` became the restore path on every target — so deps must install on a known Node line. Without an `engines` floor, `npm install` silently succeeds on Node 16/18 then breaks at runtime (jsdom 27 / cheerio need ≥20). Pinning makes it fail loud + tells `nvm` which Node to use.
+- **Measured:** binding Node floors of installed deps — cheerio `>=20.18.1` (strictest), jsdom `>=20`, puppeteer/puppeteer-core `>=18`, readability `>=14`, turndown/turndown-plugin-gfm (none). Floor `>=22` satisfiable by all. Runtime here: Node `v22.22.2`; nvm also has 18.x/24.x. Prefix byte-stable: AGENTS.md 5,627 B + 9 descriptions untouched.
+- **Risk:** low. `engines` is advisory (warns unless `.npmrc` sets `engine-strict`); `.nvmrc` is advisory. Both reversible. No package downgrades — current set already supports Node 20/22/24 LTS.
+- **Portability:** fixed (was: no Node version contract → silent runtime breakage on old Node). Now clean.
+
+### 2026-08-11 — session-driven prefix retune: 4 descriptions + AGENTS.md dedup + /preflight + harness-engineer methodology upgrade
+
+- **Changed (descriptions — prefix-affecting):** `systematic-debugging` under-triggered (0 CC uses despite real bugs) → retuned to the user's actual bug language ("it doesn't work", "still not working", "why did X happen"). `brainstorming` over-triggered (5× corrected in CC for concrete tasks) → narrowed to genuinely-unclear intent, routes concrete work away. `frontend-design` + `refactoring-ui` co-fired 2–3×/session (CC plans) → each now names the other as the NOT-case. Skill COUNT unchanged (9): `ponytail-review` NOT folded — evidence correction: ponytail body has NO review format, ponytail-review is the sole carrier of the `L<line>:<tag>` format; folding would lose a distinct tool for ~30 tok.
+- **Changed (AGENTS.md — prefix):** Skills section de-duped — removed the 9 per-skill one-liners that re-stated each frontmatter description already injected into the prefix; kept the load-on-demand policy + the 2 disambiguation hints not derivable from descriptions. Corrected a FALSE claim ("ponytail = … review format") → ponytail has modes only; review format is ponytail-review.
+- **Added (prompt — 0 prefix cost):** `/preflight` (`prompts/preflight.md`) — 5-point pre-edit contract (blast radius → reuse target → scope fence → contract check → propagation). Operationalizes ponytail rung-2 + grep-every-caller, the #1 failure mined from sessions ("did you update edit-parcel too?", "restructure X same as Y", "use this case instead of raw").
+- **Changed (harness-engineer skill — on-demand, 0 prefix cost):** added mandatory **step 1a Mine session history** (CC `~/.claude/history.jsonl` `display` + `plans/`; pi `sessions/*.jsonl` skill-loads + corrections) + **Snapshot loop** (BEFORE/AFTER quantified — no win without a number) + fixed the portability quick-check to exclude `node_modules` (was crying wolf: 40 false hits from vendored READMEs citing `/Users/author`). Output format now requires cited session evidence + snapshot delta.
+- **Why:** this session was the proof — the assumption "ponytail-review is redundant" was WRONG until session + body reads corrected it. The upgrade bakes that discipline in: every future harness verdict must cite a real prompt/count and a real before→after number.
+- **Measured:** AGENTS.md **5627 → 4713 B (−914, −16% ≈ −229 tok)**; 4 descriptions grew ~+340 B with real trigger phrases → net prefix **≈ −576 B (≈ −144 tok)**. Skill count 9 → 9. Prompts 4 → 5 (+`/preflight`, 0 at rest). harness-engineer body 4792 → 6896 B (on-demand, 0 prefix). Portability: functional files CLEAN (the prior "40 hits" were `node_modules` README noise, now excluded).
+- **Risk:** low–med. Description + AGENTS.md edits change the prefix → **start a fresh session** to pick them up (this session's cache is stale for those). All reversible from `~/.pi-backups/` + this entry.
+- **Portability:** clean — no new paths/OS-only commands; the check is now MORE correct (excludes regenerable `node_modules`).
+
+---
+
+### 2026-08-11 — HARNESS-ARCHITECTURE.md doc-sync audit (cache-safe, no prefix change)
+
+- **Changed (doc only — `HARNESS-ARCHITECTURE.md`, NOT in the prefix):** 5 factual corrections surfaced by a full re-audit (discover → mine sessions → verify config against the doc):
+  1. **Thinking-level lie (highest impact):** doc claimed `defaultThinkingLevel: medium (token-efficient)`; `settings.json` is actually `max` + `hideThinkingBlock: true`. Corrected to reality + flagged as an OPEN DECISION — `max` burns the most reasoning tokens/session; if `medium` was intended, fix `settings.json` (not the doc).
+  2. **Prompts tree:** listed 4, actual 5 — added `/preflight` (already in `AGENTS.md` + skills-audit Rev 7; only the tree block was stale).
+  3. **`.nvmrc` (Node 22 pin):** present, in `bundle.sh` FILES, referenced by two prior changelog entries — but missing from the arch tree + bundled list. Added to both.
+  4. **Token-budget numbers:** descriptions 650→770 tok (3083 B measured), total 1.8K→1.95K tok; AGENTS.md 1.2K→1.18K tok (4713 B).
+  5. Added OPEN-DECISION bullet + marked the byte-math measurement done.
+- **Why:** evidence-over-opinion (harness rule 6). The arch doc is the map every harness session re-reads FIRST; a false "token-efficient medium" claim would mislead every future audit. Doc-sync only — no behavior change.
+- **Measured:** `HARNESS-ARCHITECTURE.md` **6528 → 7126 B (+598)**. **Prefix byte-stable: AGENTS.md 4713 B unchanged; 9 descriptions 3083 B unchanged** → no session restart required. Skill count 9 → 9 (no skills-audit revision). Portability quick-check: 0 hits before, 0 after.
+- **Session evidence (mined this audit):** pi `sessions/*.jsonl` skill-body loads — all 9 live skills healthy: harness-engineer 66, frontend-design 50, refactoring-ui 18, brainstorming 13, systematic-debugging 11, ponytail-review 8, ponytail 7, browser-tools 6, youtube-transcript 3. Ghost skills (adhd / shadcn / ui-ux-pro-max / vercel-react-best-practices / tailwind-design-system / web-design-guidelines) appear ONLY in pre-archive sessions → confirms the 9-skill set; no removals. Correction-word mining was CONTAMINATED (217 "don't" across 57 user turns = mostly skill-body + assistant text) → not actionable; CC `display` prompts give the reliable signal (real corrections: "you removed my previous behavior rules", "your type declaration is wrong", "you did not use react 19 pattern") → these justify AGENTS.md's existing plan-mode + ask-before-destructive guardrails. `defaultModel: glm-5.2` verified present in `models-store.json` (zai).
+- **Not changed (flagged, needs your call):** (a) `defaultThinkingLevel: max` — see OPEN DECISION; (b) `ponytail` description is the largest at 825 B and partly restates the ladder already baked into AGENTS.md — trimmable to ~620 B, but it's a PREFIX change (cache-invalidating, restart needed) and the core skill, so left untouched pending approval.
+- **Risk:** none — doc-only, reversible, cache-safe.
+- **Portability:** clean (0 hits, unchanged).
+
+---
+
+### 2026-08-11 — thinking-level config fix + ponytail description trim (prefix −175 B)
+
+- **Changed (config — `settings.json`, effective next session):** `defaultThinkingLevel: max → medium`. The arch doc's *intent* was always `medium` (token-efficient); `max` was a stale setting burning max reasoning tokens/session. User bumps per-task via `--thinking high` when a hard task needs it. `hideThinkingBlock: true` left as-is.
+- **Changed (PREFIX — `skills/ponytail/SKILL.md` description):** 825 → 650 B (−175 B, −21%). Removed the full 7-rung ladder re-enumeration (already always-on in AGENTS.md) + condensed trigger phrasing. Kept: YAGNI + stdlib/native/dep preference; the "core ladder is in AGENTS.md; body = framework + modes" disambiguation; intensity levels (lite/full/ultra); scope (ANY coding task); trigger words (ponytail / lazy mode / simplest / minimal / yagni / do less / shortest path + over-engineering complaints); the NOT-case (non-coding). Activation signal preserved.
+- **Changed (doc — `HARNESS-ARCHITECTURE.md`):** reverted the thinking line to `medium`, removed the resolved OPEN-DECISION bullet, refreshed token math (descs 770→727 tok / 3083→2908 B; total 1.95K→1.9K tok).
+- **Why:** closes the OPEN DECISION from the prior audit entry; the ponytail description was the largest and most redundant with AGENTS.md (core ladder stated twice). One source of truth for the ladder (AGENTS.md); the skill points to it.
+- **Measured:** ponytail description **825 → 650 B (−175)**; 9-description total **3083 → 2908 B (≈727 tok)**; **prefix 7796 → 7621 B (≈1905 tok, −44 tok/session)**. AGENTS.md 4713 B unchanged. `settings.json` `defaultThinkingLevel: max → medium`.
+- **Risk:** low. Config reversible (one field). Description reversible; trigger words preserved so auto-routing unaffected. **Prefix changed → start a fresh session** for the new ponytail description + medium thinking to take effect.
+- **Portability:** clean (no paths/OS-only commands touched). Skill count 9 → 9 (no skills-audit revision).
+
+---
+
+### 2026-08-11 — document portability round-trip flow in HARNESS-ARCHITECTURE.md (doc-only)
+
+- **Changed (doc — `HARNESS-ARCHITECTURE.md`, NOT in prefix):** added a "Portability flow (bundle → sync → restore → first run)" section right after the "Portability contract" summary. The contract already said *what* travels (bundled vs machine-local); the new section says *how* it moves — the 4-step round-trip (bundle.sh → Google Drive → overlay-extract → setup.sh → pi auto-install), the overlay-not-wipe rationale (sessions/ keyed by absolute paths, bin/ OS-specific), and the macOS+Linux POSIX guarantee. Exact commands stay in `PORTABILITY.md`; the arch doc is the map.
+- **Why:** the bundle.sh / restore / Mac-vs-Linux discussion this session surfaced that the round-trip wasn't in the arch doc (the map re-read first every harness session) — only in PORTABILITY.md. Future audits + any restore now get the flow at a glance without a second file open.
+- **Measured:** `HARNESS-ARCHITECTURE.md` 7126 → 8444 B (+1318). **Prefix byte-stable: AGENTS.md 4713 B + 9 descriptions 2908 B unchanged** → no session restart needed. Skill count 9 → 9 (no skills-audit revision). Portability quick-check: 0 hits.
+- **Note:** `bundle.sh` internals (include-list → auto include-list simplification) were verified equivalent this session (460 KB byte-set identical; file-list diff empty) but NOT yet written — pending the portability-safe rewrite decision. Flow documented against current behavior either way (user-facing round-trip is identical).
+- **Risk:** none — doc-only, reversible, cache-safe.
+- **Portability:** clean (0 hits, unchanged).
+
+---
+
+### 2026-08-11 — bundle.sh auto-include rewrite (explicit FILES list → exclude-only)
+
+Closes the "pending the portability-safe rewrite decision" thread from the prior
+entry. The explicit `FILES` list duplicated PORTABILITY.md's *"What is NOT
+portable"* table and had already drifted — `.nvmrc` + `HARNESS-ARCHITECTURE.md`
+both had to be added retroactively (2 silent-omission bugs).
+
+- **Changed:** `bundle.sh` — deleted the 16-line `FILES` block + the `INC`-building
+  loop; now ships **everything under `~/.pi/agent`** minus a top-level-anchored
+  exclude set: `--exclude='node_modules' ./bin ./npm ./sessions *.log`. Header
+  comment rewritten to state the auto-include contract + why each exclude exists.
+  Excludes anchored to top-level (`./bin`, not bare `bin`) so a future skill
+  `bin/` subdir is never clobbered.
+- **Why:** one source of truth for "machine-local" (the exclude set) instead of
+  two (exclude set + hand-maintained include list). New portable files now ship
+  with **zero script edits**; the whole silent-omission drift class is gone. The
+  win is maintenance surface + a removed bug-class, not bytes.
+- **Measured:** `bundle.sh` **1276 → 1468 B** (+192 — longer comments explain the
+  contract; the `FILES`/`INC` logic shrank). Produced tarball **76 members,
+  identical to the explicit-list set** (`diff` empty, re-verified against the
+  CURRENT tree, not last session's); bytes **471,609 → 470,852** (−757,
+  mtime/ordering only). Leak check `bin/npm/sessions/node_modules/*.log` = **0**
+  each. **Prefix byte-stable** (AGENTS.md 4713 B + 9 descriptions 2908 B
+  untouched) → no session restart required. Skill count 9 → 9 (no skills-audit
+  revision).
+- **Risk:** low. Reversible: `~/.pi-backups/bundle.sh.pre-auto-include.20260811-221738`
+  (sha256 `ab01d6e2…`). Residual: a future machine-local *top-level* dir would
+  ship until one `--exclude` line is added — but that set (`bin/npm/sessions`)
+  is tiny/stable and `tar -tzf | head` catches any leak.
+- **Portability:** clean — no new paths, no OS-only commands, same POSIX `sh`;
+  `--exclude` mechanism unchanged (GNU tar + BSD tar both supported).
+
+### 2026-08-11 — bundle.sh prints full post-bundle procedure inline (usability)
+
+The success output was a one-liner — `Upload it to Google Drive. On the target:
+see PORTABILITY.md -> Sync procedure.` — forcing a doc lookup every bundle.
+User asked for the full procedure at the point of use (right after a successful
+build). No logic change; pure output/UX.
+
+- **Changed:** `bundle.sh` — replaced the final `echo` pointer with a 3-step
+  heredoc printed on success: (1) upload, (2) restore (`mkdir -p` +
+  `tar -xzf … -C ~/.pi/agent` + `sh setup.sh`, overlay not wipe), (3)
+  `nvm install 22 && nvm alias default 22 && pi`. References the exact
+  `$(basename "$OUT")` so the printed tarball name is always correct. Matches
+  PORTABILITY.md's documented procedure verbatim; an earlier 7-step draft was
+  trimmed to the required minimum by dropping the optional `ls` verify and the
+  on-demand per-skill `npm install` (browser-tools only, when first used).
+- **Why:** the procedure is only needed immediately after bundling; printing it
+  there removes the doc-hop. Portable (POSIX `sh`, `~`/`$HOME` only, no OS-only
+  commands).
+- **Measured:** `bundle.sh` **1468 → 1824 B** (+356 — echo block only; no logic).
+  Iterated 7-step → 3-step in the same session before finalizing. **Prefix
+  byte-stable** (AGENTS.md 4713 B + 9 descriptions 2908 B untouched — `bundle.sh`
+  is NOT an always-on file) → no session restart needed. Verified by running
+  `sh ~/.pi/agent/bundle.sh`: tarball rebuilt (464K), leak check
+  `bin/npm/sessions/node_modules/*.log` = 0 each, 3-step procedure rendered with
+  the real dated filename.
+- **Risk:** low. Output-only edit; bundling logic + excludes untouched.
+  Reversible: restore the previous `echo` pointer line.
+- **Portability:** clean — heredoc is POSIX `sh`; all commands in the printed
+  steps are macOS+Linux portable (`mkdir -p`, `tar -xzf`, `nvm`, `pi`).
+
+### 2026-08-12 — defaultThinkingLevel re-fixed max→medium (article-driven audit)
+
+**Prompt:** learn harness engineering from the explainx.ai "Pi minimal agent
+harness (Mario Zechner)" article, then rewrite the harness to match it; also
+review github.com/amosblomqvist/pi-config.
+
+**Diagnosis (evidence over opinion):** scored the harness principle-by-principle
+against the article. The architecture *already* embodies the article's thesis —
+minimal core (AGENTS.md 4713 B + 9 skills ≈ 1.9 K tok/session), progressive
+disclosure (name+desc+path in prefix, bodies on-demand), primitives-over-features
+(plan mode via the `npm:@narumitw/pi-plan-mode` **package**, not a skill — the
+article's flagship "no plan mode → pi install package" example), self-hosting
+(this skill + the changelog/arch/audit loop), full portability (0 non-portable
+hits, `~`/`$HOME` only, POSIX `sh`). A wholesale "rewrite" would be slop and
+violate ponytail rule 1 (does it need to exist?) + the harness-engineer
+"prefer deletions" principle — so no rewrite.
+
+**One real defect found:** `settings.json defaultThinkingLevel` had **regressed
+to `max`** — contradicting this very doc (line 85) and skills-audit Rev 5
+("max = heavy reasoning-token burn → set to medium"). `max` burns reasoning
+tokens every turn, which is the exact anti-pattern the article's Databricks
+evidence warns against (Pi won on *less* context per turn, not more). Also
+confirmed the live prefix is clean: the stale skills (adhd/shadcn/ui-ux-pro-max/…)
+seen in session logs are *text inside tool outputs reading this audit*, not real
+auto-loads — `~/.agents/skills` is absent, only the 9 canonical skills exist.
+
+**Changed:** `settings.json` `defaultThinkingLevel: "max" → "medium"` (restores
+documented intent; escape hatch `--thinking high` unchanged). `HARNESS-ARCHITECTURE.md`
+"Known constraints": rewrote the thinkingLevel line to flag `max` as drift-on-sight
+(so it can't silently regress again) + added a one-line primitives-over-features
+note recording that plan-mode is deliberately a package.
+
+**Not changed (deliberately, YAGNI):** the pi-config repo's `bash-guard/`
+extension would convert my *advisory* safety rules into *enforced* ones —
+real improvement, but a new TS-extension + npm-dep surface; my advisory rules
+have not been bitten. Surfaced for the user to opt into, not added unilaterally.
+`stop-slop/` ≈ my existing `ponytail-review`; `subagents/`, `memory.ts` — no
+current frontend-work need.
+
+- **Measured:** `settings.json` 211 → 214 B (value only). **Prefix byte-stable**
+  (AGENTS.md 4713 B + 9 descriptions 2867 B untouched) → no session restart needed
+  for cache; thinkingLevel is a runtime setting, not prefix material. Portability
+  quick-check: **0** hits (unchanged).
+- **Risk:** low. One value; reversible. If `max` is ever genuinely wanted for a
+  hard task, use `--thinking high` per-session instead of global `max`.
+- **Portability:** clean — JSON edit, no paths, no OS commands.
+
+### 2026-08-12 — slash-command token fix: `/release` `/bump` `/changelog` (8k→~0 lockfile read)
+
+**Prompt:** `/release` cost ~8k tokens and produced a CHANGELOG the user deleted.
+Root-cause the prompts.
+
+**Root cause (evidence):** the prompt *bodies* are tiny (~1 KB each) — not the
+cost. The cost was **runtime reads**: `/release` + `/bump` instructed the model
+to **hand-edit `package-lock.json`**, forcing a 50–100 KB lockfile into context
+(~8–12 K tok) just to change two version strings. Secondary: unbounded `git log`
+and loose changelog rules (verbose/noisy entries → deletable output).
+
+**Changed (native tool over hand-editing — ponytail rule 4):**
+- `release.md` + `bump.md`: lockfile step now runs `npm install --package-lock-only`
+  (the tool syncs root + `packages."".version`); **explicit "never read the lockfile
+  into context — 8k-token trap"**. `pnpm-lock.yaml`/`yarn.lock` store no root
+  version → skipped (was: "hand-edit / run update command for approval").
+- `release.md` + `changelog.md`: `git log --no-merges … | head -60` (was unbounded).
+- `release.md` + `changelog.md`: changelog entries now ≤10 words, user-facing,
+  omit chores/CI/docs; **insert-only** (never rewrite existing entries) — the
+  quality rules the deleted output lacked.
+
+**Not changed:** `/commit` (963 B, already lean) and `/preflight` (1647 B,
+purpose-built) — no token issue.
+
+- **Measured:** body sizes barely moved (release 1834→1943, bump 1000→1021,
+  changelog 1055→1059 B). The win is **runtime**: ~8 K tok lockfile read → ~0
+  (one `npm install --package-lock-only`); git log now capped at 60 subjects.
+  **Prefix byte-stable** (prompts are NOT always-on — 0 prefix tokens at rest) →
+  no session restart needed.
+- **Risk:** low. `npm install --package-lock-only` is the canonical lockfile-sync
+  (no `node_modules` touched); reversible by re-running. Worst case the command
+  needs network for a dep change — but a version bump changes no deps.
+- **Portability:** clean — `npm`/`pnpm`/`yarn` branches, no paths, no OS commands.
+
+### 2026-08-12 — strategic-read core rule + `/release` `/bump` go native (git reads, npm version)
+
+**Prompt:** read file changes via `git`, only update if `package.json` has a
+`version`, read only the top of CHANGELOG; make strategic reading a CORE harness
+rule; web-search if needed then update.
+
+**Web search? Not required.** Empirically verified the linchpin instead (stronger
+evidence): in a throwaway dir `npm version patch --no-git-tag-version` bumped
+1.2.3→1.2.4 in **both** package.json and package-lock.json, no tag, no commit.
+That single command replaces the entire hand-edit-the-lockfile step.
+
+**Changed:**
+- `AGENTS.md` (prefix): "Token economy" bullet → explicit **strategic-read ladder**
+  (core rule): ① changed content → `git diff`/`git show`/`git log|head`;
+  ② targeted → `rg` (`-l`/`-n`/`-q`); ③ headers → `read`+`limit`; ④ whole file → last resort.
+  Adds the git rung the user named; keeps the never-`cat`/bounded-`git log` rules.
+- `release.md` + `bump.md`: lockfile hand-edit → **`npm version <level> --no-git-tag-version`**
+  (native; syncs both version fields; model reads nothing). pnpm/yarn = surgical
+  package.json edit only. Verify via **`git diff --stat`**, not file reads.
+  Guard: `rg -q '"version"' package.json` → stop if absent.
+- `release.md` + `changelog.md`: **`read CHANGELOG.md limit 15`** (top only — header +
+  latest block) to find the insert point; insert-only, never rewrite. Verify via
+  `git diff CHANGELOG.md`.
+
+**Not changed:** `/commit`, `/preflight` (already lean).
+
+- **Measured:** AGENTS.md 4713→4901 B (+188 — the new core rule; **prefix change →
+  recommend a fresh session** for cache). Prompts: release 1943→1619, bump 1021→1031,
+  changelog 1059→1061 B. Runtime: lockfile read ~8K→~0 tok; whole-CHANGELOG read →
+  ~15 lines. Portability quick-check: **0** hits.
+- **Risk:** low. `npm version --no-git-tag-version` is standard npm; reversible by
+  re-edit. Empirically confirmed, not assumed.
+- **Portability:** clean — `git`/`npm`/`pnpm`/`yarn` branches; no paths, no OS commands.
+
+---
+
+## 2026-08-12 — CC-session evidence: sharpen ponytail + AGENTS.md endpoint rule
+
+**Trigger:** user asked for new skills + existing-skill improvements grounded in
+Claude Code session history. Mined 2,238 CC prompts + 264 transcripts
+(`~/.claude/projects/`) for (agent-action → user-correction) pairs.
+
+**Finding:** every recurring CC mistake is already owned by an existing pi
+skill/rule — frontend-design covers version-match (AntD v4/v5, Tailwind v3/v4)
++ AI-slop; ponytail covers over-abstraction; AGENTS.md covers safety. The gaps
+were 3 *thin* rules, not missing skills. **No new skill minted** (would
+duplicate frontend-design → minimal-core violation).
+
+**Changed:**
+- `ponytail/SKILL.md` rung 5: "installed dep" → "installed dep, native feature,
+  or available plugin" (evidence: `dont use playwright` — installed a
+  browser-driver lib while a plugin + running server existed).
+- `ponytail/SKILL.md` Rules: + "No unrequested docs/specs/verbose changelogs"
+  (evidence: `concise changelog, without too much detail`; speculative
+  `docs/superpowers/specs/*.md` files generated unrequested).
+- `AGENTS.md` endpoint line: + "no hardcoded URLs, no redundant env vars when a
+  base URL already exists" (evidence: `remove NEXT_PUBLIC_AUTH_URL, because base
+  url is same, just update endpoint`).
+
+**Existing-skill "mistakes" reviewed — NOT bugs:** `harness-engineer` shows 4
+portability hits, all self-referential (the portability-check command listing
+its own forbidden patterns as examples, lines 21/22/79/80). Intentional. No action.
+
+**Measured:** AGENTS.md 5018→5225 B (+207); ponytail 6456→6777 B (+321).
+Skill count 9 (unchanged). **Prefix change → recommend a fresh session** for
+cache. Portability quick-check: **0** hits (edits added no paths/OS commands).
+**Risk:** low — surgical additions, reversible. Root-cause fix (CC has empty
+CLAUDE.md + only 2 skills) deferred to user approval.
+
+---
+
+## 2026-08-12 — AGENTS.md token-economy clause (rg+limit over whole-file read)
+
+**Changed:**
+- `AGENTS.md` "Token economy" bullet: + one clause — "If you already know the
+  target symbol/line, `rg -n` it then `read` with `offset`/`limit` that region —
+  never a whole-file `read` just to reach one block (biggest single
+  context-bloat source)."
+
+**Why:** Evidence from dropx-admin session `2026-08-12T15-46-35` (glm-5.2, 9
+turns, ~82.7K tokens). The model *knew* it needed the `.catch` block but still
+did a whole-file `read` of `AddMerchant.jsx` (11,593 B ≈ ~3K tok) on the first
+move — the single largest chunk in the session. The existing ladder already
+says `rg` before whole-file `read`, but only covers *discovery*; this clause
+closes the narrower gap: known-target → `rg -n` + `read --offset/--limit`.
+Also 2 `grep -rn` bash calls instead of `rg` (same session) — already covered
+by existing rule, no edit.
+
+**Measured:** AGENTS.md 5225→5419 B (+194 ≈ +49 tok/session). Skill count 9
+(unchanged). Portability quick-check: **0** hits. **Risk:** low — one clause,
+reversible. Caveat: glm-5.2 ignored an already-clear rule; if it ignores this
+too, the fix is model/habit, not more bytes — do not keep stacking restatements.
+**Prefix change → recommend a fresh session** for cache.
+
+---
+
+## 2026-08-12 — Fix `/release` not writing CHANGELOG; lockfile now off-limits
+
+**Symptom (user report):** `/release` returned only `chore(release): vX.Y.Z` and
+skipped writing the CHANGELOG. Also: lockfile must never be read/modified
+(treat `package-lock.json` like `node_modules`).
+
+**Root cause:** `release.md` opened with a blanket "NO … until I confirm" and
+ended step 3 with "Output in a fence." A cautious model conflated "don't commit"
+with "don't edit files / don't bump," latched onto the fenced message as the
+sole deliverable, and skipped steps 1–2. Step 1 was also a dense paragraph
+(vs `changelog.md`'s clean numbered list that works).
+
+**Changed:**
+- `prompts/release.md` — rewritten: explicit **DO steps 1–2 now / WAIT only for
+  the `git commit` (step 3)** framing; step 1 mirrors the working `changelog.md`
+  structure; added a "if diff empty, you skipped step 1" guard; lockfile removed
+  from bump + verify + stage list.
+- `prompts/bump.md` — removed `npm version`/`pnpm`/`yarn` branching (it existed
+  only to handle lockfile differences); now just `edit` the `version` field in
+  `package.json`; lockfile explicitly off-limits; verify `git diff -- package.json`.
+- `prompts/commit.md` — **unchanged** (outputting one fenced commit message IS
+  its defined job; not the bug).
+
+**Measured:** release.md 1649→2019 B (+370); bump.md 1051→965 B (−86). Net
++284 B. **Prompt templates are token-free at rest** (load only on `/invoke`,
+not in the always-on prefix) → **prefix token cost unchanged (0)**. Skill count
+9, AGENTS.md 5419 B (unchanged). Portability quick-check: **0** hits.
+**Risk:** low — prompt-only, no code; revert by restoring prior bodies. The DO/
+WAIT framing is the real fix; if glm-5.2 still skips the edit, the empty-diff
+guard in step 1 forces a retry. **Recommend a fresh session** only if you want
+the changelog entry itself to reflect this (not required for prefix cache).
+
+---
+
+## 2026-08-12 — AGENTS.md feedback pass: 6 surgical scope/consistency fixes
+
+**Source:** external review of global AGENTS.md. Triaged by evidence (session
+history + per-repo `package.json`), not opinion. 3 of 9 suggestions REJECTED
+(see below) to protect prefix budget.
+
+**Accepted (evidence-backed):**
+- **Stack line (Vite/react-scripts contradiction)** — dropx-admin is Vite
+  (`vite`/`vite build`, NO `react-scripts` dep); dropx-merchant is Next.js +
+  vitest. Old line `Tests via Jest / react-scripts` was wrong for every active
+  Vite/Next repo. Now: "Build/router/test **vary by repo** (Vite+React Router,
+  or Next.js; Jest via react-scripts or vitest) — check `package.json` scripts +
+  CLAUDE.md before guessing." Resolves Vite-vs-react-scripts AND Next.js-vs-RR
+  in one line.
+- **"stop ponytail"/"normal mode" scope** — 56 session hits, 0 definition. Now
+  explicit: suspends engineering ladder ONLY; Token-economy + Safety stay on.
+- **Audit-role scoping** — API/permission conventions tagged "my own Barikoi
+  projects"; added "when auditing third-party code with different patterns,
+  flag them; don't silently 'fix'."
+- **Karpathy always-on tag** — heading now "(ALWAYS ON — workflow cadence)";
+  was unstated vs Ponytail's explicit ALWAYS ON.
+- **"verify" defined** — Karpathy loop: "verify = run the one test/build
+  touched, not the whole suite."
+
+**Rejected (would bloat prefix / lose clarity / drift):**
+- `user_type === 1` → named enum: NO. Raw value is the *portable* constant in a
+  GLOBAL doc; a named enum varies per repo and would drift.
+- Merge Token-economy + Karpathy: NO. Distinct concerns (read-strategy vs
+  loop-cadence); merging loses clarity.
+- Plan-mode go-ahead scope explicit: NO. Placement already scopes it; Karpathy
+  "ask once" aligns, doesn't fight.
+
+**Measured:** AGENTS.md 5419→5922 B (+503 ≈ +126 tok/session permanent prefix).
+Skill count 9 (unchanged). Skill descriptions 2908 B (unchanged). Lines 41
+(unchanged). Portability quick-check: **0** hits.
+**Risk:** low — prose scoping only, reversible; no behavior/tooling change.
+Caveat: this is the largest single AGENTS.md bump; each fix pays for itself by
+preventing a recurring wrong-guess cycle (a bad `npm test` ≈ 1–3K tok/miss).
+**Prefix changed → recommend a fresh session** for cache. NOTE (separate,
+not auto-fixed): dropx-admin's project `CLAUDE.md` still says "Jest via
+react-scripts" — also wrong for its Vite setup; flagged for user to fix.
+Also refreshed stale token figures in HARNESS-ARCHITECTURE.md (was 4713 B;
+now 5922 B / ~2.2K tok prefix).
+
+---
+
+## 2026-08-12 — AGENTS.md 2nd feedback pass: DRY trims + drop stale count
+
+**Source:** refined external review. **Important:** reviewer was partly working
+from a pre-last-turn snapshot — 4 of their flagged items (Vite/react-scripts
+contradiction; stop-ponytail scope; Karpathy ALWAYS-ON tag; verify definition)
+were ALREADY fixed last turn. Confirmed present (4/4). No re-work.
+
+**Accepted (DRY / drift):**
+- **Removed "I value the laziest correct solution, surgical diffs, and being
+  asked before destructive operations."** Pure DRY violation — every clause is
+  an enforceable rule elsewhere (Ponytail / How-I-Work / Safety). Keeping a soft
+  copy risks it drifting from the hard rules when those are tightened.
+- **Removed "I build React/Next.js dashboards and admin panels."** Now redundant
+  with the corrected Stack line (covers both, repo-scoped).
+- **Dropped "(all 38)" from the skills-archive note.** Proven stale: archive
+  actually holds 82 `SKILL.md`s. Vindicates the drift warning — the file is the
+  source of truth, the prose count added nothing load-bearing.
+
+**Rejected (would bloat prefix / lose load-bearing context):**
+- Inline `# VERIFY:` markers next to stale-risk claims — NO. AGENTS.md is the
+  model's always-on instructions, not a maintenance log; inline markers cost
+  prefix bytes every turn and confuse the model. Verification lives in the
+  snapshot loop / changelog / portability-check, not inline prose.
+- `user_type === 1` → named enum — NO (again). Raw value is the portable
+  constant in a GLOBAL doc; enum names vary per repo (drifts worse).
+- Title line / skill disambiguations / slash-command list / skills-audit pointer
+  — kept; each is load-bearing (tone / anti-co-fire / proactive suggestion /
+  pointer-not-claim).
+
+**Measured:** AGENTS.md 5922→5762 B (−160 ≈ −40 tok/session). Net across BOTH
+feedback turns: 5419→5762 (+343 ≈ +86 tok/session). Skill count 9, skill
+descriptions 2908 B (unchanged). Portability quick-check: **0** hits.
+**Risk:** low — prose trims only, no behavior/tooling change; the removed
+soft-preference sentence is fully covered by the hard rules it duplicated.
+Refreshed HARNESS-ARCHITECTURE.md token figures (5762 B / 8670 B prefix).
+**Prefix changed → recommend a fresh session** for cache.
+
+---
+
+## 2026-08-12 — Global AGENTS.md de-projectified; CLAUDE.md test-line fixed
+
+**Directive:** "global AGENT.md should not contain project/stack-specific
+content." The global file loads in EVERY session (incl. non-Barikoi: `~/.pi`,
+`Downloads`, the `pi` repo) — stack/Barikoi-architecture content was waste there
+and a DRY duplicate of per-project CLAUDE.md.
+
+**Removed from `AGENTS.md`:**
+- **`## My stack` section entirely** (React 18, Ant Design 4, Redux Toolkit,
+  Barikoi GL Maps, Axios, Socket.io, Node ^18, JS/JSX, Vite/Next.js). All of it
+  lives in each project's CLAUDE.md (verified: dropx-admin/CLAUDE.md covers all).
+- **Project-architecture bullet** (App.config.js centralization, Redux slices,
+  permission dot-notation, `user_type === 1`, NEXT_PUBLIC_AUTH_URL example) —
+  dropx-specific; already in its CLAUDE.md verbatim.
+- **Preserved (relocated):** the general "audit third-party code → flag, don't
+  silently fix" clause moved into the Think-before-coding bullet (it's a general
+  work-principle, not project-specific).
+
+**Also (approved prior turn, now the content's correct home):**
+- `dropx-admin/CLAUDE.md`: removed bogus `npm test # Jest via react-scripts` —
+  package.json has NO test script and NO test runner installed (not react-scripts,
+  not vitest, not jest). Project docs outrank global per pi precedence, so a stale
+  project line could have re-fired the bug the global strip closed.
+
+**Methodology correction (integrity, per external "verify the 56" flag):**
+Two turns ago I justified the "normal mode" fix with "56 session uses." That was
+a SLOPPY grep — total string hits across ALL session files incl. self-reference
+(my own harness sessions discussing the term + AGENTS.md text re-read into
+logs). True user-TYPED invocations of "stop ponytail"/"normal mode" = **2**.
+The fix itself stands (the term WAS undefined regardless of count), but the
+magnitude was overstated. Lesson logged: isolate user-role messages before
+quoting a usage count. (чужой check: clean — not in any persisted file.)
+
+**Measured:** AGENTS.md 5762→4968 B (−794 / −4 lines this turn). **Net across
+ALL feedback turns: 5419→4968 B (−451)** — leaner than before despite +4
+ambiguity fixes. Prefix back to ≈ 2.0 K tok (7876 B), matching the original
+architecture estimate. Skill count 9, skill descriptions 2908 B (unchanged).
+Portability quick-check: **0** hits.
+**Risk:** low — global file is now project-agnostic by design; per-project
+specifics rely on each repo's CLAUDE.md being accurate (dropx-admin verified;
+merchant/laboni-express CLAUDE.md accuracy not audited this pass — flag for
+user). Refreshed HARNESS-ARCHITECTURE.md token figures.
+**Prefix changed → recommend a fresh session** for cache.
+
+---
+
+## 2026-08-12 — Remove redundant `## Skills` section (skills + slash list)
+
+**Question (user):** is listing skills + slash commands in AGENTS.md required,
+given skills auto-invoke and prompts are manually invoked? "Research via web
+search."
+
+**Research method:** no web-search tool available — used the authoritative
+primary source instead (pi's own docs + the live tool defs in my system prompt),
+which is strictly better than web search for pi-internal behavior.
+
+**Evidence (decisive):**
+- `skills.md` L64-71: "At startup, pi scans skill locations and extracts names
+  and descriptions. The system prompt includes available skills in XML format…
+  progressive disclosure: only descriptions are always in context." → pi ALREADY
+  injects every skill's name+description into the model context (visible to me
+  as `<available_skills>`), and its system prompt already states the load-on-match
+  mechanic. The AGENTS.md "## Skills" paragraph was a pure restatement.
+- Cross-references already live in the descriptions themselves: frontend-design →
+  "NOT for polishing → refactoring-ui"; refactoring-ui → "NOT for building →
+  frontend-design"; ponytail vs ponytail-review split by verb (write vs review).
+  → the condensed "Disambiguations" line was redundant.
+- `prompt-templates.md` L57/33/46: template descriptions render in the `/`
+  autocomplete dropdown (TUI), NOT in model context; the body expands into the
+  user message only on `/invoke`. → prompts are user-driven; the model doesn't
+  need the slash-command list.
+
+**Removed:** entire `## Skills` section — skill-discovery explanation +
+disambiguations + slash-command list (`/preflight /commit /changelog /bump /release`).
+
+**Kept (verified, not changed):** the Token-economy strategic-read ladder —
+grounded in the real `read` tool semantics ("truncated to 2000 lines or 50KB…
+Use offset/limit" → bare whole-file reads of big files waste budget/truncate the
+wrong region), `rg` via `bash` (no standalone rg tool), and `git diff` for
+changes. Already accurate; no edit.
+
+**Tradeoff (acknowledged):** the model loses proactive slash-command suggestion
+(e.g. "run /preflight first"). Prompts remain fully user-invokable via `/`;
+acceptable per the manual-invocation model. Skill disambiguation now relies
+solely on the pi-injected descriptions (which DO cross-reference).
+
+**Measured:** AGENTS.md 4968→4360 B (−608 / −5 lines this turn). **Net across
+the ENTIRE feedback process: 5419→4360 B (−1059 ≈ −265 tok/session).** Prefix now
+≈ 1.8 K tok (7268 B) — BELOW the original 1.9 K architecture estimate, despite
+gaining 4 ambiguity fixes earlier. Skill count 9, skill descriptions 2908 B
+(unchanged). Portability quick-check: **0** hits.
+**Risk:** low — removal of restated content only; pi's own system prompt carries
+the skill mechanics. Refreshed HARNESS-ARCHITECTURE.md token figures.
+**Prefix changed → recommend a fresh session** for cache.
+
+## 2026-08-13 — /release + /changelog + /bump: diff-grounded changelog, hard version gate, content-driven commit subject
+
+**What:** Three fixes to the release prompts, all from real /release misuse
+(akg-frontend 1.12.0 changelog listed entries not tied to code changes, and every
+release produced `chore(release): vX.Y.Z`).
+
+1. **`prompts/release.md` Step 1 — changelog now DIFF-grounded.** Replaced
+   `git log` commit-subject mapping with `git diff --name-only <tag>..HEAD` +
+   `--stat` samples. Every bullet must tie to a changed path; drop what isn't
+   backed. Empty Added/Fixed explicitly allowed over invention.
+2. **`prompts/release.md` Step 2 (and `prompts/bump.md` step 1) — version-field
+   hard gate.** If `package.json` has no `"version"` field, STOP immediately, do
+   not ask, do not proceed. One-line message only. (Was "stop and say so" —
+   ambiguous, sometimes prompted the user.)
+3. **`prompts/release.md` Step 3 — commit subject derived from the changelog's
+   top change**, conventional-commits form `<type>(<scope>): <subject>` +
+   `changelog: vX.Y.Z` footer. Explicitly **never `chore(release)`**.
+4. **`prompts/changelog.md`** aligned to the same diff-grounded method so
+   `/release` and `/changelog` don't contradict.
+
+**Why:** commit subjects ≠ shipped code (root cause of invented entries); the
+release commit should describe the release, not be a generic tag marker; missing
+version is a hard stop, not a question. Cache impact: zero (prompt templates are
+NOT in the prefix — slash autocomplete only), so no fresh session needed.
+
+**Measured:** release.md 2019→3690 B, changelog.md 1077→1502 B, bump.md 965→1094 B
+(prompts/ only; AGENTS.md 4360 B unchanged, prefix untouched). Skill count 9,
+skill descriptions 2908 B unchanged. Portability quick-check: **0** hits.
+**Risk:** low — prompt-template-only edits; no functional code. No prefix change.
+
+## 2026-08-13 (rev) — /release: missing version field now SKIPS bump, not aborts
+
+**What:** Corrected yesterday's over-reach. When `package.json` has no `"version"`
+field, `/release` now **skips Step 2 (the bump) silently** and still produces the
+changelog + commit — instead of aborting the whole release. The version for the
+changelog header/commit footer still comes from `$1`/auto-inferred level.
+`/bump` reverted to original "stop and say so" (its sole purpose IS the bump, so
+no-version genuinely means nothing to do there). `/release` Step 3 staging line
+now says `(+ package.json if you bumped it)` to match the conditional bump.
+
+**Why:** user intent was "leave package.json alone if it has no version," not
+"skip the entire release." The release can proceed without a version field in
+package.json (version comes from the level arg).
+
+**Measured:** release.md 3690→3708 B, bump.md 1094→967 B. Prefix (AGENTS.md +
+9 skill descriptions) unchanged. Portability quick-check: **0** hits.
+**Risk:** low — prompt-template-only. No fresh session needed (not in prefix).
+
+## 2026-08-13 (rev 2) — /release + /changelog: switch to changelogen (deterministic), fixing the real root cause
+
+**What:** Rewrote both prompts to use `npx --yes changelogen@latest --from=<prev-release-commit>` as the changelog generator, after evidence on akg-frontend revealed the TRUE root cause of every prior failure.
+
+**Root cause (evidence):** akg-frontend's `git describe --tags` → `v1.4.1`, but CHANGELOG.md is already at `1.11.1` (and the only `bump to` commit-message is `1.9.0`). So BOTH tag-based ranges (`git diff <tag>..HEAD` → 35 commits) AND `git log --grep='bump to'` (→ 1.9.0) regurgitated already-documented work — exactly the bloat in the original 1.12.0 complaint. Verified live: `changelogen` with no `--from` emitted everything since stale v1.4.1 incl. "Bump to 1.9.0".
+
+**Fix:** the `--from` point is now **the last commit that touched CHANGELOG.md** (`git log --format='%H' -- CHANGELOG.md | head -1`) = the previous release commit — format-agnostic, survives stale tags and inconsistent bump-message conventions. Verified: `--from=<that commit>` yields only genuinely-new commits (empty right now, since HEAD == the 1.11.1 commit — correct: nothing to release until new work is committed).
+
+**Other fixes preserved/added:**
+- Deterministic generation ⇒ no hallucinated bullets (original issue #2 root cause).
+- Translate changelogen's emoji sections → the project's Keep-a-Changelog names (🚀→Added, 🩹→Fixed, 💅/🎨→Changed, 🏡/❤️→omit); strip per-bullet hash links; match existing date format (DD-MM-YYYY).
+- Bump package.json ONLY if a `version` field exists — else SKIP silently (akg-frontend has none; version is generated from CHANGELOG via scripts/generate-version.mjs). Original issue #1.
+- Commit message from the release's top change, **never `chore(release)`**. Original issue #3.
+- Idempotent: if the target-version block already exists at top, replace its sections.
+
+**New runtime dependency:** `npx --yes changelogen@latest` (per release). npx ships with Node (pinned via .nvmrc) — portable; bunx works as a faster alternative on machines with bun. No package added to settings.json.
+
+**Measured:** release.md 1817→2960 B, changelog.md 969→1585 B (prompts/ only). AGENTS.md 4360 B, 9 skill descriptions 2908 B — prefix byte-stable, no fresh session needed (prompts are slash-autocomplete-only).
+Portability quick-check: **0** hits.
+**Risk:** low-med — introduces an npx network fetch per release; deterministic tool removes the hallucination failure mode entirely.
+
+## 2026-08-13 (rev 3) — revert changelogen; /release + /changelog back to working-tree diff; changelogen package removed
+
+**What:** changelogen (added rev 2) only reads COMMITTED history, so it forced a
+"commit your work first" response on the user's uncommitted working tree — wrong
+for their flow. Reverted both prompts to `git diff HEAD` (staged + unstaged working
+tree = exactly what VS Code shows as modified), keeping the format-matching lessons:
+match the project's Keep-a-Changelog section names + date format, no emoji, no
+commit hashes, idempotent block (replace if target version exists), conditional
+bump (skip if no package.json `version`), content-based commit (never
+`chore(release)`). Added explicit "do NOT tell me to commit first" guard.
+
+**Cleanup:** removed the changelogen package my test runs cached —
+`~/.bun/install/cache/changelogen@0.6.2@@@1` + `~/.bun/install/cache/changelogen`
+(bun) and `~/.npm/_npx/6ecdf59648e29544/` (npm/npx staging, full dep tree).
+Verified zero `changelogen` left in bun/npm caches and zero refs in prompts.
+No package was ever added to settings.json.
+
+**Why:** the user's release workflow is uncommitted-working-tree → one commit;
+changelogen's committed-only model is incompatible. `git diff HEAD` covers it and
+also kills the original bloat (which came from a stale `<tag>..HEAD` range, not
+from the working tree).
+
+**Measured:** release.md 2960→2510 B, changelog.md 1585→1251 B. AGENTS.md 4360 B,
+9 skill descriptions 2908 B — prefix byte-stable. Portability quick-check: 0 hits.
+**Risk:** low — removed a runtime network dependency (npx fetch) the harness no
+longer needs.
+
+## 2026-08-13 (rev 4) — radically simplify /release + /changelog (goal-oriented, not procedure-oriented)
+
+**What:** User reported a hand-typed sentence ("update changelog based on current
+changes and suggest a single commit message") works better than the slash
+commands. Root cause: the prompts had become rigid prescriptive procedures (exact
+`git diff` commands, numbered steps, elaborate format/version/bump rules) that
+constrain and mis-fire. A capable agent does better with a clear goal than a script.
+
+Rewrote both to ~4 short goal-oriented lines mirroring the user's phrasing, keeping
+only the guardrails that earned their place: source = current uncommitted
+working-tree changes (NOT history/tags — the anchor that killed all prior bloat);
+match existing CHANGELOG format, don't touch older entries; conditional version
+bump; one conventional commit never `chore(release)`; don't commit until confirmed.
+Dropped every prescriptive `git diff ...` command and step number — the agent picks
+how to see the changes.
+
+**Measured:** release.md 2510→859 B (-66%), changelog.md 1251→483 B (-61%).
+Prefix byte-stable. Portability: 0 hits.
+**Risk:** low — less prescription = fewer failure modes; the agent's general
+intelligence handles format/version detection from the real files.
+
+## 2026-08-20 — skill usage audit (65 sessions) + fixes
+Measured: skills 9 → 9 (removed youtube-transcript [0 loads, niche], added audit). Real body loads: browser-tools 4, systematic-debugging 3, refactoring-ui 1, brainstorming 1, frontend-design 0, ponytail/-review/playwright-e2e/youtube-transcript 0.
+- systematic-debugging: description retuned to actual prompt phrasing (TypeError/runtime error/API wrong data/build failure/regression) — was missing concrete-bug sessions (01a018c9, 01a00e56, 01a00a25).
+- frontend-design: description narrowed to "NEW files from scratch", explicit NOT-cases for editing existing UI and logic-only changes — was 0-load with misses attributed to routing.
+- audit skill added, distilled from session 01a01ddf (fallow dead-code cleanup): independent verification, non-import string scan, cascade loop, scripted-edit diff review, orphan JSDoc sweep, behavior-identical gate.
+- AGENTS.md untouched per user instruction.
+
+## 2026-08-21 — provider cleanup: zai + deepseek only; docs synced
+- Changed: auth.json (removed openrouter/opencode/omniroute keys), models.json (removed omniroute block → {}), models-store.json (dropped openrouter+opencode cache), removed zen-provider.template.json; PORTABILITY.md + HARNESS-ARCHITECTURE.md provider sections rewritten for zai(default)+deepseek only.
+- Why: openrouter/opencode/omniroute were only smoke-tested once (08-10 say-hi loop); not production. DeepSeek is built-in + already keyed (verified in models-store + auth.json) → no config needed.
+- Measured: auth.json 3 keys → 2; models.json providers 1 → 0; tar.gz provider-model cache −~250 entries.
+- Risk: low (zai stays default; deepseek available via /model).
+- Portability: clean — auth.json + models.json confirmed present in pi-portable-*.tar.gz.
+
+## 2026-08-28 — SDK twin merge + description catalog trim (audit-driven)
+
+Driven by harness-audit-report.md (Health 50/100; permanent floor 2467 tok; avg desc 131 tok;
+2 descs > 250 tok; AGENTS.md/ponytail duplication; skills-dir pollution). Note: HARNESS-*.md /
+PORTABILITY.md / skills-audit.md are disk docs — never auto-loaded by pi (loader candidates:
+AGENTS.override.md, AGENTS.md, CLAUDE.md only) — so their sizes cost 0 session tokens.
+
+- Changed: skills/sdk-development-npm/ — deleted (merged into skills/sdk-development/).
+  Unique npm content preserved: new "E2e infra details" subsection (.env hygiene: commit
+  .env.example, gitignore .env precisely; no invented window.__*__ globals). The other ~95%
+  of the twin (package surface, externals, pack smoke, test pyramid, vitest pitfalls,
+  upgrade protocol, docs set, R&D, publish gate) was already duplicated verbatim.
+- Changed: descriptions shortened in 10 skills (frontmatter only, bodies untouched except
+  the merge): sdk-development 1045→325 B, playwright-tester 746→325, ponytail 670→327
+  (now points to the AGENTS.md ladder instead of restating it), skill-creator 664→262,
+  browser-tools 622→323, map-integration 505→318, ponytail-review 472→315, audit 437→315,
+  frontend-design 411→272, youtube-transcript 69→189 (was validator-FAIL vague; added triggers).
+- Changed: hygiene — removed skills/browser-tools/node_modules (125 MB; regenerable: cd
+  skills/browser-tools && npm install), skills/{browser-tools,playwright-tester,sdk-development}.zip,
+  all macOS ._* AppleDouble files under skills/ and agent root. skills/ 125.6 MB → 556 KB.
+- Changed: docs — HARNESS-ARCHITECTURE.md skill tree 9→14 entries (was stale, missing
+  audit/playwright-tester/map-integration/sdk-*/skill-creator) + date; skills-audit.md §14 appended.
+- Why: tokens (catalog −926 tok/session) + focus (one SDK entry point instead of two near-twins
+  with ~90% identical trigger lists) + portability (AppleDouble junk signaled non-rsync copy).
+- Measured: skill count 15→14; catalog 7859→4157 B (~1965→~1039 tok, −53%); avg desc 131→~74 tok;
+  desc max 261→~85 tok (0 descs > 250 tok, was 2); permanent floor 2467→~1541 tok (−37%);
+  AGENTS.md unchanged (2008 B / ~502 tok). All 14 skills PASS validate-skill.mjs.
+  Cross-check vs measured baseline: lean first-call prompt 2557 tok → predicted new full-harness
+  prompt ≈ 2557 + 1039 + ~700 harness scaffolding ≈ 4300 tok (was 5731; −~1400 tok/call, re-sent
+  every turn). ponytail/ponytail-review NOT merged: per skills-audit.md Rev 7 evidence, the review
+  body (L<line>:<tag> format) exists only in ponytail-review; boundary tightened instead.
+- Risk: low — descriptions are routing hints; bodies untouched (except merge addition). Worst
+  case: a trigger phrase misses and a skill loads on explicit /skill: mention. Rollback: tar at
+  ~/.pi-backups/pi-skills.pre-trim.20260828-204608.tar.gz (pre-change skills + AGENTS.md + docs).
+- Portability: fixed — removed macOS AppleDouble junk + in-skill node_modules (both were
+  non-portable artifacts); browser-tools needs `npm install` on a fresh machine (already declared
+  "not bundled" in PORTABILITY/ARCHITECTURE contract).
+
+## 2026-08-28T14:58Z — re-audit (no changes made)
+- Re-ran quantitative harness audit; refreshed harness-audit-report.md.
+- Measured: skill count 14; catalog 3842 B desc (~961 tok); AGENTS.md 2008 B (~502 tok); permanent floor ~1463 tok (was ~2467, −41%); Health Score 95/100 (was 50). Portability: 0 hits. Skills dir clean (0 node_modules/.zip/._ files).
+
+## 2026-08-28T15:20Z — git-backed portable sync
+- Added: `.gitignore` (auth.json, sessions/, bin/, npm/, **/node_modules/, *.log, ._*, .DS_Store, models-store.json, skills-archive.tar.gz, harness-audit-report.md); initialized git repo (branch main).
+- Measured: 69 files staged, 0 secrets in index (git check-ignore verified auth.json/sessions/npm/bin ignored); `git status` clean of local-only artifacts. Tracked: AGENTS.md, settings.json, models.json, skills/ (14), prompts/, HARNESS-*.md, PORTABILITY.md, setup.sh, bundle.sh, skills-audit.md, .nvmrc.
+- Docs: PORTABILITY.md gained "Git sync (preferred)" section (office push / home pull + setup.sh; auth.json copied manually once per machine); HARNESS-ARCHITECTURE.md portability summary now states git primary, bundle.sh secondary.
+- Risk: none — repo not committed/pushed yet; bundle.sh flow unchanged.
+
+## 2026-08-28T15:35Z — .env / .env.example
+- Added: `.env` (machine-local, generated from auth.json: ZAI_API_KEY, DEEPSEEK_API_KEY; gitignored) and `.env.example` (committed placeholder template).
+- Measured: `git check-ignore .env` passes; index contains only `.env.example` (+ prior baseline). auth.json, models-store.json, bin/, npm/ remain ignored (already covered in step 1).
+- Docs: PORTABILITY.md auth note now documents .env as alternative to copying auth.json; models-store/bin/npm confirmed regenerable.
+- Risk: none — .env never enters git; pi still reads auth.json directly.
+
+## 2026-08-28T15:50Z — deprecate setup.sh / bundle.sh; .env fixes
+- Added: `.env` regenerated correctly (auth.json stores nested `{type,key}` objects; keys exported flat as ZAI_API_KEY / DEEPSEEK_API_KEY), chmod 600. `.gitignore` now also excludes `setup.sh` and `bundle.sh`; both untracked from the index (files still on disk pending user removal).
+- Measured: `git check-ignore setup.sh bundle.sh .env auth.json models-store.json` all pass; index 66 files, 0 scripts/secrets staged. auth.json verified byte-identical after the aborted setup.sh test run.
+- Docs: PORTABILITY.md "Git sync" section is now git-only (no setup.sh in home flow; auth.json buildable from .env via documented one-liner); HARNESS-ARCHITECTURE.md portability summary marks setup.sh/bundle.sh deprecated.
+- Risk: none — scripts remain on disk until user deletes them; git-only flow documented.
+
+## 2026-08-28T16:05Z — removed setup.sh / bundle.sh; git-only sync finalized
+- Removed: setup.sh, bundle.sh deleted from disk and absent from index. Deprecated entries dropped from .gitignore comment context (paths still listed for safety).
+- Measured: index 66 files — all portable source-of-truth (AGENTS, settings/models.json, skills/ 14, prompts/, HARNESS docs, PORTABILITY, skills-audit, .nvmrc, .gitignore, .env.example). Ignored as intended: .env, auth.json, bin/, npm/, sessions/, models-store.json, logs, archives. 0 untracked non-ignored files.
+- Docs: PORTABILITY.md fully rewritten git-side (portable/not-portable tables, key rotation via .env, manual per-machine one-time setup incl. ~/.agents/skills neutralization one-liner); HARNESS-ARCHITECTURE.md tree + portability summary updated (no script refs).
+- Risk: low — per-machine setup is now 2 documented manual steps (secrets + legacy skills dir).
+
+## 2026-08-28T16:30Z — removed .env / .env.example (YAGNI)
+- Removed: `.env`, `.env.example` deleted; `.env` entry dropped from `.gitignore`.
+- Rationale: pi never reads .env (auth.json or plain env vars only); shell-rc loading ruled out; duplicated auth.json keys with drift risk. auth.json is the single secrets file.
+- Measured: index 65 files; PORTABILITY.md/HARNESS-ARCHITECTURE.md carry 0 stale .env/setup.sh/bundle.sh references (verified via rg).
+- Risk: none — secrets flow simplified to one-time `scp auth.json` per machine.
+
+## 2026-08-28T16:45Z — merged PORTABILITY.md into HARNESS-ARCHITECTURE.md
+- Merged: full portability contract (git sync, tracked/machine-local tables, keys, post-clone setup, portability rules) into HARNESS-ARCHITECTURE.md's "Portability contract" section, replacing its redundant summary; PORTABILITY.md deleted.
+- Measured: index 64 files; harness-engineer SKILL.md re-validated PASS after removing the PORTABILITY.md reference; live docs (ARCHITECTURE tree, doc-map, skill scope) carry 0 dangling references (append-only CHANGELOG/skills-audit history mentions left as-is).
+- Rationale: one doc instead of two overlapping; arch doc was already the map, PORTABILITY the territory.
+- Risk: none — content preserved verbatim in structure, only nesting level changed.
+
+## 2026-08-28T16:55Z — track harness-audit-report.md in git
+- Changed: removed harness-audit-report.md from .gitignore; now tracked (it is a measured audit artifact worth syncing across machines, not a regenerable cache).
+- Measured: index 65 files.

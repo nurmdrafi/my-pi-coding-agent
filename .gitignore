@@ -1,0 +1,25 @@
+# Secrets — never commit
+auth.json
+
+# Local state / history
+sessions/
+
+# Machine-local binaries & deps (pi regenerates)
+bin/
+npm/
+**/node_modules/
+
+# Logs
+*.log
+
+# macOS cruft
+._*
+.DS_Store
+
+# Local-only caches / regenerable artifacts
+models-store.json
+skills-archive.tar.gz
+
+# Removed (git-only sync; no scripts)
+setup.sh
+bundle.sh
