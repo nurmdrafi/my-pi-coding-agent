@@ -845,3 +845,13 @@ AGENTS.override.md, AGENTS.md, CLAUDE.md only) — so their sizes cost 0 session
 ## 2026-08-28T16:55Z — track harness-audit-report.md in git
 - Changed: removed harness-audit-report.md from .gitignore; now tracked (it is a measured audit artifact worth syncing across machines, not a regenerable cache).
 - Measured: index 65 files.
+
+## 2026-08-28T17:20Z — audit capability folded into harness-engineer (no new skill)
+- Extended: skills/harness-engineer/SKILL.md gained "## Audit mode" (inventory chars/4, permanent floor, Health Score rules from the 2026-08-28 audit, harness-audit-report.md output, previous-report diff, audit-only = no file changes). Body now points at HARNESS-ARCHITECTURE.md/CHANGELOG.md as the living map.
+- Measured: description 470→350 chars (~118→~87 tok, −31 tok permanent catalog); skill count unchanged (14); validate-skill.mjs PASS.
+- Rationale: one meta skill for inspect/audit/diagnose/change/measure/log; no near-duplicate harness-audit skill created.
+
+## 2026-08-28T17:35Z — micro-polish: skill-creator desc de-duplicated
+- Changed: skill-creator description dropped the restated "load BEFORE any skill edit" rule (AGENTS.md already routes it always-on); triggers and negative scope kept.
+- Measured: skill-creator desc 262→211 chars (~65→~52 tok, −13 tok); skill count 14; catalog ~1,058→~1,045 tok; permanent floor ~1,475→~1,462 (chars/4 heuristic; consistent with audit-report method ~1,463). validate-skill.mjs PASS. No disable-model-invocation changes (youtube-transcript's link-paste flow depends on model invocation; not worth 47 tok). No other descs touched.
+- Risk: low — AGENTS.md guarantees the routing rule survives. Prefix changed → fresh session required.

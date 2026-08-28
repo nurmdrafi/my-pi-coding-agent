@@ -1,6 +1,6 @@
 ---
 name: skill-creator
-description: "Create or modify SKILL.md files (agentskills.io spec + pi docs/skills.md). Load BEFORE any skill create/update/edit/merge/delete — validator applies every time. Use for 'create a skill', 'new/fix/merge/rename/split skill'. NOT for ordinary project documentation."
+description: "Create or modify SKILL.md files (agentskills.io spec + pi docs/skills.md); run the validator on every change. Use for 'create a skill', 'new/fix/merge/rename/split skill'. NOT for ordinary project documentation."
 ---
 
 # Skill Creator

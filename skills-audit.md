@@ -256,3 +256,12 @@ now has triggers). Untouched: brainstorming, harness-engineer, refactoring-ui, s
 
 **Always-on cost:** catalog 7859 B (~1965 tok) → 4157 B (~1039 tok); floor 2467 → ~1541 tok.
 **Rollback:** ~/.pi-backups/pi-skills.pre-trim.20260828-204608.tar.gz
+
+---
+
+## 2026-08-28 — audit mode folded into harness-engineer (no new skill)
+
+Audit/scoring capability (permanent-token inventory, Health Score, harness-audit-report.md)
+added as an "## Audit mode" section in the existing `harness-engineer` skill body —
+on-demand content, zero new catalog entry. Description rewritten 470→350 chars
+(~118→~87 tok) to cover audit triggers. Skill count stays 14.

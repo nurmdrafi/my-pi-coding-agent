@@ -1,11 +1,11 @@
 ---
 name: harness-engineer
 description: >
-  Inspect, diagnose, and improve THIS pi harness — leaner AGENTS.md, stable
-  prefix, token efficiency, skill discipline, full macOS/Linux portability.
-  Use when: "audit my config", "improve the harness", "make pi portable",
-  "reduce token usage", "tune AGENTS.md/skills/settings", or when the
-  harness feels bloated or non-portable.
+  Inspect, audit/score, diagnose, and improve THIS pi harness — architecture,
+  AGENTS.md budget, skill catalog, token efficiency, portability; implement and
+  log changes. Use when: "audit harness", "health score", "permanent tokens",
+  "trim skills", "AGENTS.md budget", "improve the harness", "make pi portable",
+  or when the harness feels bloated.
 ---
 
 # Harness Engineer
@@ -38,9 +38,31 @@ Report BEFORE → AFTER for every field. No improvement claim without a number.
 ## Scope
 
 - `~/.pi/agent/` (and project `.pi/`): `AGENTS.md`, `settings.json`, `models.json`, skills, prompts
-- `HARNESS-ARCHITECTURE.md`, `CHANGELOG.md`, `skills-audit.md`
+- `HARNESS-ARCHITECTURE.md`, `CHANGELOG.md`, `skills-audit.md` — the living map; re-read before any change
 
 If `HARNESS-ARCHITECTURE.md` is missing, create a minimal version first.
+
+## Audit mode
+
+One skill covers the full loop: inspect → audit/score → diagnose → change → measure → log. Audit-only mode: **do not modify any files** (except writing the report) unless the user asks.
+
+1. **Inventory** (chars/4 as token heuristic):
+   - Context files: `AGENTS.md` (+ any always-loaded file) byte size → tokens.
+   - Every skill: `description` field char count → tokens (extract frontmatter only, never load bodies).
+   ```sh
+   wc -c ~/.pi/agent/AGENTS.md
+   awk '/^description:/{f=1;next} /^---/{f=0} f' ~/.pi/agent/skills/*/SKILL.md | wc -c
+   ```
+2. **Compute permanent floor** = context tokens + Σ skill-description tokens.
+3. **Health Score** — start at 100, deduct (same rules as 2026-08-28 audit):
+   - context > 800 tok: −10; skill count > 15: −10
+   - any single desc > 250 tok: −10; avg desc > 100 tok: −10
+   - huge body (>2,000 tok) AND long desc (>100 tok): −5 per skill (progressive-disclosure failure)
+   - AGENTS.md ↔ skill rule duplication: −5 per overlap
+   - vague/missing descriptions: −5 each; skills-dir pollution (node_modules, .zip, ._*): −5 each class
+   - portability quick-check hits in functional files: −5 per class
+4. **Write `harness-audit-report.md`** — same structure as the 2026-08-28 report: executive summary, inventory table, top consumers, overlaps, score breakdown, comparison to previous report if present (delta per metric).
+5. Report BEFORE → AFTER numbers; recommendations ranked by impact. Implement only on request, then log per *Workflow* step 5.
 
 ## Workflow
 
