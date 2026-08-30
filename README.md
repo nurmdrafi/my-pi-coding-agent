@@ -1,9 +1,31 @@
+# my-pi-coding-agent
+
+Personal [pi coding agent](https://github.com/earendil-works/pi-coding-agent) harness — a
+single portable `~/.pi/agent/` directory, synced via this git repo between machines.
+
+**What you get:** a lean always-on behavioral core (AGENTS.md), 14 progressive-disclosure
+skills, prompt templates, and an audit methodology that keeps the permanent token floor
+~1.3K tokens. No env vars, no absolute paths — clone anywhere on macOS/Linux.
+
+**Quick start (new machine):**
+
+```sh
+git clone <repo> ~/.pi/agent
+cp office:~/.pi/agent/auth.json ~/.pi/agent/   # or /login per provider (secrets never in git)
+mv ~/.agents/skills ~/.agents/skills.disabled.$(date +%Y%m%d-%H%M%S) 2>/dev/null  # stop legacy dir leaking
+pi   # first run regenerates bin/, npm/, models-store.json
+```
+
+Requires Node LTS ≥ 22 (`.nvmrc` pins it). Full details below.
+
+---
+
 # Harness Architecture — current state (living doc)
 
 Map of this pi harness. Re-read at the start of any harness-engineering session.
 Update when structure, skill set, or always-on budget changes.
 
-Last updated: 2026-08-28
+Last updated: 2026-12-17
 
 ## Portable unit
 
@@ -13,7 +35,7 @@ No env vars; default path only.
 ```
 ~/.pi/agent/
 ├── AGENTS.md                 # ALWAYS-ON behavioral core (keep short & stable)
-├── settings.json             # provider / model / thinking / packages
+├── settings.json             # provider / model / theme / thinking
 ├── auth.json                 # keys (zai default + deepseek secondary; both portable)
 ├── models.json               # custom providers (empty: zai + deepseek are built-in)
 ├── models-store.json         # catalog cache
@@ -40,7 +62,7 @@ No env vars; default path only.
 │                             # (deleted preflight/changelog/bump/release — 0 uses,
 │                             #  prescriptive bodies caused unbounded diffs + cache busts)
 │
-├── HARNESS-ARCHITECTURE.md   # this file (incl. portability contract)
+├── README.md                 # this file (incl. portability contract)
 ├── CHANGELOG.md      # append-only
 ├── skills-audit.md           # append-only skill-set decisions
 ├── .nvmrc
@@ -125,13 +147,13 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 
 | Path | Purpose |
 |---|---|
-| `AGENTS.md` | Always-on identity + ponytail core + stack + skill list |
+| `AGENTS.md` | Always-on behavioral core + efficiency ladder |
 | `settings.json` | Provider/model/theme/thinking/packages (no secrets) |
 | `models.json` | Custom providers (currently empty; both active providers are built-in) |
 | `skills/` | All skills (real files, auto-trigger + `/skill:name`) |
 | `prompts/` | Prompt templates |
 | `skills-audit.md` | Skill audit + migration history (append-only) |
-| `HARNESS-ARCHITECTURE.md` / `CHANGELOG.md` | This file + change log |
+| `README.md` / `CHANGELOG.md` | This file + change log |
 | `.nvmrc` | Pins required Node LTS (`22`) for `nvm use` in the harness dir |
 | `.gitignore` | Secret/caches hygiene |
 
@@ -141,7 +163,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 |---|---|
 | `auth.json` | Secrets — copy once per machine via `scp`; never in git. |
 | `bin/fd`, `bin/rg` | Platform binaries. **pi auto-downloads** the correct arch (arm64/x86_64) on first run. |
-| `npm/node_modules/` | Extension deps. **pi reinstalls** from `settings.json` → `packages` on first run. |
+| `npm/node_modules/` | Extension deps. **pi reinstalls** from `settings.json` → `packages` on first run (currently empty — all packages removed 2026-12-17). |
 | `skills/**/node_modules/` | Per-skill deps (e.g. `browser-tools`: puppeteer-core, jsdom, `@mozilla/readability`, turndown). Regenerable — run `npm install` in the skill dir on first use (each skill documents this). |
 | `models-store.json` | Built-in provider model catalog (regenerable cache). |
 | `sessions/` | Session history, keyed by absolute project paths → inherently per-machine. |

@@ -860,3 +860,8 @@ AGENTS.override.md, AGENTS.md, CLAUDE.md only) — so their sizes cost 0 session
 - Changed: Ponytail ladder merged into Behavioral Core as one bullet ("Solve with the least that works: ..."); `## Ponytail` section removed. `## Skills` section removed from AGENTS.md — routing covered by skill-creator's description; merge-preference rule already in skill-creator body step 2. Removed both extension packages from settings.json; deleted stale `~/.pi/agent/npm` package cache. Trimmed descriptions: systematic-debugging, harness-engineer, ponytail.
 - Measured: AGENTS.md 2,008→1,460 bytes (502→365 tok); catalog descs 3,977→3,919 chars (~994→~980 tok); permanent floor ~1,496→~1,345 tok (−151). All 3 edited skills validate-skill.mjs PASS. Portability: 0 hits.
 - Risk: low — ladder wording compressed but all rungs preserved; skill routing relies on descriptions (unchanged behavior). Prefix changed → fresh session required.
+
+## 2026-12-17 — HARNESS-ARCHITECTURE.md promoted to README.md
+- Changed: `git mv HARNESS-ARCHITECTURE.md README.md`; prepended repo intro + new-machine quick start (clone, auth.json, ~/.agents neutralize, Node ≥22). Updated 4 references in skills/harness-engineer/SKILL.md; refreshed stale bits (Last updated, settings.json packages note, AGENTS.md purpose line). skills-audit.md historical mentions left as dated history.
+- Measured: README.md 10,776 bytes (was 10,776-byte architecture doc + ~800-byte intro); no prefix cost (README is not auto-loaded). validate-skill.mjs PASS for harness-engineer. Portability: 0 hits.
+- Risk: none — documentation only. skill body changed → fresh session recommended.
