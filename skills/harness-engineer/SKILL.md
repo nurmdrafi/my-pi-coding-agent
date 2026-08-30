@@ -1,11 +1,9 @@
 ---
 name: harness-engineer
 description: >
-  Inspect, audit/score, diagnose, and improve THIS pi harness — architecture,
-  AGENTS.md budget, skill catalog, token efficiency, portability; implement and
-  log changes. Use when: "audit harness", "health score", "permanent tokens",
-  "trim skills", "AGENTS.md budget", "improve the harness", "make pi portable",
-  or when the harness feels bloated.
+  Inspect, audit/score, and improve THIS pi harness — AGENTS.md budget, skill
+  catalog, token efficiency, portability. Use when: "audit harness", "health
+  score", "trim skills", "improve the harness", or the harness feels bloated.
 ---
 
 # Harness Engineer

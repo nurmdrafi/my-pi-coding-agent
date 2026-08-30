@@ -1,6 +1,6 @@
 ---
 name: systematic-debugging
-description: Use BEFORE proposing any fix when something is broken — runtime errors ("Cannot read properties of", TypeError, undefined is not a function), API returning wrong/null data, build failures, test failures, "X stopped working / worked before", regression after a change, unexpected behavior. Find root cause first; never patch symptoms. NOT for features or greenfield work.
+description: Use BEFORE proposing any fix when something is broken — runtime errors (TypeError, undefined), wrong/null API data, build/test failures, "X stopped working", regressions, unexpected behavior. Find root cause first; never patch symptoms. NOT for features or greenfield work.
 ---
 
 # Systematic Debugging

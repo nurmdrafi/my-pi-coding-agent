@@ -6,15 +6,7 @@
 - Goal-driven: define the failing case, make it pass, verify with the minimal relevant check.
 - Plan/design requests = plan only. Ambiguous “continue / proceed / go ahead” → ask scope before implementing.
 - Unknown contracts (API paths, payloads, fields) → ask. Never invent placeholders.
-
-## Ponytail (efficiency ladder)
-Climb and stop at the first rung that holds, after understanding the problem:
-1. Does this need to exist? (YAGNI) → skip and say so.
-2. Already in this codebase? Reuse it.
-3. Stdlib / native platform feature?
-4. Already-installed dependency?
-5. Can it be one line / the minimum that works?
-Bug fix = root cause. Grep callers first. No unrequested abstractions or “for later” boilerplate.
+- Solve with the least that works: need-to-exist? (YAGNI) → existing code → stdlib/platform → installed dep → minimal change. Bug fix = root cause; grep callers first. No unrequested abstractions or “for later” boilerplate.
 
 ## Communication
 - Be concise and direct. Technical prose only.
@@ -35,9 +27,3 @@ Ask before: commit, push, install packages, or any destructive command (rm, git 
 
 ## Cadence
 Plan → do → verify (only the touched test/build) → repeat. Prefer the 80% solution that ships.
-
-## Skills
-- ANY task that creates, updates, edits, merges, or deletes a skill → load the `skill-creator`
-  skill first and run its validator on every change. No exceptions, not even one-line fixes.
-- Prefer merging into an existing skill over creating near-duplicates; when merging, keep the
-  older/broader name and delete the absorbed skill directory.

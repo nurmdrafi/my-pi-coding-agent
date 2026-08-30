@@ -855,3 +855,8 @@ AGENTS.override.md, AGENTS.md, CLAUDE.md only) — so their sizes cost 0 session
 - Changed: skill-creator description dropped the restated "load BEFORE any skill edit" rule (AGENTS.md already routes it always-on); triggers and negative scope kept.
 - Measured: skill-creator desc 262→211 chars (~65→~52 tok, −13 tok); skill count 14; catalog ~1,058→~1,045 tok; permanent floor ~1,475→~1,462 (chars/4 heuristic; consistent with audit-report method ~1,463). validate-skill.mjs PASS. No disable-model-invocation changes (youtube-transcript's link-paste flow depends on model invocation; not worth 47 tok). No other descs touched.
 - Risk: low — AGENTS.md guarantees the routing rule survives. Prefix changed → fresh session required.
+
+## 2026-12-17 — AGENTS.md slim + package cleanup + desc trims
+- Changed: Ponytail ladder merged into Behavioral Core as one bullet ("Solve with the least that works: ..."); `## Ponytail` section removed. `## Skills` section removed from AGENTS.md — routing covered by skill-creator's description; merge-preference rule already in skill-creator body step 2. Removed both extension packages from settings.json; deleted stale `~/.pi/agent/npm` package cache. Trimmed descriptions: systematic-debugging, harness-engineer, ponytail.
+- Measured: AGENTS.md 2,008→1,460 bytes (502→365 tok); catalog descs 3,977→3,919 chars (~994→~980 tok); permanent floor ~1,496→~1,345 tok (−151). All 3 edited skills validate-skill.mjs PASS. Portability: 0 hits.
+- Risk: low — ladder wording compressed but all rungs preserved; skill routing relies on descriptions (unchanged behavior). Prefix changed → fresh session required.
