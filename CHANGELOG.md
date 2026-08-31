@@ -865,3 +865,10 @@ AGENTS.override.md, AGENTS.md, CLAUDE.md only) — so their sizes cost 0 session
 - Changed: `git mv HARNESS-ARCHITECTURE.md README.md`; prepended repo intro + new-machine quick start (clone, auth.json, ~/.agents neutralize, Node ≥22). Updated 4 references in skills/harness-engineer/SKILL.md; refreshed stale bits (Last updated, settings.json packages note, AGENTS.md purpose line). skills-audit.md historical mentions left as dated history.
 - Measured: README.md 10,776 bytes (was 10,776-byte architecture doc + ~800-byte intro); no prefix cost (README is not auto-loaded). validate-skill.mjs PASS for harness-engineer. Portability: 0 hits.
 - Risk: none — documentation only. skill body changed → fresh session recommended.
+
+## 2026-08-31 — usage-metrics script + skill pointer (evidence from web R&D)
+- Added: `scripts/usage-metrics.py` (python3 stdlib, portable) — per-model token profile (in/out/reasoning per turn, cache %, cost), top-5 cost-tail sessions, first-turn prefix trend. Replaces repeated hand-written JSONL analysis (done 3x in 2026-08-31 session).
+- Changed: harness-engineer "Optional deep evidence" section now points to the script. Description untouched → prefix byte-stable.
+- Measured: AGENTS.md 1,460B unchanged; skills 14; he body 5,007→5,246B; permanent floor unchanged (~1,298 tok). Script output: glm-5.2 reasoning 342 tok/turn = 55% of its output bill; top session 436 turns/$17.50 (cost tail), deepseek-v4-flash cheapest (1,401 in/t, 0 reasoning, 98% cache).
+- Rationale: Anthropic/Glean research — token cost lives in reasoning output and unmanaged session tails, not prefix wording; audit loop must see them.
+- Risk: none — additive, on-demand only. No fresh session needed (body-only edit).

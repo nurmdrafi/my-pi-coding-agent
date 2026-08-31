@@ -70,8 +70,11 @@ One skill covers the full loop: inspect → audit/score → diagnose → change 
 4. **Implement** — only approved/safe edits. Ask before destructive or large writes. Tell user to start a fresh session after prefix changes.
 5. **Persist** — append dated entry to `CHANGELOG.md` (include `Measured:` before→after). Update `README.md` or `skills-audit.md` when architecture or skill set changes.
 
-Optional deep evidence (only when user asks for skill-usage audit):
+Optional deep evidence (only when user asks for skill-usage or token audit):
 
+- Run `python3 scripts/usage-metrics.py` (repo root) — per-model token profile
+  (input/output/reasoning per turn, cache %, cost), top-5 cost-tail sessions,
+  first-turn prefix trend. Prefer it over hand-written JSONL analysis.
 - pi sessions: `~/.pi/agent/sessions/*/*.jsonl` — skill loads, `/skill:` invocations, correction words
 - Rank skills: auto-load vs explicit vs never fire
 
