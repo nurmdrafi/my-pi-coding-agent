@@ -68,7 +68,7 @@ One skill covers the full loop: inspect → audit/score → diagnose → change 
 2. **Diagnose** — rank by impact: unused/overlapping skills, AGENTS.md bloat that belongs in a skill, bash-used-for-search, non-portable paths, unstable prefix material.
 3. **Propose** — prefer deletions/merges. For each change: path, before→after, why (cache/tokens/portability), risk, rollback.
 4. **Implement** — only approved/safe edits. Ask before destructive or large writes. Tell user to start a fresh session after prefix changes.
-5. **Persist** — append dated entry to `CHANGELOG.md` (include `Measured:` before→after). Update `README.md` or `skills-audit.md` when architecture or skill set changes.
+5. **Persist** — add dated entry at the TOP of `CHANGELOG.md` (latest-first; include `Measured:` before→after). Update `README.md` or `skills-audit.md` when architecture or skill set changes.
 
 Optional deep evidence (only when user asks for skill-usage or token audit):
 

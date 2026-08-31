@@ -3,9 +3,9 @@
 Personal [pi coding agent](https://github.com/earendil-works/pi-coding-agent) harness — a
 single portable `~/.pi/agent/` directory, synced via this git repo between machines.
 
-**What you get:** a lean always-on behavioral core (AGENTS.md), 14 progressive-disclosure
+**What you get:** a lean always-on behavioral core (AGENTS.md), 16 progressive-disclosure
 skills, prompt templates, and an audit methodology that keeps the permanent token floor
-~1.3K tokens. No env vars, no absolute paths — clone anywhere on macOS/Linux.
+~1.6K tokens. No env vars, no absolute paths — clone anywhere on macOS/Linux.
 
 **Quick start (new machine):**
 
@@ -25,7 +25,7 @@ Requires Node LTS ≥ 22 (`.nvmrc` pins it). Full details below.
 Map of this pi harness. Re-read at the start of any harness-engineering session.
 Update when structure, skill set, or always-on budget changes.
 
-Last updated: 2026-12-17
+Last updated: 2026-08-31
 
 ## Portable unit
 
@@ -45,7 +45,7 @@ No env vars; default path only.
 │   │                         #  sdk-development-npm into it 2026-08-28)
 │   ├── playwright-tester/    # e2e via CDP-attached Chrome; isolated fallback
 │   ├── browser-tools/        # live DOM via CDP :9222 (deps NOT bundled: npm install)
-│   ├── map-integration/      # react-bkoi-gl / maplibre / deck.gl work
+│   ├── map-integration/      # react-bkoi-gl library dev + map integration work
 │   ├── harness-engineer/     # meta: audit/improve this harness
 │   ├── ponytail/             # extended modes (core rules live in AGENTS.md)
 │   ├── ponytail-review/      # over-engineering review format (sole carrier)
@@ -54,7 +54,9 @@ No env vars; default path only.
 │   ├── brainstorming/
 │   ├── systematic-debugging/
 │   ├── audit/                # dead-code cleanup via static analysis
-│   ├── skill-creator/        # SKILL.md spec + validator (scripts/validate-skill.mjs)
+│   ├── skill-manager/        # SKILL.md spec + validator (scripts/validate-skill.mjs)
+│   ├── tavily-search/        # web research via Tavily CLI (primary research route)
+│   ├── tavily-extract/       # URL → clean markdown via Tavily CLI
 │   └── youtube-transcript/
 │
 ├── prompts/                  # slash commands only (NOT in prefix)
@@ -63,7 +65,7 @@ No env vars; default path only.
 │                             #  prescriptive bodies caused unbounded diffs + cache busts)
 │
 ├── README.md                 # this file (incl. portability contract)
-├── CHANGELOG.md      # append-only
+├── CHANGELOG.md      # harness change log, latest-first (newest on top)
 ├── skills-audit.md           # append-only skill-set decisions
 ├── .nvmrc
 └── .gitignore                # git is the sync; secrets/caches excluded
@@ -114,7 +116,7 @@ Skills register as `/skill:<name>`. Bodies are **not** in context until needed.
 |------|----------------|
 | `CHANGELOG.md` | every harness change (what / why / risk / measured delta) |
 | `skills-audit.md` | skill set add/remove/merge |
-| `HARNESS-ARCHITECTURE.md` | structure, budget, or sync/portability contract change |
+| `README.md` (this file) | structure, budget, or sync/portability contract change |
 
 ## Portability contract
 

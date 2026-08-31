@@ -138,7 +138,9 @@ typecheck → lint → unit → browser-mode (npm) → e2e vs dist → README ex
    main import; a branding element once tested as "missing" because the host never imported the
    styles export.
 5. Dependency hygiene if touched: exact pins (no `^`), committed `.npmrc`,
-   `npm/pnpm audit --audit-level high`, only non-breaking upgrades.
+   `npm/pnpm audit --audit-level high`, only non-breaking upgrades. Sweep dead `package.json`
+   scripts and stray files too — every script must be runnable and referenced; unreferenced
+   scratch files get deleted, not parked.
 6. CHANGELOG.md complete for this version, missing shipped versions backfilled.
 7. **User reviews and commits/publishes manually.** Agent never commits, pushes, or publishes
    unprompted — it suggests the commit message and waits. User may want to test live first.
