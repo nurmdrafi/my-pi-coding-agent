@@ -4,8 +4,5 @@
   "defaultProvider": "zai",
   "defaultModel": "glm-5.2",
   "defaultThinkingLevel": "off",
-  "hideThinkingBlock": true,
-  "packages": [
-    "npm:opencode-pi"
-  ]
+  "hideThinkingBlock": true
 }
