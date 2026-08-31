@@ -872,3 +872,22 @@ AGENTS.override.md, AGENTS.md, CLAUDE.md only) — so their sizes cost 0 session
 - Measured: AGENTS.md 1,460B unchanged; skills 14; he body 5,007→5,246B; permanent floor unchanged (~1,298 tok). Script output: glm-5.2 reasoning 342 tok/turn = 55% of its output bill; top session 436 turns/$17.50 (cost tail), deepseek-v4-flash cheapest (1,401 in/t, 0 reasoning, 98% cache).
 - Rationale: Anthropic/Glean research — token cost lives in reasoning output and unmanaged session tails, not prefix wording; audit loop must see them.
 - Risk: none — additive, on-demand only. No fresh session needed (body-only edit).
+
+## 2026-08-31 — cheap research ladder: web-search.py + skill wiring
+- Added: `scripts/web-search.py` (python3 stdlib, DDG lite → "title — URL" lines, --snip). Zero deps, portable.
+- Changed: browser-tools SKILL.md "When to Use" gains read-only research ladder: web-search.py → web-fetch.mjs (capped) → Chrome only for JS/DOM/challenged engines. Description untouched → prefix byte-stable.
+- Measured: search output ~50–411 B vs ~800+ tok Chrome results page; article extract 2,025 B capped vs ~6,800 B full browser-content dump (−70%). Keyless engines bot-hostile today (DDG 202 challenge both endpoints, Mojeek shell, 4/4 SearXNG 429/403) — Chrome remains the fallback; free search API key (Tavily/Serper) is the only robust fix, needs user signup.
+- Risk: low — additive; web-fetch.mjs reused as-is.
+
+## 2026-08-31 — browser-tools rescoped: Playwright/e2e ONLY
+- Changed: description rewritten to route research/web → scripts/web-search.py + web-fetch.mjs, QA/general debug → elsewhere; "When to Use" now opens with scope fence + routing; research ladder tier-3 (Chrome fallback for research) removed; "Other uses" section replaced by "Out of scope".
+- Measured: desc 329→301 chars (82→75 tok, −7); body 14,203→~14,900 B (on-demand only); validate-skill.mjs PASS; catalog avg ~71 tok (no score impact).
+- Rationale: user directive — Chrome reserved for e2e; research must use the cheap headless ladder.
+- Risk: low — e2e workflows unchanged. Prefix changed (desc) → fresh session required.
+
+## 2026-08-31 — Tavily onboarded as primary research routing
+- Setup: uv + Python 3.12 (user-local, system 3.8 untouched), tavily-cli 0.1.6, OAuth verified, live search verified. 8 skills installed, then trimmed.
+- Kept: tavily-search + tavily-extract (both research intents have an always-visible routing surface). Deleted: tavily-cli/map/crawl/research/dynamic-search/best-practices (CLI one-liners; re-add via `npx skills add tavily-ai/skills --skill <name> --agent pi --global`). Deleted scripts/web-search.py (DDG IP-challenged, 0/6; superseded).
+- Changed: browser-tools desc + research routing line now point at tavily skills; web-fetch.mjs noted as cheapest static-page extractor. validate-skill.mjs PASS x3.
+- Measured (definitive frontmatter parse, quotes stripped): catalog 4,853 chars (~1,213 tok) across 16 skills; floor ~1,334→~1,578 tok (+244 for reliable routing). Bench: tvly search 4.2s/812B lean vs DDG blocked; tvly extract 2.3s/29.1KB vs web-fetch 2.0s/22.6KB (−23% tokens, no quota). Free tier 1,000 req/mo.
+- Risk: low. Prefix changed → fresh session required to activate tavily skills.

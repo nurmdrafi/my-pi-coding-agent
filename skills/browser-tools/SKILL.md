@@ -1,6 +1,6 @@
 ---
 name: browser-tools
-description: "Live browser automation via Chrome DevTools Protocol (CDP :9222): navigate, evaluate JS, inspect DOM, screenshots, cookies/sessions. Use when a REAL running browser is needed — live page checks, debugging e2e specs against a dev server. NOT frontend design/review (→ refactoring-ui); code inspection first when it suffices."
+description: "Playwright/e2e testing ONLY via CDP :9222: live replay of failing specs, DOM inspection, screenshots, storageState for e2e work. NOT research/web content (→ tavily-search / tavily-extract skills), NOT manual QA, NOT general debugging (→ systematic-debugging), NOT frontend design (→ refactoring-ui)."
 ---
 
 # Browser Tools
@@ -136,6 +136,12 @@ Navigate to a URL and extract readable content as markdown. Uses Mozilla Readabi
 
 ## When to Use
 
+**This skill exists for Playwright/e2e testing only.** Anything else routes elsewhere:
+
+- Read-only research / web content → tavily-search / tavily-extract skills (`tvly search`, `tvly extract`); for static pages `{baseDir}/web-fetch.mjs <url> <maxChars>` is the cheapest extractor (headless, capped, no quota). Never this skill for research.
+- Manual QA / visual review → refactoring-ui or user-driven, not agent browser driving.
+- General debugging (runtime errors, wrong data) → systematic-debugging; go live only when the failing spec needs it.
+
 ### Debugging failing e2e / browser-mode specs
 
 When a Playwright or Vitest-browser spec fails and the runner log doesn't
@@ -222,13 +228,9 @@ both answered by reading the dist directly — payload changes across major
 versions (e.g. drag events losing `lngLat`) are visible in the shipped code
 and its `.d.ts`.
 
-### Other uses
+### Out of scope
 
-- Testing frontend code in a real browser
-- Interacting with pages that require JavaScript
-- When user needs to visually see or interact with a page
-- Debugging authentication or session issues
-- Scraping dynamic content that requires JS execution
+Route elsewhere (see When to Use): frontend feature testing outside e2e specs, visual inspection for design review, scraping for research, auth debugging outside e2e sessions, one-off DOM poking. If a task is not part of a Playwright/e2e effort, it does not need this skill's Chrome.
 
 ---
 

@@ -1,89 +1,94 @@
 # Pi Harness Audit Report
 
-Generated: 2026-12-17 (local)
+Generated: 2026-08-31 (local)
 CWD: ~/.pi/agent
-Token estimate method: chars/4 (portable heuristic; real counts typically ±15–25%)
+Token estimate method: chars/4 (description values incl. YAML quoting, ±2%; real prefix measured separately from session logs)
 
 ## 1. Executive Summary
 
-- **Permanent tokens: ~1,496** (context 502 + skill catalog ~994) — unchanged vs 2026-08-28 report (~1,463; delta within counting-method noise)
-- Context files count: **1** (AGENTS.md only); skill count: **14** (limit 15 → no deduction)
-- **Harness Health Score: 95/100 (Good — minor polish only)** — same as previous (95)
-- Config change since last audit: both extension packages (`npm:pi-session-analyzer`, `npm:pi-token-burden`) removed from `settings.json` per user request. No `~/.pi/agent/extensions` dir exists. Stale package cache remains at `~/.pi/agent/npm`.
+- **Permanent floor: ~1,356 tok** (context 365 + skill catalog ~991) — down ~140 tok vs 2026-12-17 report (~1,496), matching the AGENTS.md slim + desc trims exactly (theory predicted −151).
+- **Measured real first-turn prompt: ~4,881 tok** (session 2026-08-31T14-52) — pi system prompt dominates; harness-controlled share is only ~1,356.
+- Context files: **1** (AGENTS.md, byte-stable at 1,460 B). Skills: **14**. Prompts: 1. Scripts: 1 (usage-metrics.py, added today).
+- **Harness Health Score: 90/100 (Good)** — −5 ponytail ladder overlap (standing ruling), −5 skills-dir node_modules (installed this session, gitignored).
+- New capability since last audit: `scripts/usage-metrics.py` gives measured token evidence (per-model profile, cost tail, prefix trend) — replaces chars/4 guesswork for usage questions.
 
 ## 2. Context Files Inventory
 
-| Path | Chars | ~tokens | Summary |
+| Path | Bytes | ~tokens | Summary |
 |------|-------|---------|---------|
-| ~/.pi/agent/AGENTS.md | 2,008 | 502 | Behavioral rules + Ponytail ladder + comms/token-economy/safety/cadence + skill routing. Byte-stable since last audit. |
+| ~/.pi/agent/AGENTS.md | 1,460 | 365 | Behavioral Core + comms/token-economy/safety/cadence. Ponytail ladder merged into one bullet. |
 
-Total context: 502 tok (≤800 → no deduction).
+Total context: 365 tok (≤800 → no deduction).
 
 ## 3. Skill Catalog Inventory
 
-14 skills, all with frontmatter descriptions; total description chars 3,977 (~994 tok), avg ~284 chars (~71 tok).
+14 skills, all frontmatter-valid (spec check passed this session). Total desc ~3,964 chars (~991 tok), avg 283 chars (~71 tok).
 
-| Skill | Desc chars | ~desc tok | Body bytes | ~body tok |
-|-------|-----------|-----------|-----------|-----------|
-| systematic-debugging | 370 | 93 | 9,746 | 2,437 |
-| harness-engineer | 350 | 88 | 5,183 | 1,296 |
-| ponytail | 329 | 82 | 6,438 | 1,610 |
-| sdk-development | 327 | 82 | 14,338 | 3,585 |
-| playwright-tester | 327 | 82 | 15,119 | 3,780 |
-| browser-tools | 325 | 81 | 14,203 | 3,551 |
+| Skill | Desc chars | ~tok | Body bytes | ~body tok |
+|-------|-----------|------|-----------|-----------|
+| sdk-development | 333 | 83 | 14,338 | 3,585 |
+| playwright-tester | 331 | 83 | 15,119 | 3,780 |
+| browser-tools | 329 | 82 | 14,203 | 3,551 |
+| ponytail | 327 | 82 | 6,434 | 1,609 |
+| audit | 321 | 80 | 2,954 | 739 |
+| ponytail-review | 321 | 80 | 2,232 | 558 |
 | map-integration | 320 | 80 | 6,155 | 1,539 |
-| audit | 317 | 79 | 2,954 | 739 |
-| ponytail-review | 317 | 79 | 2,232 | 558 |
-| frontend-design | 274 | 69 | 7,206 | 1,802 |
-| brainstorming | 261 | 65 | 10,114 | 2,529 |
-| refactoring-ui | 219 | 55 | 5,742 | 1,436 |
+| frontend-design | 276 | 69 | 7,206 | 1,802 |
+| systematic-debugging | 275 | 69 | 9,649 | 2,412 |
+| brainstorming | 267 | 67 | 10,114 | 2,529 |
+| harness-engineer | 235* | 59 | 5,246 | 1,312 |
+| refactoring-ui | 225 | 56 | 5,742 | 1,436 |
 | skill-creator | 213 | 53 | 4,876 | 1,219 |
 | youtube-transcript | 191 | 48 | 837 | 209 |
 
-Top consumers of permanent budget: AGENTS.md (502), systematic-debugging (93), harness-engineer (88), ponytail/playwright-tester/sdk-development (82 each).
+*folded block-scalar desc (valid YAML, spec-compliant).
+Body total: ~105 KB — all on-demand only.
 
-Bodies >2,000 tok: playwright-tester, sdk-development, browser-tools, brainstorming, systematic-debugging, frontend-design — all with descs ≤100 tok, so progressive disclosure holds (bodies load on demand only; no deduction).
+Bodies >2,000 tok: playwright-tester, sdk-development, browser-tools, brainstorming, systematic-debugging — all with desc ≤83 tok → progressive disclosure holds (no deduction).
 
 ## 4. Overlaps / Issues
 
-1. **Ponytail ladder duplicated** in AGENTS.md and referenced (not restated) in ponytail skill — deliberate, skill explicitly says "do not restate" → −5 (same ruling as last audit).
-2. `~/.pi/agent/npm` package cache is stale (packages removed). Not a prefix cost; disk only.
-3. Descriptions show mild growth vs last audit (3,842 → 3,977 chars); within noise/no action.
+1. **Ponytail ladder** in AGENTS.md, deferred-to (not restated) by ponytail skill → −5 (consistent with both prior audits; deliberate design).
+2. `skills/browser-tools/node_modules` (210 pkgs, installed this session for web research) — gitignored (`**/node_modules/`), documented as on-demand deps in the skill itself → −5 per pollution rule; regenerable via `npm install`.
+3. `ponytail` declares non-standard `argument-hint` frontmatter — pi ignores unknown fields; cosmetic only.
+4. No stale `~/.pi/agent/npm` cache (removed in earlier cleanup, confirmed absent).
 
 ## 5. Portability
 
-`rg '/Users/|/home/|pbcopy|pbpaste|osascript|/opt/homebrew|launchctl'` over AGENTS.md, settings.json, models.json, prompts/, skills/ (excl. harness-engineer): **0 hits**. ✅ Fully portable.
+`rg '/Users/|/home/|pbcopy|pbpaste|osascript|/opt/homebrew|launchctl'` over AGENTS.md, settings.json, models.json, prompts/, skills/, scripts/ (excl. harness-engineer, node_modules): **0 hits** ✅. New script uses `Path.home()`. Fully portable (macOS + Linux).
 
 ## 6. Score Breakdown
 
 | Rule | Result | Deduction |
 |------|--------|-----------|
-| Context > 800 tok | 502 | 0 |
+| Context > 800 tok | 365 | 0 |
 | Skill count > 15 | 14 | 0 |
-| Any desc > 250 tok | max 93 | 0 |
+| Any desc > 250 tok | max 83 | 0 |
 | Avg desc > 100 tok | ~71 | 0 |
 | Body >2,000 tok AND desc >100 tok | none | 0 |
 | AGENTS.md ↔ skill duplication | ponytail ladder | −5 |
 | Vague/missing descriptions | none | 0 |
-| Skills-dir pollution | none | 0 |
+| Skills-dir pollution | browser-tools/node_modules | −5 |
 | Portability hits | 0 | 0 |
 
-**Total deductions: −5 → Score: 95/100 → Grade: Good — minor polish only**
+**Total deductions: −10 → Score: 90/100 → Grade: Good**
 
-## 7. Comparison to Previous Report (2026-08-28)
+## 7. Comparison to Previous Report (2026-12-17)
 
 | Metric | Previous | Current | Delta |
 |--------|----------|---------|-------|
-| Health Score | 95/100 | 95/100 | 0 |
-| Permanent tokens | ~1,463 | ~1,496 | +33 (counting noise) |
-| Context tokens | 502 | 502 | 0 |
+| Health Score | 95 | 90 | −5 (node_modules class) |
+| Permanent tokens | ~1,496 | ~1,356 | **−140** |
+| Context tokens | 502 | 365 | −137 (AGENTS.md slim) |
 | Skill count | 14 | 14 | 0 |
+| Desc chars | 3,977 | 3,964 | −13 (desc trims; method variance) |
 | Portability | 0 hits | 0 hits | 0 |
-| Extension packages | 2 | 0 | −2 |
+| Measured prefix evidence | none | usage-metrics.py | new |
 
 ## 8. Recommendations (ranked)
 
-1. *(Optional)* Delete `~/.pi/agent/npm` cache — disk hygiene only, no token effect.
-2. *(Optional)* Shave top-3 descriptions (systematic-debugging, harness-engineer, ponytail) by ~30% → saves ~80 permanent tokens. Marginal; not recommended unless chasing minimum.
+1. *(Optional, restores 95)* `rm -rf skills/browser-tools/node_modules` — gitignored runtime state; reinstall on next browser task. Disk hygiene + score.
+2. *(Optional, cosmetic)* Drop `argument-hint` from ponytail frontmatter → move to body. Strict-spec conformance, zero behavior change.
+3. **No trimming.** Prefix at floor; measured evidence (usage-metrics.py) shows cost lives in reasoning output and session tails, not harness bytes. Do not chase minimum.
 
-No changes made this audit (audit-only mode). Harness is lean and stable.
+No changes made this audit (audit-only mode).
