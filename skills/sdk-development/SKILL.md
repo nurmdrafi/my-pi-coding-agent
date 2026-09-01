@@ -1,6 +1,7 @@
 ---
 name: sdk-development
 description: "Develop, test, publish installable packages — Go modules, npm SDKs/component libraries, plugins, CLIs: OpenAPI codegen, exports map, test pyramid, pack smoke, publish gate, semver upgrades, docs-as-contract. Use for SDK/library/publish/version-bump. NOT app e2e (→ playwright-tester), map work (→ map-integration), CI itself."
+disable-model-invocation: true
 ---
 
 # Package/SDK Development

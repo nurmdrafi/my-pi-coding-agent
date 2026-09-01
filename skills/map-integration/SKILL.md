@@ -1,6 +1,7 @@
 ---
 name: map-integration
 description: "ANY map work: react-bkoi-gl/bkoi-gl/maplibre-gl setup, deck.gl overlays, turf geometry, draw polygons/polylines, camera flyTo/fitBounds, geolocation, MQTT real-time plotting, GPX routes, snap-to-road (OSRM), boundary layers, map bugs (style-load, marker drift). Detects stack from package.json; reuses existing idioms."
+disable-model-invocation: true
 ---
 
 # Map Integration

@@ -3,6 +3,7 @@ name: ponytail
 description: "Extended ponytail framework: intensity modes lite/full/ultra on top of the always-on AGENTS.md efficiency ladder (do not restate it). Use when the user says 'ponytail', 'be lazy', 'simplest', 'yagni', 'ultra' or complains of over-engineering on a coding task. NOT for non-coding or review-only requests (→ ponytail-review)."
 argument-hint: "[lite|full|ultra]"
 license: MIT
+disable-model-invocation: true
 ---
 
 # Ponytail

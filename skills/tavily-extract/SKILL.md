@@ -3,6 +3,7 @@ name: tavily-extract
 description: |
   Extract clean markdown or text content from specific URLs via the Tavily CLI. Use this skill when the user has one or more URLs and wants their content, says "extract", "grab the content from", "pull the text from", "get the page at", "read this webpage", or needs clean text from web pages. Handles JavaScript-rendered pages, returns LLM-optimized markdown, and supports query-focused chunking for targeted extraction. Can process up to 20 URLs in a single call.
 allowed-tools: Bash(tvly *)
+disable-model-invocation: true
 ---
 
 # tavily extract

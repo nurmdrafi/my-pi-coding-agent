@@ -17,6 +17,13 @@ Entry format:
 
 ---
 
+### 2026-09-02 — All skills: manual invocation only (disable-model-invocation)
+- Changed: `skills/*/SKILL.md` (all 16) — added `disable-model-invocation: true` to frontmatter
+- Why: tokens — skill catalog (~1k tok) removed from every-turn prefix; skills now load explicitly via `/skill:name`
+- Measured: catalog block 3934 desc chars + wrapper → 0 bytes; visible-in-prompt skills 16 → 0 (verified via pi `loadSkillsFromDir` + `buildSystemPrompt`); all 16 pass `validate-skill.mjs`
+- Risk: med — no auto-triggering; user must invoke `/skill:name` manually when a skill is needed
+- Portability: clean
+
 ### 2026-09-01 — Tavily portable auth setup (tavily/setup.sh)
 - Changed: tavily/ (new) — setup.sh bootstrap (installs uv via astral.sh + tvly CLI, symlinks ~/.tavly → repo tavily/ dir, early-exits if already linked) + session.json; works on macOS + Linux, no brew dependency.
 - Why: portability — OAuth token stored in repo dir so `git pull` + `setup.sh` on any machine restores Tavily auth without re-login.

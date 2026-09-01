@@ -5,6 +5,7 @@ license: MIT
 metadata:
   author: wondelai
   version: "1.3.0-slim"
+disable-model-invocation: true
 ---
 
 # Refactoring UI (slim)

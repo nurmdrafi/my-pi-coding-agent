@@ -40,7 +40,9 @@ No env vars; default path only.
 ├── models.json               # custom providers (empty: zai + deepseek are built-in)
 ├── models-store.json         # catalog cache
 │
-├── skills/                   # progressive disclosure (desc always-on; body on-demand)
+├── skills/                   # manual invocation only since 2026-09-02: all carry
+│   │                         # disable-model-invocation — catalog NOT in prefix;
+│   │                         # load via /skill:name (body on-demand as before)
 │   ├── sdk-development/      # packages: Go/npm/CLI — codegen, pyramid, publish (merged
 │   │                         #  sdk-development-npm into it 2026-08-28)
 │   ├── playwright-tester/    # e2e via CDP-attached Chrome; isolated fallback

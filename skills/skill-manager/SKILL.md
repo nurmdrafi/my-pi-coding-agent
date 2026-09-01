@@ -1,6 +1,7 @@
 ---
 name: skill-manager
 description: "Create or modify SKILL.md files (agentskills.io spec + pi docs/skills.md); run the validator on every change. Use for 'create a skill', 'new/fix/merge/rename/split skill'. NOT for ordinary project documentation."
+disable-model-invocation: true
 ---
 
 # Skill Manager

@@ -1,6 +1,7 @@
 ---
 name: brainstorming
 description: "Use ONLY when intent is genuinely unclear — exploring a new feature DIRECTION or open-ended design. Asks one question at a time, then a design for approval. NOT for concrete bugs (→ systematic-debugging), well-specified changes, or migrations — just do those."
+disable-model-invocation: true
 ---
 
 # Brainstorming Ideas Into Designs

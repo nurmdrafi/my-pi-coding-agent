@@ -1,6 +1,7 @@
 ---
 name: audit
 description: "Dead-code / unused-export / unused-dependency cleanup via static analysis (fallow, knip, ts-prune, depcheck). Verifies tool output before deleting; handles cascades; zero orphans. Use: 'run fallow', 'remove unused files/deps/types'. NOT correctness review (→ ponytail-review) or bug fixing (→ systematic-debugging)."
+disable-model-invocation: true
 ---
 
 # Audit (dead-code cleanup)

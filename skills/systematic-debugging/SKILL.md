@@ -1,6 +1,7 @@
 ---
 name: systematic-debugging
 description: Use BEFORE proposing any fix when something is broken — runtime errors (TypeError, undefined), wrong/null API data, build/test failures, "X stopped working", regressions, unexpected behavior. Find root cause first; never patch symptoms. NOT for features or greenfield work.
+disable-model-invocation: true
 ---
 
 # Systematic Debugging

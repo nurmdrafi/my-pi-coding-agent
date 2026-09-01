@@ -1,6 +1,7 @@
 ---
 name: browser-tools
 description: "Playwright/e2e testing ONLY via CDP :9222: live replay of failing specs, DOM inspection, screenshots, storageState for e2e work. NOT research/web content (→ tavily-search / tavily-extract skills), NOT manual QA, NOT general debugging (→ systematic-debugging), NOT frontend design (→ refactoring-ui)."
+disable-model-invocation: true
 ---
 
 # Browser Tools

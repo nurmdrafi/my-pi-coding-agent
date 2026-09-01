@@ -1,6 +1,7 @@
 ---
 name: youtube-transcript
 description: "Fetch YouTube video transcripts (captions) by URL or video ID for summarization/analysis. Use when the user shares a YouTube link and asks to summarize, quote, or analyze the video content."
+disable-model-invocation: true
 ---
 
 # YouTube Transcript

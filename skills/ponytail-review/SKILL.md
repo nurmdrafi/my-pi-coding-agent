@@ -1,6 +1,7 @@
 ---
 name: ponytail-review
 description: "Code review for over-engineering only: finds what to delete — reinvented stdlib, dead deps, speculative abstraction. One line per finding: location, cut, replacement (L<line>:<tag> format). Use for 'review for over-engineering', 'what can we delete'. NOT correctness review or fixes; writing/simplifying → ponytail."
+disable-model-invocation: true
 ---
 
 Review diffs for unnecessary complexity. One line per finding: location, what
