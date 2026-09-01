@@ -17,6 +17,13 @@ Entry format:
 
 ---
 
+### 2026-09-01 — Tavily portable auth setup (tavily/setup.sh)
+- Changed: tavily/ (new) — setup.sh bootstrap (installs uv via astral.sh + tvly CLI, symlinks ~/.tavly → repo tavily/ dir, early-exits if already linked) + session.json; works on macOS + Linux, no brew dependency.
+- Why: portability — OAuth token stored in repo dir so `git pull` + `setup.sh` on any machine restores Tavily auth without re-login.
+- Measured: 1 new script (32 lines); tvly 0.1.6 installed; auth-check fixed (pipefail masked unauthenticated exit); skip-path verified (exit 0, no reinstall).
+- Risk: med — auth token committed to git; repo must stay private. OAuth login still pending.
+- Portability: clean — bash + curl + ln only; astral.sh uv installer covers macOS/Linux.
+
 ### 2026-08-31 — all markdown swept for staleness
 - Changed: README.md — skill count 14→16 (tavily-search/tavily-extract were missing from the tree), token floor ~1.3K→~1.6K, map-integration comment gains library-dev scope, persistence table's HARNESS-ARCHITECTURE.md row → README.md (this file), Last updated refreshed. prompts/commit.md verified current; AGENTS.md clean; dated history (CHANGELOG/skills-audit/harness-audit-report) untouched by design.
 - Why: reliability — the living map must match reality after renames/additions.
