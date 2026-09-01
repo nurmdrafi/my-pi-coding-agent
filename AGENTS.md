@@ -14,16 +14,15 @@
 
 ## Token Economy
 Cheapest read first:
-1. `git` (diff / show / log --oneline | head)
-2. `rg` (-l / -n / -q) — prefer over grep
-3. `read` with offset + limit
-4. Whole file only if small or unavoidable
-Never read files that are not required for the current task.
-Never unbounded cat / ls -R / find -exec / full git log.
-One question → one targeted command.
+- `git` (diff / show / log --oneline | head)
+- `rg` (-l / -n / -q) — prefer over grep
+- `read` with offset + limit
+- Whole file only if small or unavoidable
+- Never read files that are not required for the current task.
+- Never unbounded cat / ls -R / find -exec / full git log.
 
 ## Safety
-Ask before: commit, push, install packages, or any destructive command (rm, git reset, force-push, etc.).
+- Ask before: commit, push, install packages, or any destructive command (rm, git reset, force-push, etc.).
 
 ## Cadence
-Plan → do → verify (only the touched test/build) → repeat. Prefer the 80% solution that ships.
+- Plan → do → verify (only the touched test/build) → repeat. Prefer the 80% solution that ships.
