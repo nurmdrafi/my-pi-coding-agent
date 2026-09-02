@@ -79,6 +79,7 @@ tvly search "react hooks tutorial" --include-raw-content --max-results 3 --json
 
 ## Tips
 
+- **Budget: `--max-results 3`, stop after 2-3 searches** — synthesize what you have before searching more; extra searches add context tokens every remaining turn, rarely signal.
 - **Keep queries under 400 characters** — think search query, not prompt.
 - **Break complex queries into sub-queries** for better results.
 - **Use `--include-raw-content`** when you need full page text (saves a separate extract call).

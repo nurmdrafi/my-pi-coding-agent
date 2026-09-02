@@ -25,7 +25,7 @@ Requires Node LTS ≥ 22 (`.nvmrc` pins it). Full details below.
 Map of this pi harness. Re-read at the start of any harness-engineering session.
 Update when structure, skill set, or always-on budget changes.
 
-Last updated: 2026-08-31
+Last updated: 2026-09-02
 
 ## Portable unit
 
@@ -40,16 +40,16 @@ No env vars; default path only.
 ├── models.json               # custom providers (empty: zai + deepseek are built-in)
 ├── models-store.json         # catalog cache
 │
-├── skills/                   # manual invocation only since 2026-09-02: all carry
-│   │                         # disable-model-invocation — catalog NOT in prefix;
-│   │                         # load via /skill:name (body on-demand as before)
+├── skills/                   # 2026-09-02 17:48Z: all manual (/skill:name) EXCEPT
+│   │                         # ponytail (always-carried in catalog); bodies stay
+│   │                         # on-demand via read either way
+│   ├── ponytail/             # ALWAYS-CARRIED: intensity modes lite/full/ultra
 │   ├── sdk-development/      # packages: Go/npm/CLI — codegen, pyramid, publish (merged
 │   │                         #  sdk-development-npm into it 2026-08-28)
 │   ├── playwright-tester/    # e2e via CDP-attached Chrome; isolated fallback
 │   ├── browser-tools/        # live DOM via CDP :9222 (deps NOT bundled: npm install)
 │   ├── map-integration/      # react-bkoi-gl library dev + map integration work
 │   ├── harness-engineer/     # meta: audit/improve this harness
-│   ├── ponytail/             # extended modes (core rules live in AGENTS.md)
 │   ├── ponytail-review/      # over-engineering review format (sole carrier)
 │   ├── frontend-design/      # new UI from scratch
 │   ├── refactoring-ui/       # fix/polish existing UI

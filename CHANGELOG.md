@@ -17,6 +17,41 @@ Entry format:
 
 ---
 
+### 2026-09-02 19:29Z — tavily-search: search budget tip (max-results 3, 2-3 searches)
+- Changed: `skills/tavily-search/SKILL.md` Tips +1 line: default `--max-results 3`, stop after 2-3 searches and synthesize — extra searches add context tokens every remaining turn, rarely signal
+- Why: tokens — this session's research turn ran 4 searches ≈ 6k tok of tool output re-sent each subsequent turn; AGENTS.md deliberately not touched (rule-per-observation accretion is self-defeating; this is skill-local, loads only when used)
+- Measured: SKILL.md 3435 → 3796 B (+361 B ≈ +90 tok, on-demand load only, manual invocation)
+- Risk: low — guidance only; deep-research flows can still escalate via tavily-research
+- Portability: clean
+
+### 2026-09-02 18:54Z — AGENTS.md: LLM-friendly rephrasing of Token Economy + YAGNI ladder
+- Changed: `AGENTS.md` — verb-first imperatives ("`grep` on files: never" → "Never `grep` a file path"; same for cat/sed/head/tail), pipe carve-outs un-nested from parentheses into standalone sentences, "re-pays the prefix" → "re-sends and re-processes the whole conversation", "status/stat preambles" → "preview commands (`git status`, `--stat`)" + continuation-reads clarification, "need-to-exist?" → "Is it needed at all?"
+- Why: compliance — instruction-following guidance prefers imperative verb-first phrasing, positive framing, and un-buried carve-outs; the pipe distinction (grep a file = banned, `cmd | grep` = fine) was the likeliest misread; pagination vs one-call-per-question ambiguity resolved explicitly
+- Measured: AGENTS.md 2210 → 2348 B (≈553 → ≈587 tok, +34); no rule semantics changed, phrasing only
+- Risk: low — wording only, verified line-by-line against prior version
+- Portability: clean
+
+### 2026-09-02 18:42Z — AGENTS.md: round-trip economy rules (batch, one-call-per-question, no re-runs)
+- Changed: `AGENTS.md` Token Economy +3 lines: batch independent commands (`a && b`, each round-trip re-pays the prefix), one call per question (no speculative status/stat preambles), never re-run a command whose result is already in context
+- Why: tokens — self-audit of a 3-call turn (redundant `git status --short && git diff --stat` before full `git diff`); web research (arXiv 2602.07359 parallel tool calling; codeant.ai batching; Anthropic context discipline) confirms round-trip count as a first-class cost lever; context editing documented at 84% reduction over 100 turns (harness-level, not codified here)
+- Measured: AGENTS.md 1733 → 2210 B (≈433 → ≈553 tok, +120); research rejected as rules: prompt caching, model routing, catalog minimization (already done 2026-09-02), session audits (already practiced)
+- Risk: low — additive behavior rules only
+- Portability: clean
+
+### 2026-09-02 18:20Z — AGENTS.md: strict, concise tool rules in Token Economy
+- Changed: `AGENTS.md` Token Economy — rewritten: rg is the only file-search tool (grep on files banned; pipes fine), read the only file-content tool (cat/sed -n/head/tail on paths banned; pipes fine), >150-line files = region read around rg hit, symbol outline before whole-file reads, git reads bounded
+- Why: tokens — session-log audit (20 sessions, 2,779 tool calls) showed 33% of tool output (~157K tok) via violating commands: grep-on-files 159, cat 133, sed -n 129 (median 1,248 chars vs rg's 420); 69% of reads whole-file (29 code files)
+- Measured: AGENTS.md 1425 → 467 → 1733 B final (≈349 → ≈433 tok, +84 vs pre-audit baseline); Token Economy section 797 → 569 chars; expected ~30% cut in violating tool classes (verify next audit)
+- Risk: low — tightens existing behavior only; pipes and build/test output unaffected
+- Portability: clean
+
+### 2026-09-02 17:48Z — ponytail always-carried; AGENTS.md verification block
+- Changed: `skills/ponytail/SKILL.md` — removed `disable-model-invocation: true`; description 323 → 195 chars (trimmed routing prose, kept triggers)
+- Changed: `AGENTS.md` — Cadence +2 lines from test/ pair evaluation: narrowest-relevant-check matrix (test/typecheck/lint/build), never claim success without verification
+- Why: reliability + focus — empty catalog caused model-invocation misses; ponytail requested always-on to bias toward minimal thinking by default
+- Measured: AGENTS.md 1425 → 1691 chars (≈349 → ≈423 tok); visible-skill catalog 0 → 1 skill (347 chars ≈ 86 tok + ~120 tok intro); validate-skill.mjs PASS
+- Risk: low — prefix changed; start a fresh session
+
 ### 2026-09-02 — All skills: manual invocation only (disable-model-invocation)
 - Changed: `skills/*/SKILL.md` (all 16) — added `disable-model-invocation: true` to frontmatter
 - Why: tokens — skill catalog (~1k tok) removed from every-turn prefix; skills now load explicitly via `/skill:name`
