@@ -5,6 +5,13 @@ Harness-engineering changes for continuous improvement, newest first
 (`YYYY-MM-DD`; same-day entries carry `HH:MMZ`). Each entry: what
 changed, why, risk, portability impact.
 
+### 2026-02-14 — Conventional commit enforcement (commitlint + husky)
+- Changed: `package.json` (new, tracked), `commitlint.config.js` (new), `.husky/commit-msg` (new); `core.hooksPath=.husky`
+- Why: reliability — 13/14 historical messages failed conventional format; enforce at commit time
+- Measured: commitlint rules 0 → active (default conventional + `harness`/`release` types); hook rejects bad msg (exit 1), passes `harness: …` (exit 0)
+- Risk: low — history untouched; only future commits validated
+- Portability: clean — Node ≥18 required (`.nvmrc` pins 22); deps gitignored via `**/node_modules/`
+
 Entry format:
 ```
 ### YYYY-MM-DD[ HH:MMZ] — <title>
