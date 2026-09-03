@@ -73,9 +73,20 @@ One skill covers the full loop: inspect → audit/score → diagnose → change 
 
 Optional deep evidence (only when user asks for skill-usage or token audit):
 
-- Run `python3 scripts/usage-metrics.py` (repo root) — per-model token profile
+- Run `python3 scripts/usage-metrics.py` (skill dir) — per-model token profile
   (input/output/reasoning per turn, cache %, cost), top-5 cost-tail sessions,
   first-turn prefix trend. Prefer it over hand-written JSONL analysis.
+- Run `python3 scripts/audit_toolcall_rules.py [path]` (skill dir) — checks a session
+  .jsonl (or dir; default: last 5 sessions) for AGENTS.md Token-Economy violations
+  (grep-on-file, cat-for-viewing, re-runs, speculative previews, pollution) plus
+  per-turn call batching stats.
+- A/B prefix cost: `bash scripts/make_test_home.sh <skills-csv> [dest]` builds a temp
+  HOME with those skills model-visible (real harness untouched), then
+  `bash scripts/ab_prefix.sh "<prompt>" <dest> [model]` runs one prompt under both
+  configs and prints first-turn tokens / cache-read / cost / wall time.
+- Evidence from the 2026-09-03 L2-vs-L3 decision (glm-5.3, 10 runs, tasks T1–T5):
+  `evidence/2026-09-03_l2_vs_l3_matrix.json` — only tavily-search fired (enabled
+  model-visible as a result); L3-as-a-set failed the ≤20% median-cost rule.
 - pi sessions: `~/.pi/agent/sessions/*/*.jsonl` — skill loads, `/skill:` invocations, correction words
 - Rank skills: auto-load vs explicit vs never fire
 

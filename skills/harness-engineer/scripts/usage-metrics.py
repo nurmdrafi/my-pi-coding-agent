@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Usage metrics from pi session logs: per-model token profile, cost tail, prefix trend.
-Run: python3 scripts/usage-metrics.py [--sessions N]"""
+Run: python3 skills/harness-engineer/scripts/usage-metrics.py [--sessions N]"""
 import json, glob, os, sys
 from collections import defaultdict
 from pathlib import Path

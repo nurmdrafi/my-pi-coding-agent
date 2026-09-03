@@ -17,6 +17,33 @@ Entry format:
 
 ---
 
+### 2026-09-03 16:04Z — tavily-search desc trim; task.md superseded; audit report delta
+- Changed: `skills/tavily-search/SKILL.md` — description 510 → 209 chars (510 → 205 parsed; folded block → single line), trigger-first, NOT-routing kept, details already in body
+- Changed: `task.md` — SUPERSEDED banner (Phases 1–2 built/deleted by design, Phase 4 decided differently); prevents stale re-execution
+- Changed: `harness-audit-report.md` — same-day delta block in Executive Summary
+- Kept (by request): `skills/browser-tools/node_modules` — already double-gitignored (root `**/node_modules/` + skill-local `node_modules/`), self-contained for standalone sync
+- Why: tokens — tavily-search is now model-visible, so its description is resident; 510 chars cost ~128 tok/turn for trigger info the body already carries
+- Measured: catalog 49 → ~101 tok (ponytail 49 + tavily 52); permanent floor ~764 → **~688 tok**; YAML validated (tavily-search, 205-char desc)
+- Risk: low — prefix changed again → fresh session recommended before next measured comparison
+- Portability: clean
+
+### 2026-09-03 15:56Z — bench/ deleted; audit tooling attached to harness-engineer skill
+- Changed: `bench/` (60 MB: fixtures incl. 19 MB pi-repo copy, task defs, raw run logs, work dirs) — deleted; one-shot L2-vs-L3 decision complete (see 15:49Z entry)
+- Changed: `scripts/` — removed (run_l2_vs_l3.sh, collect_results.py, setup_l3_home.sh deleted; usage-metrics.py `git mv` → `skills/harness-engineer/scripts/`)
+- Changed: `skills/harness-engineer/` — +scripts/{usage-metrics.py, audit_toolcall_rules.py (generalized: session-path arg, no bench coupling), make_test_home.sh, ab_prefix.sh}; +evidence/2026-09-03_l2_vs_l3_matrix.json (decision evidence preserved); SKILL.md deep-evidence section updated to skill-relative paths
+- Why: minimal core — one-shot bench scaffolding is not permanent harness; audit tooling lives with the audit skill (progressive disclosure), reusable for future audits
+- Measured: agent dir 60 MB lighter; model-visible skill set unchanged (ponytail, tavily-search); SKILL.md description untouched (catalog byte-stable); all 4 scripts verified from new location (A/B smoke: real 2,383 tok vs test-home 2,785 tok first-turn)
+- Risk: low — raw bench logs unrecoverable (untracked), but matrix JSON + methodology preserved; rerunnable via make_test_home + ab_prefix
+- Portability: clean
+
+### 2026-09-03 15:49Z — tavily-search model-visible; bench scripts → scripts/
+- Changed: `skills/tavily-search/SKILL.md` — removed `disable-model-invocation: true` (3,796 → 3,765 B); model-visible skills 1 (ponytail) → 2 (+tavily-search)
+- Changed: `scripts/{run_l2_vs_l3.sh, collect_results.py, audit_toolcall_rules.py, setup_l3_home.sh}` — moved from `bench/` for reuse; paths now script-relative (`../bench`), no absolute user paths
+- Why: tokens/reliability — L2-vs-L3 A/B matrix (glm-5.3, 10 runs, bench/results/matrix_l2_vs_l3.json): tavily-search was the only skill that fired; without it the agent ignored an explicit "use tavily-search" instruction, substituted curl, 3.7% price error vs 0.08% with the skill. Other 15 stay manual-only (4/5 L3 skills never fired; full L3 failed the ≤20% median-cost rule, +23%)
+- Measured: permanent catalog +510 desc chars ≈ +128 tok (chars/4) → permanent floor ~636 → ~764 tok; ≈ $0.00003/run extra at 97% cache. Scripts verified from new location (collect + audit rerun OK)
+- Risk: low — one more auto-triggerable skill; prefix change → start a fresh session for cache stability
+- Portability: clean
+
 ### 2026-09-02 19:29Z — tavily-search: search budget tip (max-results 3, 2-3 searches)
 - Changed: `skills/tavily-search/SKILL.md` Tips +1 line: default `--max-results 3`, stop after 2-3 searches and synthesize — extra searches add context tokens every remaining turn, rarely signal
 - Why: tokens — this session's research turn ran 4 searches ≈ 6k tok of tool output re-sent each subsequent turn; AGENTS.md deliberately not touched (rule-per-observation accretion is self-defeating; this is skill-local, loads only when used)

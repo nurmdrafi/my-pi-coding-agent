@@ -1,0 +1,185 @@
+{
+  "meta": {
+    "model": "glm-5.3",
+    "provider": "zai",
+    "date": "2026-09-03T15:49Z",
+    "runs_per_cell": 1,
+    "fresh_sessions": true,
+    "t4_reference_price_usd": 77868.73,
+    "t4_note": "L2 substituted curl (4 calls); L3 used the tavily-search skill (price matched tvly reference)",
+    "note": "turn_end usage records; cost from provider usage; n=1 per cell (single matrix pass per task.md Phase 2)"
+  },
+  "results": {
+    "T1": {
+      "L2": {
+        "success": false,
+        "turns": 3,
+        "wall_time_s": 17.8,
+        "prompt_tokens": 32502,
+        "completion_tokens": 838,
+        "cache_read_tokens": 14144,
+        "first_turn_prompt_tokens": 2224,
+        "first_turn_cache_read_tokens": 2176,
+        "cost_usd": 0.033066,
+        "timed_out": false,
+        "checker": "mentioned: agent-session=False create-harness=False system-prompt(def)=True; refs=[('dist/core/system-prompt.js', '7'), ('dist/bundle/chunks/chunk-OMWWHBTG.js', '1084'), ('dist/bundle/chunks/chunk-OMWWHBTG.js', '1239'), ('dist/bundle/chunks/bedrock-converse-stream.js', '74'), ('dist/bundle/chunks/bedrock-converse-stream.js', '74')]",
+        "error": null
+      },
+      "L3": {
+        "success": true,
+        "turns": 6,
+        "wall_time_s": 39.3,
+        "prompt_tokens": 122596,
+        "completion_tokens": 1351,
+        "cache_read_tokens": 93760,
+        "first_turn_prompt_tokens": 3332,
+        "first_turn_cache_read_tokens": 1920,
+        "cost_usd": 0.070692,
+        "timed_out": false,
+        "checker": "mentioned: agent-session=True create-harness=True system-prompt(def)=True; refs=[('dist/core/system-prompt.js', '7'), ('dist/core/agent-session.js', '767'), ('dist/core/agent-session.js', '36'), ('dist/server/create-harness.js', '29'), ('dist/server/create-harness.js', '3'), ('dist/bundle/chunks/chunk-OMWWHBTG.js', '1239'), ('dist/bundle/chunks/bedrock-converse-stream.js', '74'), ('dist/bundle/chunks/bedrock-converse-stream.js', '74')]",
+        "error": null
+      }
+    },
+    "T2": {
+      "L2": {
+        "success": true,
+        "turns": 4,
+        "wall_time_s": 8.1,
+        "prompt_tokens": 9181,
+        "completion_tokens": 115,
+        "cache_read_tokens": 8896,
+        "first_turn_prompt_tokens": 2222,
+        "first_turn_cache_read_tokens": 2176,
+        "cost_usd": 0.003218,
+        "timed_out": false,
+        "checker": "added=['+# Entry point: generate and write the report to a temp file.\\n'] pos_ok=True tests=True all tests passed",
+        "error": null
+      },
+      "L3": {
+        "success": true,
+        "turns": 4,
+        "wall_time_s": 13.5,
+        "prompt_tokens": 13647,
+        "completion_tokens": 130,
+        "cache_read_tokens": 13312,
+        "first_turn_prompt_tokens": 3330,
+        "first_turn_cache_read_tokens": 3264,
+        "cost_usd": 0.004502,
+        "timed_out": false,
+        "checker": "added=['+# Entry point: loads config, writes the report, exits nonzero on failure.\\n'] pos_ok=True tests=True all tests passed",
+        "error": null
+      }
+    },
+    "T3": {
+      "L2": {
+        "success": true,
+        "turns": 10,
+        "wall_time_s": 27.2,
+        "prompt_tokens": 26888,
+        "completion_tokens": 482,
+        "cache_read_tokens": 25408,
+        "first_turn_prompt_tokens": 2221,
+        "first_turn_cache_read_tokens": 2176,
+        "cost_usd": 0.010799,
+        "timed_out": false,
+        "checker": "status_fixed=True tests=True all tests passed",
+        "error": null
+      },
+      "L3": {
+        "success": true,
+        "turns": 9,
+        "wall_time_s": 20.5,
+        "prompt_tokens": 33870,
+        "completion_tokens": 323,
+        "cache_read_tokens": 32768,
+        "first_turn_prompt_tokens": 3329,
+        "first_turn_cache_read_tokens": 3264,
+        "cost_usd": 0.011484,
+        "timed_out": false,
+        "checker": "status_fixed=True tests=True all tests passed",
+        "error": null
+      }
+    },
+    "T4": {
+      "L2": {
+        "success": true,
+        "turns": 2,
+        "wall_time_s": 7.3,
+        "prompt_tokens": 4630,
+        "completion_tokens": 214,
+        "cache_read_tokens": 4352,
+        "first_turn_prompt_tokens": 2223,
+        "first_turn_cache_read_tokens": 2176,
+        "cost_usd": 0.002462,
+        "timed_out": false,
+        "checker": "prices_found=[80737.0] plausible=True",
+        "error": null
+      },
+      "L3": {
+        "success": true,
+        "turns": 4,
+        "wall_time_s": 20.5,
+        "prompt_tokens": 20307,
+        "completion_tokens": 167,
+        "cache_read_tokens": 16448,
+        "first_turn_prompt_tokens": 3331,
+        "first_turn_cache_read_tokens": 3264,
+        "cost_usd": 0.010414,
+        "timed_out": false,
+        "checker": "prices_found=[77900.0, 77934.11, 111700.0] plausible=True",
+        "error": null
+      }
+    },
+    "T5": {
+      "L2": {
+        "success": true,
+        "turns": 7,
+        "wall_time_s": 24.3,
+        "prompt_tokens": 18535,
+        "completion_tokens": 735,
+        "cache_read_tokens": 17408,
+        "first_turn_prompt_tokens": 2224,
+        "first_turn_cache_read_tokens": 2176,
+        "cost_usd": 0.009338,
+        "timed_out": false,
+        "checker": "tmp_left='' files=['./cli.py', './utils.py'] tests=True all tests passed",
+        "error": null
+      },
+      "L3": {
+        "success": true,
+        "turns": 9,
+        "wall_time_s": 28.0,
+        "prompt_tokens": 36927,
+        "completion_tokens": 987,
+        "cache_read_tokens": 35328,
+        "first_turn_prompt_tokens": 3332,
+        "first_turn_cache_read_tokens": 3264,
+        "cost_usd": 0.015767,
+        "timed_out": false,
+        "checker": "tmp_left='' files=['./cli.py', './utils.py'] tests=True all tests passed",
+        "error": null
+      }
+    }
+  },
+  "summary": {
+    "L2": {
+      "success_rate": "4/5",
+      "median_cost_usd": 0.009338,
+      "total_cost_usd": 0.0589,
+      "total_turns": 26
+    },
+    "L3": {
+      "success_rate": "5/5",
+      "median_cost_usd": 0.011484,
+      "total_cost_usd": 0.1129,
+      "total_turns": 32
+    },
+    "per_task_winner": {
+      "T1": "L3",
+      "T2": "tie",
+      "T3": "tie",
+      "T4": "tie",
+      "T5": "tie"
+    }
+  }
+}

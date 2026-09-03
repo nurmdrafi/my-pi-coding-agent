@@ -2,7 +2,7 @@
   "lastChangelogVersion": "0.84.4",
   "theme": "dark",
   "defaultProvider": "zai",
-  "defaultModel": "glm-5.2",
+  "defaultModel": "glm-5.3",
   "defaultThinkingLevel": "off",
   "hideThinkingBlock": true
 }
