@@ -13,7 +13,7 @@
 - No fluff, no cheerful filler, no emojis in commits, comments, or replies.
 
 ## Token Economy
-- Search only with `rg` (-l / -n / -q). Never `grep` a file path. Filtering command output through a pipe (`cmd | grep x`) is fine.
+- Search only with `rg` (-l / -n / -q). Never `grep` a file path. Filtering command output through a pipe is fine — cap verbose output (`cmd | tail -40`, `npm view x | head -30`) before it lands in context.
 - View files only with `read` (offset for >150 lines: just the region around the `rg` hit). Never `cat` / `sed -n` / `head` / `tail` file paths; inside pipes they are fine.
 - Unfamiliar code: symbol outline first, never whole-file reads:
   `rg -n "^(export )?(async )?(function|class|interface|type)" <dir> | head -80`

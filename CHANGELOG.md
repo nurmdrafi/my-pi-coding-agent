@@ -5,6 +5,14 @@ Harness-engineering changes for continuous improvement, newest first
 (`YYYY-MM-DD`; same-day entries carry `HH:MMZ`). Each entry: what
 changed, why, risk, portability impact.
 
+### 2026-09-05 06:09Z — AGENTS.md output-cap rule (permission → imperative)
+- Changed: `AGENTS.md` Token-Economy line 16 — "Filtering command output through a pipe (`cmd | grep x`) is fine." → "Filtering command output through a pipe is fine — cap verbose output (`cmd | tail -40`, `npm view x | head -30`) before it lands in context."
+- Why: session-audit 2026-09-05 (reports 054940Z, 060421Z) — BIG_TOOL_OUTPUT is the #1 rule by dollars directory-wide: 16 findings / 11 sessions / 2038K tokens = $1.19 (51KB vite/e2e dumps in react-bkoi-gl; 46-51KB npm-research dumps in agent project, recurring through 09-03). Permission wasn't triggering truncation; imperative with copy-able syntax should.
+- Measured: AGENTS.md 2348 → 2425 bytes (~587 → ~606 tok, +19 tok permanent); skills 17 / desc 1682 B / prompts 1 unchanged
+- Risk: low — tail window may hide earlier errors; mitigated by wider re-run when diagnosing. Rollback = restore old line.
+- Verification: next session-audit target BIG_TOOL_OUTPUT 2038K → <800K; delete the clause if unmoved.
+- Note: prefix changed — start a fresh session for clean cache measurement.
+
 ### 2026-09-05 05:50Z — session-audit skill (Claude Code port → pi sessions)
 - Changed: `skills/session-audit/` (new: SKILL.md, `bin/audit.mjs`, `src/{parser,discover,rules,pricing,views}.mjs`) — 0 → 7 files; README tree + skills-audit entry
 - Why: capability — layered (L0/L1 scripts + L2/L3 prompt) audit of `~/.pi/agent/sessions` for token/cost waste; pricing derived from logged `usage.cost` (no static table)
