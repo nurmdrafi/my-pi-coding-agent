@@ -14,9 +14,12 @@
 
 ## Token Economy
 - Search only with `rg` (-l / -n / -q). Never `grep` a file path. Filtering command output through a pipe is fine — cap verbose output (`cmd | tail -40`, `npm view x | head -30`) before it lands in context.
-- View files only with `read` (offset for >150 lines: just the region around the `rg` hit). Never `cat` / `sed -n` / `head` / `tail` file paths; inside pipes they are fine.
+- View files only with `read` (offset for >100 lines: just the region around the `rg` hit). Never `cat` / `head` / `tail` whole file paths; inside pipes they are fine. Windowed `sed -n 'A,Bp'` is acceptable when batching several windows/files in one call (`read` is one file per call).
 - Unfamiliar code: symbol outline first, never whole-file reads:
   `rg -n "^(export )?(async )?(function|class|interface|type)" <dir> | head -80`
+- Framework entry points (`export default` components, `forwardRef`, `layout.tsx`/`_app.tsx` conventions): try `sg run -p '<pattern>'` (ast-grep) before keyword guessing — wide keywords (`main`/`setup`/`initialize`) miss convention-named entries and hit doc/test noise.
+- Keyword search returning >10 files of doc/test/config noise: switch to `sg` structural patterns, not narrower keywords. Cap output (`| head`) — `sg` matches return whole AST nodes, not lines.
+- Never full-read a file >100 lines to find one block; `read` a window at the anchor (the `sg` match text often is the answer).
 - `git` reads: `diff` / `show` / `log --oneline | head`.
 - Batch independent commands into one call (`a && b`); each round-trip re-sends and re-processes the whole conversation.
 - One call per question: pick the command that fully answers it (continuation `read`s of the same file are fine); no speculative preview commands (`git status`, `--stat`).
