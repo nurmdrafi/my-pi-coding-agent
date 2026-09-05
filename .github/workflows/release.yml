@@ -27,8 +27,8 @@ jobs:
             exit 1
           fi
 
-          # Version = first '## [x.y.z]' heading in CHANGELOG.md
-          CHANGELOG_LINE=$(grep '^## \[' CHANGELOG.md | head -1)
+          # Version = first released '## [x.y.z]' heading; skips '## [Unreleased]'
+          CHANGELOG_LINE=$(grep -E '^## \[v?[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | head -1)
           if [ -z "$CHANGELOG_LINE" ]; then
             echo "ERROR: No version entry found in CHANGELOG.md"
             exit 1

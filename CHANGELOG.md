@@ -1,18 +1,20 @@
-# Harness Changelog — pi portable config
+# Changelog
 
-Harness-engineering changes for continuous improvement, newest first
-(latest → oldest). Add every new entry at the TOP. Dates are ISO
-(`YYYY-MM-DD`; same-day entries carry `HH:MMZ`). Each entry: what
-changed, why, risk, portability impact.
+All notable changes to this project are documented in this file.
 
-Versioning: semver (`MAJOR.MINOR.PATCH`) — MAJOR: breaking config/prefix restructure,
-MINOR: new skills/features, PATCH: fixes/tweaks. No "Unreleased" section:
-the FIRST `## [x.y.z]` heading is the current release version.
-To release: add a new `## [vX.Y.Z] - YYYY-MM-DD` heading above the previous
-one, commit to main, push — the Release workflow detects the new top version
-and publishes the GitHub Release automatically (no manual tagging).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.0.0] - 2026-09-05
+Dates are ISO (`YYYY-MM-DD`; same-day entries carry `HH:MMZ`). Entries live under
+`## [Unreleased]` until released; `MAJOR` = breaking config/prefix restructure,
+`MINOR` = new skills/features, `PATCH` = fixes/tweaks.
+To release: move Unreleased entries under a new `## [X.Y.Z] - YYYY-MM-DD` heading,
+commit to main, push — the Release workflow publishes the GitHub Release tagged
+`vX.Y.Z` automatically (no manual tagging).
+
+## [Unreleased]
+
+## [1.0.0] - 2026-09-05
 
 ### 2026-09-05 07:05Z — AGENTS.md `sg` availability clause
 
