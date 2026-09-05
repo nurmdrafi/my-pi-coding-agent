@@ -5,6 +5,13 @@ Harness-engineering changes for continuous improvement, newest first
 (`YYYY-MM-DD`; same-day entries carry `HH:MMZ`). Each entry: what
 changed, why, risk, portability impact.
 
+### 2026-09-05 05:50Z — session-audit skill (Claude Code port → pi sessions)
+- Changed: `skills/session-audit/` (new: SKILL.md, `bin/audit.mjs`, `src/{parser,discover,rules,pricing,views}.mjs`) — 0 → 7 files; README tree + skills-audit entry
+- Why: capability — layered (L0/L1 scripts + L2/L3 prompt) audit of `~/.pi/agent/sessions` for token/cost waste; pricing derived from logged `usage.cost` (no static table)
+- Measured: skill count 16 → 17; desc 300 chars (~75 tok); validator PASS; dry run over 40 real sessions: 191 findings, ~2780K waste tokens = $2.13, 4 models priced from logs (glm-5.3 $1.31/MTok-in)
+- Risk: low — manual invocation (`/skill:session-audit`); writes only to `$AUDIT_WORKDIR` + `~/.pi/agent/audit-reports/`
+- Portability: clean — `homedir()`-based paths, Node ≥18, zero deps
+
 ### 2026-02-14 — Conventional commit enforcement (commitlint + husky)
 - Changed: `package.json` (new, tracked), `commitlint.config.js` (new), `.husky/commit-msg` (new); `core.hooksPath=.husky`
 - Why: reliability — 13/14 historical messages failed conventional format; enforce at commit time

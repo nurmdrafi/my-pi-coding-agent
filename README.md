@@ -57,6 +57,8 @@ No env vars; default path only.
 │   ├── systematic-debugging/
 │   ├── audit/                # dead-code cleanup via static analysis
 │   ├── skill-manager/        # SKILL.md spec + validator (scripts/validate-skill.mjs)
+│   ├── session-audit/        # token/cost waste audit of ~/.pi/agent/sessions
+│   │                         # (L0/L1 scripts + L2/L3 report loop; /skill:session-audit)
 │   ├── tavily-search/        # web research via Tavily CLI (primary research route)
 │   ├── tavily-extract/       # URL → clean markdown via Tavily CLI
 │   └── youtube-transcript/

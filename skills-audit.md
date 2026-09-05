@@ -265,3 +265,22 @@ Audit/scoring capability (permanent-token inventory, Health Score, harness-audit
 added as an "## Audit mode" section in the existing `harness-engineer` skill body —
 on-demand content, zero new catalog entry. Description rewritten 470→350 chars
 (~118→~87 tok) to cover audit triggers. Skill count stays 14.
+
+---
+
+## 2026-09-05 — session-audit added (COUNT 16 → 17)
+
+**Skill set change:** new `session-audit` — ported from
+github.com/foyzulkarim/skills (dev-pipeline/skills/session-audit, built for
+Claude Code) to pi's session schema. Layered audit engine: L0/L1 deterministic
+Node scripts (`bin/audit.mjs run|views|fetch` + `src/{parser,discover,rules,
+pricing,views}.mjs`) digest `~/.pi/agent/sessions` into metadata-only
+artifacts; SKILL.md is the L2/L3 reasoning layer (hypothesis loop →
+attribution → dated report in `~/.pi/agent/audit-reports/`).
+
+Port decisions: rates derived from logged `usage.cost` (no static price
+table — prices the actual glm/deepseek mix); NO_SUBAGENT rule dropped (pi is
+single-agent); compaction events counted as amplifier; timestamps normalized
+(ISO strings in new transcripts, epoch-ms ints in old). Manual invocation
+(`/skill:session-audit`) per 2026-09-02 policy. Desc 300 chars (~75 tok).
+Validator: PASS.
