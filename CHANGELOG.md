@@ -5,11 +5,12 @@ Harness-engineering changes for continuous improvement, newest first
 (`YYYY-MM-DD`; same-day entries carry `HH:MMZ`). Each entry: what
 changed, why, risk, portability impact.
 
-Versioning: semver (`MAJOR.MINOR.PATCH`) — MAJOR: breaking config/prefix restructure, MINOR: new skills/features, PATCH: fixes/tweaks. New entries go under `## [Unreleased]`.
-To release: retitle that heading to `## [vX.Y.Z] - YYYY-MM-DD`, add a fresh
-`## [Unreleased]` above it, commit, then tag `vX.Y.Z` and push with `--tags`.
-
-## [Unreleased]
+Versioning: semver (`MAJOR.MINOR.PATCH`) — MAJOR: breaking config/prefix restructure,
+MINOR: new skills/features, PATCH: fixes/tweaks. No "Unreleased" section:
+the FIRST `## [x.y.z]` heading is the current release version.
+To release: add a new `## [vX.Y.Z] - YYYY-MM-DD` heading above the previous
+one, commit to main, push — the Release workflow detects the new top version
+and publishes the GitHub Release automatically (no manual tagging).
 
 ## [v1.0.0] - 2026-09-05
 

@@ -2,40 +2,89 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: ['main']
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  prepare:
+    name: Prepare Build Info
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_notes: ${{ steps.release-notes.outputs.notes }}
+      should_release: ${{ steps.check.outputs.should_release }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Extract release notes from CHANGELOG.md
-        id: notes
+      - name: Extract version from changelog
+        id: version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          # Section for this version: from its heading to the next version heading.
-          NOTES=$(awk -v ver="$VERSION" '
-            $0 ~ "^## \\[v" ver "\\]" {flag=1; next}
-            /^## \[/ && flag {exit}
-            flag {print}
-          ' CHANGELOG.md)
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "ERROR: CHANGELOG.md file not found"
+            exit 1
+          fi
+
+          # Version = first '## [x.y.z]' heading in CHANGELOG.md
+          CHANGELOG_LINE=$(grep '^## \[' CHANGELOG.md | head -1)
+          if [ -z "$CHANGELOG_LINE" ]; then
+            echo "ERROR: No version entry found in CHANGELOG.md"
+            exit 1
+          fi
+
+          VERSION=$(echo "$CHANGELOG_LINE" | cut -d'[' -f2 | cut -d']' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: First changelog heading '$CHANGELOG_LINE' is not a semantic version (x.y.z)"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Skip if release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "Release v${{ steps.version.outputs.version }} already exists — skipping."
+          else
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract release notes from CHANGELOG
+        id: release-notes
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          NOTES=$(awk "/^## \\[${VERSION//./\\.}\\]/{flag=1; next} /^## \\[/{if(flag) exit} flag" CHANGELOG.md | sed '1d')
           if [ -z "$NOTES" ]; then
-            echo "No CHANGELOG section for v$VERSION" >&2
+            echo "ERROR: No notes found for v$VERSION in CHANGELOG.md"
             exit 1
           fi
           {
             echo "notes<<EOF"
             echo "$NOTES"
             echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          } >> $GITHUB_OUTPUT
 
+  release:
+    name: Create GitHub Release
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          body: ${{ steps.notes.outputs.notes }}
+          tag_name: v${{ needs.prepare.outputs.version }}
+          name: v${{ needs.prepare.outputs.version }}
+          body: |
+            ## What's Changed
+            ${{ needs.prepare.outputs.release_notes }}
+          draft: false
+          prerelease: false
           generate_release_notes: false
