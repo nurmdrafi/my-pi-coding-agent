@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 05-09-2026
 
+### Added
+
+- **2026-08-28 15:50Z — deprecate setup.sh / bundle.sh; .env fixes**:
+  - Added: `.env` regenerated correctly (auth.json stores nested `{type,key}` objects; keys exported flat as ZAI_API_KEY / DEEPSEEK_API_KEY), chmod 600. `.gitignore` now also excludes `setup.sh` and `bundle.sh`; both untracked from the index (files still on disk pending user removal).
+  - Measured: `git check-ignore setup.sh bundle.sh .env auth.json models-store.json` all pass; index 66 files, 0 scripts/secrets staged. auth.json verified byte-identical after the aborted setup.sh test run.
+  - Docs: PORTABILITY.md "Git sync" section is now git-only (no setup.sh in home flow; auth.json buildable from .env via documented one-liner); HARNESS-ARCHITECTURE.md portability summary marks setup.sh/bundle.sh deprecated.
+  - Risk: none — scripts remain on disk until user deletes them; git-only flow documented.
+
+- **2026-08-28 15:35Z — .env / .env.example**:
+  - Added: `.env` (machine-local, generated from auth.json: ZAI_API_KEY, DEEPSEEK_API_KEY; gitignored) and `.env.example` (committed placeholder template).
+  - Measured: `git check-ignore .env` passes; index contains only `.env.example` (+ prior baseline). auth.json, models-store.json, bin/, npm/ remain ignored (already covered in step 1).
+  - Docs: PORTABILITY.md auth note now documents .env as alternative to copying auth.json; models-store/bin/npm confirmed regenerable.
+  - Risk: none — .env never enters git; pi still reads auth.json directly.
+
+- **2026-08-28 15:20Z — git-backed portable sync**:
+  - Added: `.gitignore` (auth.json, sessions/, bin/, npm/, **/node_modules/, *.log, ._*, .DS_Store, models-store.json, skills-archive.tar.gz, harness-audit-report.md); initialized git repo (branch main).
+  - Measured: 69 files staged, 0 secrets in index (git check-ignore verified auth.json/sessions/npm/bin ignored); `git status` clean of local-only artifacts. Tracked: AGENTS.md, settings.json, models.json, skills/ (14), prompts/, HARNESS-*.md, PORTABILITY.md, setup.sh, bundle.sh, skills-audit.md, .nvmrc.
+  - Docs: PORTABILITY.md gained "Git sync (preferred)" section (office push / home pull + setup.sh; auth.json copied manually once per machine); HARNESS-ARCHITECTURE.md portability summary now states git primary, bundle.sh secondary.
+  - Risk: none — repo not committed/pushed yet; bundle.sh flow unchanged.
+
 ### Changed
 
 - **2026-09-05 07:05Z — AGENTS.md `sg` availability clause**:
@@ -210,36 +230,6 @@ Entry format:
   - Measured: index 64 files; harness-engineer SKILL.md re-validated PASS after removing the PORTABILITY.md reference; live docs (ARCHITECTURE tree, doc-map, skill scope) carry 0 dangling references (append-only CHANGELOG/skills-audit history mentions left as-is).
   - Rationale: one doc instead of two overlapping; arch doc was already the map, PORTABILITY the territory.
   - Risk: none — content preserved verbatim in structure, only nesting level changed.
-
-- **2026-08-28 16:30Z — removed .env / .env.example (YAGNI)**:
-  - Removed: `.env`, `.env.example` deleted; `.env` entry dropped from `.gitignore`.
-  - Rationale: pi never reads .env (auth.json or plain env vars only); shell-rc loading ruled out; duplicated auth.json keys with drift risk. auth.json is the single secrets file.
-  - Measured: index 65 files; PORTABILITY.md/HARNESS-ARCHITECTURE.md carry 0 stale .env/setup.sh/bundle.sh references (verified via rg).
-  - Risk: none — secrets flow simplified to one-time `scp auth.json` per machine.
-
-- **2026-08-28 16:05Z — removed setup.sh / bundle.sh; git-only sync finalized**:
-  - Removed: setup.sh, bundle.sh deleted from disk and absent from index. Deprecated entries dropped from .gitignore comment context (paths still listed for safety).
-  - Measured: index 66 files — all portable source-of-truth (AGENTS, settings/models.json, skills/ 14, prompts/, HARNESS docs, PORTABILITY, skills-audit, .nvmrc, .gitignore, .env.example). Ignored as intended: .env, auth.json, bin/, npm/, sessions/, models-store.json, logs, archives. 0 untracked non-ignored files.
-  - Docs: PORTABILITY.md fully rewritten git-side (portable/not-portable tables, key rotation via .env, manual per-machine one-time setup incl. ~/.agents/skills neutralization one-liner); HARNESS-ARCHITECTURE.md tree + portability summary updated (no script refs).
-  - Risk: low — per-machine setup is now 2 documented manual steps (secrets + legacy skills dir).
-
-- **2026-08-28 15:50Z — deprecate setup.sh / bundle.sh; .env fixes**:
-  - Added: `.env` regenerated correctly (auth.json stores nested `{type,key}` objects; keys exported flat as ZAI_API_KEY / DEEPSEEK_API_KEY), chmod 600. `.gitignore` now also excludes `setup.sh` and `bundle.sh`; both untracked from the index (files still on disk pending user removal).
-  - Measured: `git check-ignore setup.sh bundle.sh .env auth.json models-store.json` all pass; index 66 files, 0 scripts/secrets staged. auth.json verified byte-identical after the aborted setup.sh test run.
-  - Docs: PORTABILITY.md "Git sync" section is now git-only (no setup.sh in home flow; auth.json buildable from .env via documented one-liner); HARNESS-ARCHITECTURE.md portability summary marks setup.sh/bundle.sh deprecated.
-  - Risk: none — scripts remain on disk until user deletes them; git-only flow documented.
-
-- **2026-08-28 15:35Z — .env / .env.example**:
-  - Added: `.env` (machine-local, generated from auth.json: ZAI_API_KEY, DEEPSEEK_API_KEY; gitignored) and `.env.example` (committed placeholder template).
-  - Measured: `git check-ignore .env` passes; index contains only `.env.example` (+ prior baseline). auth.json, models-store.json, bin/, npm/ remain ignored (already covered in step 1).
-  - Docs: PORTABILITY.md auth note now documents .env as alternative to copying auth.json; models-store/bin/npm confirmed regenerable.
-  - Risk: none — .env never enters git; pi still reads auth.json directly.
-
-- **2026-08-28 15:20Z — git-backed portable sync**:
-  - Added: `.gitignore` (auth.json, sessions/, bin/, npm/, **/node_modules/, *.log, ._*, .DS_Store, models-store.json, skills-archive.tar.gz, harness-audit-report.md); initialized git repo (branch main).
-  - Measured: 69 files staged, 0 secrets in index (git check-ignore verified auth.json/sessions/npm/bin ignored); `git status` clean of local-only artifacts. Tracked: AGENTS.md, settings.json, models.json, skills/ (14), prompts/, HARNESS-*.md, PORTABILITY.md, setup.sh, bundle.sh, skills-audit.md, .nvmrc.
-  - Docs: PORTABILITY.md gained "Git sync (preferred)" section (office push / home pull + setup.sh; auth.json copied manually once per machine); HARNESS-ARCHITECTURE.md portability summary now states git primary, bundle.sh secondary.
-  - Risk: none — repo not committed/pushed yet; bundle.sh flow unchanged.
 
 - **2026-08-28 14:58Z — re-audit (no changes made)**:
   - Re-ran quantitative harness audit; refreshed harness-audit-report.md.
@@ -724,40 +714,6 @@ That single command replaces the entire hand-edit-the-lockfile step.
 
 ---
 
-- **2026-08-12 — slash-command token fix: `/release` `/bump` `/changelog` (8k→~0 lockfile read)**:
-
-**Prompt:** `/release` cost ~8k tokens and produced a CHANGELOG the user deleted.
-Root-cause the prompts.
-
-**Root cause (evidence):** the prompt *bodies* are tiny (~1 KB each) — not the
-cost. The cost was **runtime reads**: `/release` + `/bump` instructed the model
-to **hand-edit `package-lock.json`**, forcing a 50–100 KB lockfile into context
-(~8–12 K tok) just to change two version strings. Secondary: unbounded `git log`
-and loose changelog rules (verbose/noisy entries → deletable output).
-
-**Changed (native tool over hand-editing — ponytail rule 4):**
-  - `release.md` + `bump.md`: lockfile step now runs `npm install --package-lock-only`
-  (the tool syncs root + `packages."".version`); **explicit "never read the lockfile
-  into context — 8k-token trap"**. `pnpm-lock.yaml`/`yarn.lock` store no root
-  version → skipped (was: "hand-edit / run update command for approval").
-  - `release.md` + `changelog.md`: `git log --no-merges … | head -60` (was unbounded).
-  - `release.md` + `changelog.md`: changelog entries now ≤10 words, user-facing,
-  omit chores/CI/docs; **insert-only** (never rewrite existing entries) — the
-  quality rules the deleted output lacked.
-
-**Not changed:** `/commit` (963 B, already lean) and `/preflight` (1647 B,
-purpose-built) — no token issue.
-
-  - **Measured:** body sizes barely moved (release 1834→1943, bump 1000→1021,
-  changelog 1055→1059 B). The win is **runtime**: ~8 K tok lockfile read → ~0
-  (one `npm install --package-lock-only`); git log now capped at 60 subjects.
-  **Prefix byte-stable** (prompts are NOT always-on — 0 prefix tokens at rest) →
-  no session restart needed.
-  - **Risk:** low. `npm install --package-lock-only` is the canonical lockfile-sync
-  (no `node_modules` touched); reversible by re-running. Worst case the command
-  needs network for a dep change — but a version bump changes no deps.
-  - **Portability:** clean — `npm`/`pnpm`/`yarn` branches, no paths, no OS commands.
-
 - **2026-08-12 — defaultThinkingLevel re-fixed max→medium (article-driven audit)**:
 
 **Prompt:** learn harness engineering from the explainx.ai "Pi minimal agent
@@ -834,38 +790,6 @@ build). No logic change; pure output/UX.
   Reversible: restore the previous `echo` pointer line.
   - **Portability:** clean — heredoc is POSIX `sh`; all commands in the printed
   steps are macOS+Linux portable (`mkdir -p`, `tar -xzf`, `nvm`, `pi`).
-
-- **2026-08-11 — bundle.sh auto-include rewrite (explicit FILES list → exclude-only)**:
-
-Closes the "pending the portability-safe rewrite decision" thread from the prior
-entry. The explicit `FILES` list duplicated PORTABILITY.md's *"What is NOT
-portable"* table and had already drifted — `.nvmrc` + `HARNESS-ARCHITECTURE.md`
-both had to be added retroactively (2 silent-omission bugs).
-
-  - **Changed:** `bundle.sh` — deleted the 16-line `FILES` block + the `INC`-building
-  loop; now ships **everything under `~/.pi/agent`** minus a top-level-anchored
-  exclude set: `--exclude='node_modules' ./bin ./npm ./sessions *.log`. Header
-  comment rewritten to state the auto-include contract + why each exclude exists.
-  Excludes anchored to top-level (`./bin`, not bare `bin`) so a future skill
-  `bin/` subdir is never clobbered.
-  - **Why:** one source of truth for "machine-local" (the exclude set) instead of
-  two (exclude set + hand-maintained include list). New portable files now ship
-  with **zero script edits**; the whole silent-omission drift class is gone. The
-  win is maintenance surface + a removed bug-class, not bytes.
-  - **Measured:** `bundle.sh` **1276 → 1468 B** (+192 — longer comments explain the
-  contract; the `FILES`/`INC` logic shrank). Produced tarball **76 members,
-  identical to the explicit-list set** (`diff` empty, re-verified against the
-  CURRENT tree, not last session's); bytes **471,609 → 470,852** (−757,
-  mtime/ordering only). Leak check `bin/npm/sessions/node_modules/*.log` = **0**
-  each. **Prefix byte-stable** (AGENTS.md 4713 B + 9 descriptions 2908 B
-  untouched) → no session restart required. Skill count 9 → 9 (no skills-audit
-  revision).
-  - **Risk:** low. Reversible: `~/.pi-backups/bundle.sh.pre-auto-include.20260811-221738`
-  (sha256 `ab01d6e2…`). Residual: a future machine-local *top-level* dir would
-  ship until one `--exclude` line is added — but that set (`bin/npm/sessions`)
-  is tiny/stable and `tar -tzf | head` catches any leak.
-  - **Portability:** clean — no new paths, no OS-only commands, same POSIX `sh`;
-  `--exclude` mechanism unchanged (GNU tar + BSD tar both supported).
 
 - **2026-08-11 — document portability round-trip flow in HARNESS-ARCHITECTURE.md (doc-only)**:
 
@@ -1031,3 +955,83 @@ medium cuts reasoning-token burn vs `max`.
 (0 from `.agents`); try `bundle.sh` → dry-run extract on a temp dir to validate.
 
 ---
+
+### Removed
+
+- **2026-08-28 16:30Z — removed .env / .env.example (YAGNI)**:
+  - Removed: `.env`, `.env.example` deleted; `.env` entry dropped from `.gitignore`.
+  - Rationale: pi never reads .env (auth.json or plain env vars only); shell-rc loading ruled out; duplicated auth.json keys with drift risk. auth.json is the single secrets file.
+  - Measured: index 65 files; PORTABILITY.md/HARNESS-ARCHITECTURE.md carry 0 stale .env/setup.sh/bundle.sh references (verified via rg).
+  - Risk: none — secrets flow simplified to one-time `scp auth.json` per machine.
+
+- **2026-08-28 16:05Z — removed setup.sh / bundle.sh; git-only sync finalized**:
+  - Removed: setup.sh, bundle.sh deleted from disk and absent from index. Deprecated entries dropped from .gitignore comment context (paths still listed for safety).
+  - Measured: index 66 files — all portable source-of-truth (AGENTS, settings/models.json, skills/ 14, prompts/, HARNESS docs, PORTABILITY, skills-audit, .nvmrc, .gitignore, .env.example). Ignored as intended: .env, auth.json, bin/, npm/, sessions/, models-store.json, logs, archives. 0 untracked non-ignored files.
+  - Docs: PORTABILITY.md fully rewritten git-side (portable/not-portable tables, key rotation via .env, manual per-machine one-time setup incl. ~/.agents/skills neutralization one-liner); HARNESS-ARCHITECTURE.md tree + portability summary updated (no script refs).
+  - Risk: low — per-machine setup is now 2 documented manual steps (secrets + legacy skills dir).
+
+- **2026-08-12 — slash-command token fix: `/release` `/bump` `/changelog` (8k→~0 lockfile read)**:
+
+**Prompt:** `/release` cost ~8k tokens and produced a CHANGELOG the user deleted.
+Root-cause the prompts.
+
+**Root cause (evidence):** the prompt *bodies* are tiny (~1 KB each) — not the
+cost. The cost was **runtime reads**: `/release` + `/bump` instructed the model
+to **hand-edit `package-lock.json`**, forcing a 50–100 KB lockfile into context
+(~8–12 K tok) just to change two version strings. Secondary: unbounded `git log`
+and loose changelog rules (verbose/noisy entries → deletable output).
+
+**Changed (native tool over hand-editing — ponytail rule 4):**
+  - `release.md` + `bump.md`: lockfile step now runs `npm install --package-lock-only`
+  (the tool syncs root + `packages."".version`); **explicit "never read the lockfile
+  into context — 8k-token trap"**. `pnpm-lock.yaml`/`yarn.lock` store no root
+  version → skipped (was: "hand-edit / run update command for approval").
+  - `release.md` + `changelog.md`: `git log --no-merges … | head -60` (was unbounded).
+  - `release.md` + `changelog.md`: changelog entries now ≤10 words, user-facing,
+  omit chores/CI/docs; **insert-only** (never rewrite existing entries) — the
+  quality rules the deleted output lacked.
+
+**Not changed:** `/commit` (963 B, already lean) and `/preflight` (1647 B,
+purpose-built) — no token issue.
+
+  - **Measured:** body sizes barely moved (release 1834→1943, bump 1000→1021,
+  changelog 1055→1059 B). The win is **runtime**: ~8 K tok lockfile read → ~0
+  (one `npm install --package-lock-only`); git log now capped at 60 subjects.
+  **Prefix byte-stable** (prompts are NOT always-on — 0 prefix tokens at rest) →
+  no session restart needed.
+  - **Risk:** low. `npm install --package-lock-only` is the canonical lockfile-sync
+  (no `node_modules` touched); reversible by re-running. Worst case the command
+  needs network for a dep change — but a version bump changes no deps.
+  - **Portability:** clean — `npm`/`pnpm`/`yarn` branches, no paths, no OS commands.
+
+- **2026-08-11 — bundle.sh auto-include rewrite (explicit FILES list → exclude-only)**:
+
+Closes the "pending the portability-safe rewrite decision" thread from the prior
+entry. The explicit `FILES` list duplicated PORTABILITY.md's *"What is NOT
+portable"* table and had already drifted — `.nvmrc` + `HARNESS-ARCHITECTURE.md`
+both had to be added retroactively (2 silent-omission bugs).
+
+  - **Changed:** `bundle.sh` — deleted the 16-line `FILES` block + the `INC`-building
+  loop; now ships **everything under `~/.pi/agent`** minus a top-level-anchored
+  exclude set: `--exclude='node_modules' ./bin ./npm ./sessions *.log`. Header
+  comment rewritten to state the auto-include contract + why each exclude exists.
+  Excludes anchored to top-level (`./bin`, not bare `bin`) so a future skill
+  `bin/` subdir is never clobbered.
+  - **Why:** one source of truth for "machine-local" (the exclude set) instead of
+  two (exclude set + hand-maintained include list). New portable files now ship
+  with **zero script edits**; the whole silent-omission drift class is gone. The
+  win is maintenance surface + a removed bug-class, not bytes.
+  - **Measured:** `bundle.sh` **1276 → 1468 B** (+192 — longer comments explain the
+  contract; the `FILES`/`INC` logic shrank). Produced tarball **76 members,
+  identical to the explicit-list set** (`diff` empty, re-verified against the
+  CURRENT tree, not last session's); bytes **471,609 → 470,852** (−757,
+  mtime/ordering only). Leak check `bin/npm/sessions/node_modules/*.log` = **0**
+  each. **Prefix byte-stable** (AGENTS.md 4713 B + 9 descriptions 2908 B
+  untouched) → no session restart required. Skill count 9 → 9 (no skills-audit
+  revision).
+  - **Risk:** low. Reversible: `~/.pi-backups/bundle.sh.pre-auto-include.20260811-221738`
+  (sha256 `ab01d6e2…`). Residual: a future machine-local *top-level* dir would
+  ship until one `--exclude` line is added — but that set (`bin/npm/sessions`)
+  is tiny/stable and `tar -tzf | head` catches any leak.
+  - **Portability:** clean — no new paths, no OS-only commands, same POSIX `sh`;
+  `--exclude` mechanism unchanged (GNU tar + BSD tar both supported).
