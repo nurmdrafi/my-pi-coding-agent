@@ -5,6 +5,23 @@ Harness-engineering changes for continuous improvement, newest first
 (`YYYY-MM-DD`; same-day entries carry `HH:MMZ`). Each entry: what
 changed, why, risk, portability impact.
 
+Versioning: semver (`MAJOR.MINOR.PATCH`) — MAJOR: breaking config/prefix restructure, MINOR: new skills/features, PATCH: fixes/tweaks. New entries go under `## [Unreleased]`.
+To release: retitle that heading to `## [vX.Y.Z] - YYYY-MM-DD`, add a fresh
+`## [Unreleased]` above it, commit, then tag `vX.Y.Z` and push with `--tags`.
+
+## [Unreleased]
+
+## [v1.0.0] - 2026-09-05
+
+### 2026-09-05 07:05Z — AGENTS.md `sg` availability clause
+
+- Changed: line 20 — `try \`sg run -p '<pattern>'\` (ast-grep)` → `if \`sg\` (ast-grep) is installed, try \`sg run -p '<pattern>'\` before keyword guessing`
+- Why: external review flagged that `sg` is third-party and not guaranteed installed; clause now makes the fallback to `rg` explicit instead of assumed. All other review suggestions rejected (prefix bloat / already covered by tool definitions).
+- Measured: AGENTS.md 3134 → 3156 bytes (+22 B, ~+6 tok permanent); skill count / descriptions / prompts unchanged
+- Risk: negligible — behavior identical when `sg` is installed; when absent, agent skips to `rg` instead of hitting a failed command first
+- Rollback: restore the original line 20 text.
+- Note: prefix changed — start a fresh session for clean cache.
+
 ### 2026-09-05 06:09Z — AGENTS.md output-cap rule (permission → imperative)
 - Changed: `AGENTS.md` Token-Economy line 16 — "Filtering command output through a pipe (`cmd | grep x`) is fine." → "Filtering command output through a pipe is fine — cap verbose output (`cmd | tail -40`, `npm view x | head -30`) before it lands in context."
 - Why: session-audit 2026-09-05 (reports 054940Z, 060421Z) — BIG_TOOL_OUTPUT is the #1 rule by dollars directory-wide: 16 findings / 11 sessions / 2038K tokens = $1.19 (51KB vite/e2e dumps in react-bkoi-gl; 46-51KB npm-research dumps in agent project, recurring through 09-03). Permission wasn't triggering truncation; imperative with copy-able syntax should.
