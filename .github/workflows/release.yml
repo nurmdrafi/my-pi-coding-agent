@@ -34,10 +34,10 @@ jobs:
             exit 1
           fi
 
-          VERSION=$(echo "$CHANGELOG_LINE" | cut -d'[' -f2 | cut -d']' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          VERSION=$(echo "$CHANGELOG_LINE" | cut -d'[' -f2 | cut -d']' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^v//')
 
           if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "ERROR: First changelog heading '$CHANGELOG_LINE' is not a semantic version (x.y.z)"
+            echo "ERROR: First changelog heading '$CHANGELOG_LINE' is not a semantic version (x.y.z or vx.y.z)"
             exit 1
           fi
 
