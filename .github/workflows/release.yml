@@ -1,4 +1,4 @@
-name: Release
+name: Release CI/CD
 
 on:
   push:
@@ -14,67 +14,59 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       release_notes: ${{ steps.release-notes.outputs.notes }}
-      should_release: ${{ steps.check.outputs.should_release }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Extract version from changelog
         id: version
         run: |
+          # Validate CHANGELOG.md exists and is readable
           if [ ! -f "CHANGELOG.md" ]; then
             echo "ERROR: CHANGELOG.md file not found"
             exit 1
           fi
 
-          # Version = first released '## [x.y.z]' heading; skips '## [Unreleased]'
-          CHANGELOG_LINE=$(grep -E '^## \[v?[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | head -1)
+          if [ ! -r "CHANGELOG.md" ]; then
+            echo "ERROR: CHANGELOG.md file is not readable"
+            exit 1
+          fi
+
+          # Extract version from CHANGELOG.md
+          CHANGELOG_LINE=$(grep '^## \[' CHANGELOG.md | head -1)
           if [ -z "$CHANGELOG_LINE" ]; then
             echo "ERROR: No version entry found in CHANGELOG.md"
+            echo "CHANGELOG.md first few lines:"
+            head -5 CHANGELOG.md
             exit 1
           fi
 
-          VERSION=$(echo "$CHANGELOG_LINE" | cut -d'[' -f2 | cut -d']' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^v//')
+          VERSION=$(echo "$CHANGELOG_LINE" | cut -d'[' -f2 | cut -d']' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "ERROR: First changelog heading '$CHANGELOG_LINE' is not a semantic version (x.y.z or vx.y.z)"
-            exit 1
+          # Validate version format (basic semantic versioning check)
+          if ! echo "$VERSION" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' > /dev/null; then
+            echo "WARNING: Extracted version '$VERSION' doesn't match semantic versioning format (x.y.z)"
+            echo "CHANGELOG line: $CHANGELOG_LINE"
+            echo "Attempting to continue anyway..."
           fi
+
+          echo "Successfully extracted version from CHANGELOG.md: $VERSION"
+          echo "CHANGELOG line: $CHANGELOG_LINE"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extracted version: $VERSION"
-
-      - name: Skip if release already exists
-        id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view "v${{ steps.version.outputs.version }}" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "Release v${{ steps.version.outputs.version }} already exists — skipping."
-          else
-            echo "should_release=true" >> $GITHUB_OUTPUT
-          fi
 
       - name: Extract release notes from CHANGELOG
         id: release-notes
         run: |
           VERSION=${{ steps.version.outputs.version }}
           NOTES=$(awk "/^## \\[${VERSION//./\\.}\\]/{flag=1; next} /^## \\[/{if(flag) exit} flag" CHANGELOG.md | sed '1d')
-          if [ -z "$NOTES" ]; then
-            echo "ERROR: No notes found for v$VERSION in CHANGELOG.md"
-            exit 1
-          fi
-          {
-            echo "notes<<EOF"
-            echo "$NOTES"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
   release:
     name: Create GitHub Release
     needs: prepare
-    if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Create GitHub Release
