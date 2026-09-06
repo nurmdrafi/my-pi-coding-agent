@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **2026-09-06 12:21Z — audit-driven output-cap rules + bkoi-gl-js session audit**:
+  - Added: AGENTS.md Token Economy — minified/dist grep capping (`rg -o` or `| cut -c1-200`; `head -N` bounds lines, not bytes, and minified lines are megabytes); playwright-tester SKILL.md (Reconnaissance-then-action) — cap recon output (`JSON.stringify(x).slice(0, 500)` for `page.evaluate` dumps, `| tail -20` on test-run output, `-o`/`cut` for dist greps).
+  - Measured: audit of the last 2 bkoi-gl-js sessions (624 turns, 643K tok ≈ $0.90 waste floor): BIG_TOOL_OUTPUT 3×45–51KB from uncapped dist greps/probes = 57% of waste; rules target exactly that class. Target next audit: BIG_TOOL_OUTPUT → 0, DUP-read waste 238K → <50K.
+  - Docs: audit-reports/2026-09-06T114525Z.md (full report; notes the installed session-audit bundle ships src/ without bin/audit.mjs — audit ran via a workdir-local orchestrator over the bundle's own modules).
+  - Risk: none — advisory text only.
+
 - **2026-08-28 15:50Z — deprecate setup.sh / bundle.sh; .env fixes**:
   - Added: `.env` regenerated correctly (auth.json stores nested `{type,key}` objects; keys exported flat as ZAI_API_KEY / DEEPSEEK_API_KEY), chmod 600. `.gitignore` now also excludes `setup.sh` and `bundle.sh`; both untracked from the index (files still on disk pending user removal).
   - Measured: `git check-ignore setup.sh bundle.sh .env auth.json models-store.json` all pass; index 66 files, 0 scripts/secrets staged. auth.json verified byte-identical after the aborted setup.sh test run.
@@ -28,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Risk: none — repo not committed/pushed yet; bundle.sh flow unchanged.
 
 ### Changed
+
+- **2026-09-06 12:21Z — `sg` directive → portable ast-grep rule**:
+  - Changed: AGENTS.md Token Economy — canonical invocation is now `ast-grep run -p` with a narrow construct-shape trigger (imports, call sites of a specific API, `new X(`, `function|class|const X` definitions, JSX structure in first-party TS/TSX/JS src) plus an explicit rg-is-correct list (symbol/text presence, pipe-filtering command output, configs/JSON/CSS/MD, dist/node_modules). The `sg` alias is banned: on Linux it collides with shadow-utils' setgid `sg`. Install hint added (`npm i -g @ast-grep/cli`, prebuilt darwin/linux binaries).
+  - Why: three audited sessions across two projects invoked sg 0× despite it being installed before both bkoi-gl-js sessions (04:48 UTC via `npm i -g`); advisory + fuzzy "structural code search" phrasing did not survive glm-5.3. Narrow imperative trigger + rg whitelist is unambiguous, and `ast-grep` avoids the per-call deprecation banner `sg` prints.
+  - Measured: AGENTS.md +~340 B permanent prefix (~+85 tok); `ast-grep run -p` verified functional on this machine (exit 0, banner-free).
+  - Risk: low — Linux machines need a one-time `npm i -g @ast-grep/cli` (npm globals do not ride dotfile sync).
 
 - **2026-09-05 07:05Z — AGENTS.md `sg` availability clause**:
 

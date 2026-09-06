@@ -149,6 +149,10 @@ state, never source guesses.
   style, not child elements — and make sure the host app imports every published
   stylesheet/entry point (a logo once "vanished" because the test host never imported
   the library's styles export).
+- Cap everything a recon or probe step returns before it lands in context:
+  `JSON.stringify(x).slice(0, 500)` for `page.evaluate` dumps, `| tail -20` on
+  test-run output, and `-o` / `| cut -c1-200` when grepping a library's `dist` —
+  minified lines are megabytes long; `head -N` bounds lines, not bytes.
 
 Recon tools: `browser-tools` skill (CDP eval on the running case, same-origin state, no
 login automation) or `npx playwright codegen <url>` — generating specs without either is
