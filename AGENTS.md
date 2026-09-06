@@ -17,7 +17,7 @@
 - View files only with `read` (offset for >100 lines: just the region around the `rg` hit). Never `cat` / `head` / `tail` whole file paths; inside pipes they are fine. Windowed `sed -n 'A,Bp'` is acceptable when batching several windows/files in one call (`read` is one file per call).
 - Unfamiliar code: symbol outline first, never whole-file reads:
   `rg -n "^(export )?(async )?(function|class|interface|type)" <dir> | head -80`
-- Framework entry points (`export default` components, `forwardRef`, `layout.tsx`/`_app.tsx` conventions): if `sg` (ast-grep) is installed, try `sg run -p '<pattern>'` before keyword guessing — wide keywords (`main`/`setup`/`initialize`) miss convention-named entries and hit doc/test noise.
+- `sg` (ast-grep) is installed. For structural code search in TS/TSX/JS, run `sg run -p '<pattern>'` FIRST; fall back to `rg -n` only when sg returns nothing or the target is non-code. Keyword rg over code files without a prior sg attempt is a miss. Framework entry points (`export default` components, `forwardRef`, `layout.tsx`/`_app.tsx` conventions): wide keywords (`main`/`setup`/`initialize`) miss convention-named entries and hit doc/test noise.
 - Keyword search returning >10 files of doc/test/config noise: switch to `sg` structural patterns, not narrower keywords. Cap output (`| head`) — `sg` matches return whole AST nodes, not lines.
 - Never full-read a file >100 lines to find one block; `read` a window at the anchor (the `sg` match text often is the answer).
 - `git` reads: `diff` / `show` / `log --oneline | head`.
