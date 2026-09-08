@@ -88,7 +88,7 @@ Optional deep evidence (only when user asks for skill-usage or token audit):
   `evidence/2026-09-03_l2_vs_l3_matrix.json` — only tavily-search fired (enabled
   model-visible as a result); L3-as-a-set failed the ≤20% median-cost rule.
 - pi sessions: `~/.pi/agent/sessions/*/*.jsonl` — skill loads, `/skill:` invocations, correction words
-- Rank skills: auto-load vs explicit vs never fire
+- Rank skills: auto-load vs explicit vs never fire — `uv run --script scripts/skill_usage_audit.py` (from this skill dir) counts per-skill invocations across all sessions and tiers them high/medium/low/unused
 
 ## Portability quick-check
 
