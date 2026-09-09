@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 09-09-2026
+
+### Changed
+
+- **2026-09-09 — cross-session audit (pickaboo-frontend, react-bkoi-gl) tightens Token-Economy rules**:
+  - Audited last sessions: pickaboo-frontend (Sep 9, 122 turns, $1.13, 96% cache-read, 78 bash/18 edit/6 read) and react-bkoi-gl (Sep 6, 18 turns, $0.10, 11 bash/3 edit/1 write).
+  - Only recurring issue in both: uncapped `rg` (e.g. `rg '"version"' package.json`). react-bkoi-gl additionally catted 4 workflow yamls whole + `head -8 CHANGELOG.md` (rule-letter loophole).
+  - Rules updated in AGENTS.md: (1) every match-printing `rg` now requires a cap (`-m`/`| head`/`-l -q -c`); JSON fields → `jq`. (2) `cat x | head` and `head -N file` explicitly count as whole-file-read violations; lone `sed -n` windows → `read`. (3) Prefer byte caps (`head -c 4000`) for possibly long-line output. (4) New turn-batching heuristic: batch search-then-act when target ~80% identified (cache-read cost scales with turns).
+  - Not added: hard turn/token budgets and bash-vs-read quotas — tool mix varies legitimately by task.
+
 ## [1.1.0] - 08-09-2026
 
 ### Fixed
