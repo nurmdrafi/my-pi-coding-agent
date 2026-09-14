@@ -149,6 +149,55 @@ export function renderViews(workdir) {
   }
   say();
 
+  // Batching: round-trips are the dominant per-turn cost driver; a session
+  // of 1-call turns re-sends the prefix as many times as it makes calls.
+  say(`## Batching (tool calls per assistant turn)`);
+  {
+    const b = overview.batching ?? {};
+    const t = b.turnsWithCalls ?? 0;
+    if (t) {
+      const pct = (n) => ((n / t) * 100).toFixed(0) + '%';
+      say(`turns with calls ${t} · calls ${K(b.calls ?? 0)} · avg ${( (b.calls ?? 0) / t).toFixed(1)}/turn`);
+      say(`1-call ${pct(b.one ?? 0)} · 2-call ${pct(b.two ?? 0)} · 3+ ${pct(b.multi ?? 0)}`);
+      const worst = sessions.filter((x) => (x.batch?.turnsWithCalls ?? 0) >= 10)
+        .sort((x, y) => (y.batch.one / y.batch.turnsWithCalls) - (x.batch.one / x.batch.turnsWithCalls));
+      say(`most single-call-heavy sessions (≥10 turns):`);
+      for (const s of worst.slice(0, 5)) {
+        const bs = s.batch;
+        say(`  ${s.sessionId} ${pad(proj(s.project), 22)} ${bs.one}/${bs.turnsWithCalls} one-call (${((bs.one / bs.turnsWithCalls) * 100).toFixed(0)}%)  avg ${(bs.calls / bs.turnsWithCalls).toFixed(1)}`);
+      }
+    } else { say(`no batching data`); }
+  }
+  say();
+
+  // ast-grep discipline: ast-grep runs inside bash commands, so the tool
+  // table cannot see it. AGENTS.md says construct-shape search runs ast-grep
+  // FIRST; rg-only sessions are the violation signal.
+  say(`## ast-grep discipline (bash command text)`);
+  {
+    const a = overview.astgrep ?? {};
+    say(`ast-grep/sg calls ${a.calls ?? 0} across ${a.sessions ?? 0} sessions · bash rg calls in ${a.rgSessions ?? 0} sessions`);
+    say(`rg-but-never-ast-grep sessions ${a.rgOnlySessions ?? 0} / ${sessions.length} (AGENTS.md: ast-grep first for construct-shape search)`);
+  }
+  say();
+
+  // Tool detail: calls × sessions × dup findings linkage — the byte table
+  // above says what landed in context; this says which tool the waste hangs on.
+  say(`## Tool detail (calls · sessions · dup linkage)`);
+  {
+    const dupByTool = {};
+    for (const f of findings) {
+      if (f.rule !== 'DUP_TOOL_CALL') continue;
+      const d = (dupByTool[f.evidenceStats?.tool ?? '?'] ??= { n: 0, w: 0 });
+      d.n++; d.w += f.estWasteTokens ?? 0;
+    }
+    const rows = Object.entries(overview.tools ?? {}).map(([name, t]) => ({ name, t, d: dupByTool[name] }));
+    for (const r of rows) {
+      say(`${pad(r.name, 14)} calls ${lpad(r.t.calls, 5)}  err ${lpad(r.t.errors, 4)}  dup ${lpad(r.d?.n ?? 0, 4)}×  dupWaste ${lpad(K(r.d?.w ?? 0), 7)}`);
+    }
+  }
+  say();
+
   say(`## Peak context & compactions`);
   const pk = [['<50K', 0, 50e3], ['50-150K', 50e3, 150e3], ['150-250K', 150e3, 250e3], ['250-350K', 250e3, 350e3], ['>350K', 350e3, Infinity]];
   say(pk.map(([l, lo, hi]) => `${l}:${sessions.filter((s) => (s.peakContext ?? 0) >= lo && (s.peakContext ?? 0) < hi).length}`).join('  '));

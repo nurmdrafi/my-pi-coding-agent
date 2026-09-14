@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Trend vs 2026-09-06 audit: waste rate 1.13% → 0.73% of read volume.
   - Runner note: installed skill bundle lacks `bin/audit.mjs`; audit ran via a thin workdir driver importing the skill's `src/` modules.
 
+### Added
+
+- **2026-09-14 — three new `views` blocks: batching, ast-grep discipline, tool detail**:
+  - Batching (tool calls per assistant turn): 3,403 calling turns, **94% single-call, avg 1.1/turn**; worst offenders listed (e.g. `01a0573a…` 155/155 one-call). Caveat: single tool call ≠ unbatched — `&&`-chained bash still batches commands (2026-09-08 harness-engineer measurement: 60–95% of bash calls `&&`-batched); this block measures harness-level turn batching only.
+  - ast-grep discipline: **16 ast-grep/sg calls across 2 of 61 sessions, vs rg in bash in 47 sessions — 45 sessions rg-but-never-ast-grep** (AGENTS.md "ast-grep first" rule largely unpracticed).
+  - Tool detail with dup-finding linkage: read dup 38× / 817K dominates; bash dup 32× / 45K.
+  - Aggregation lives in the workdir runner (batching + astgrep into `overview.json`); rendering in `src/views.mjs`. Runner (`bin/audit.mjs`) still absent from the installed bundle — the workdir driver remains the entry point.
+
 ## [1.2.0] - 09-09-2026
 
 ### Changed
