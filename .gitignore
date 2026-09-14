@@ -5,7 +5,7 @@ auth.json
 sessions/
 
 # Machine-local binaries & deps (pi regenerates)
-bin/
+/bin/
 npm/
 **/node_modules/
 
