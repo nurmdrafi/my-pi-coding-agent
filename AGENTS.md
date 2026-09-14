@@ -22,6 +22,8 @@
 - Every `rg` that prints matches gets a cap: `-m <n>`, `| head -N`, or use `-l`/`-q`/`-c`. No exceptions for "small" files like package.json — `jq` that instead.
 - Keyword search returning >10 files of doc/test/config noise: switch to `ast-grep` structural patterns, not narrower keywords. Cap output (`| head`) — matches return whole AST nodes, not lines.
 - Never full-read a file >100 lines to find one block; `read` a window at the anchor (the `ast-grep` match text often is the answer).
+- A file already read (or edited) this session is in context — never re-read it whole. If fresh state is needed after edits, `read` an `offset`/`limit` window at the known anchor. Whole-file re-reads during iterative fixes are the single largest measured waste source.
+- npm / build / typecheck / test runs: pipe through `rg 'error TS|FAIL|Error' | sort -u | head -40` (or equivalent) before they land in context; run at most one per turn and never the same command twice in a turn — reuse the earlier result.
 - `git` reads: `diff` / `show` / `log --oneline | head`.
 - Batch independent commands into one call (`a && b`); each round-trip re-sends and re-processes the whole conversation.
 - One call per question: pick the command that fully answers it (continuation `read`s of the same file are fine); no speculative preview commands (`git status`, `--stat`).

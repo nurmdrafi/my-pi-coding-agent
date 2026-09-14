@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 09-14-2026
+
+### Fixed
+
+- **2026-09-14 — session-audit DUP_TOOL_CALL artifact (`edit`/`write` paramHash)**:
+  - `src/parser.mjs` normalized `edit` inputs to path only, so distinct sequential edits to one file counted as duplicates — 132 of 213 DUP findings false (repeatBytes 49–98 B); `write` had the same flaw (11 false findings). Both normalizers now include the edits/content payload.
+  - Measured (61 sessions, re-run): findings 231 → 84, headline waste 1,515K → 1,375K tokens; edit-dups 132 → 1 (true repeat), write-dups 11 → 0.
+
+### Changed
+
+- **2026-09-14 — full-directory session audit (61 sessions, 2026-08-30→09-13) tightens two Token-Economy rules**:
+  - Report: `audit-reports/2026-09-14T041139Z.md`. Headline waste 1,515K ≈ $1.75 (floor). Cache rules structurally blind: provider logs 0 `cacheWrite` on all 3,937 turns (hitRatio 1.000 degenerate).
+  - Top finding (54% of waste, 816K): whole-file re-reads of large files during iterative fixes (e.g. `ManagePickupLocations.tsx` read full-file ~6× in one session). AGENTS.md now forbids re-reading whole a file already read/edited this session — offset/limit window at the known anchor instead.
+  - Second (34%, 513K): uncapped npm/typecheck tails (45–51K escapes; typecheck run twice in one turn). AGENTS.md now requires piping build/test output through `rg … | head`, at most one per turn, never the same command twice.
+  - Trend vs 2026-09-06 audit: waste rate 1.13% → 0.73% of read volume.
+  - Runner note: installed skill bundle lacks `bin/audit.mjs`; audit ran via a thin workdir driver importing the skill's `src/` modules.
+
 ## [1.2.0] - 09-09-2026
 
 ### Changed

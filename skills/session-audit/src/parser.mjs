@@ -180,8 +180,11 @@ export function loadedSkillName(entry) {
 const NORMALIZERS = {
   read: (i) => i.path ?? '',
   bash: (i) => (i.command ?? '').trim(),
-  edit: (i) => i.path ?? '',
-  write: (i) => i.path ?? '',
+  // edit: path alone made distinct sequential edits to one file count as
+  // duplicates (132/213 false DUP findings in the 2026-09-14 audit) —
+  // include the edits payload so only true re-submissions match.
+  edit: (i) => `${i.path ?? ''}\u0000${JSON.stringify(i.edits ?? '')}`,
+  write: (i) => `${i.path ?? ''}\u0000${JSON.stringify(i.content ?? '')}`,
 };
 
 export function paramHash(name, input) {
