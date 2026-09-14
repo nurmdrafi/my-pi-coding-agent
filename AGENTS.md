@@ -7,29 +7,35 @@
 - Plan/design requests = plan only. Ambiguous “continue / proceed / go ahead” → ask scope before implementing.
 - Unknown contracts (API paths, payloads, fields) → ask. Never invent placeholders.
 - Solve with the least that works: Is it needed at all? (YAGNI) → existing code → stdlib/platform → installed dep → minimal change. Bug fix = root cause; rg callers first. No unrequested abstractions or “for later” boilerplate.
+- Cross-platform (macOS + Linux): everything written or run — commands, scripts, configs, paths — must work on both. Stay in the BSD∩GNU intersection; where they genuinely differ, branch explicitly rather than pick a side.
 
 ## Communication
 - Be concise and direct. Technical prose only.
 - No fluff, no cheerful filler, no emojis in commits, comments, or replies.
 
 ## Token Economy
-- Search only with `rg` (-l / -n / -q). Never `grep` a file path. Filtering command output through a pipe is fine — cap verbose output (`cmd | tail -40`, `npm view x | head -30`) before it lands in context. Prefer byte caps (`head -c 4000`) for possibly long-line output.
-- `rg` into minified/dist files (`node_modules/*/dist`, `*.min.js`): use `-o` or pipe through `cut -c1-200` — `head -N` bounds lines, not bytes, and minified lines are megabytes long.
-- View files only with `read` (offset for >100 lines: just the region around the `rg` hit). Never `cat` / `head` / `tail` whole file paths — not even for "quick looks" at yaml/md/configs; `cat x | head` and `head -8 file` count too. Use `jq` for JSON fields, `read` for everything else. Inside pipes they are fine. Windowed `sed -n 'A,Bp'` only when batching 2+ files/regions in one call; a lone `sed -n 'X,Yp' file` should be `read` instead.
-- Unfamiliar code: symbol outline first, never whole-file reads:
-  `rg -n "^(export )?(async )?(function|class|interface|type)" <dir> | head -80`
-- `ast-grep` is installed on macOS and Linux (`npm i -g @ast-grep/cli` if missing — prebuilt darwin/linux binaries). Always invoke it as `ast-grep run -p`, never via the `sg` alias: on Linux `sg` is shadow-utils' setgid command and only works by PATH luck. Construct-shape search in first-party TS/TSX/JS src — imports, call sites of a specific API (`foo(`), `new X(`, `function|class|const X` definitions, JSX structure — runs `ast-grep run -p '<pattern>'` FIRST, before any rg over the same target; fall back to `rg -n` only when it returns nothing. Measured (2026-09-14 audit): 45 of 61 sessions ran `rg` without a single ast-grep call — when searching for a call site, import, definition, or JSX shape in first-party TS/TSX/JS, `ast-grep run -p '<pattern>'` is mandatory first, not optional. rg is correct, not a miss, for: symbol/text presence anywhere, pipe-filtering command output, configs/JSON/CSS/MD, and dist/node_modules (AST on minified code is garbage). Framework entry points (`export default` components, `forwardRef`, `layout.tsx`/`_app.tsx` conventions): wide keywords (`main`/`setup`/`initialize`) miss convention-named entries and hit doc/test noise.
-- Every `rg` that prints matches gets a cap: `-m <n>`, `| head -N`, or use `-l`/`-q`/`-c`. No exceptions for "small" files like package.json — `jq` that instead.
-- Keyword search returning >10 files of doc/test/config noise: switch to `ast-grep` structural patterns, not narrower keywords. Cap output (`| head`) — matches return whole AST nodes, not lines.
-- Never full-read a file >100 lines to find one block; `read` a window at the anchor (the `ast-grep` match text often is the answer).
-- A file already read (or edited) this session is in context — never re-read it whole. If fresh state is needed after edits, `read` an `offset`/`limit` window at the known anchor. Whole-file re-reads during iterative fixes are the single largest measured waste source.
-- npm / build / typecheck / test runs: pipe through `rg 'error TS|FAIL|Error' | sort -u | head -40` (or equivalent) before they land in context; run at most one per turn and never the same command twice in a turn — reuse the earlier result.
+
+**Searching**
+- Text presence, configs/JSON/CSS/MD, dist/node_modules → `rg` (-l / -n / -q). Every printing `rg` gets a cap (`-m <n>`, `| head -N`, `-l`/`-q`/`-c`); `jq` for JSON fields.
+- Construct shape in first-party TS/TSX/JS — imports, call sites (`foo(`), `new X(`, definitions, JSX — → `ast-grep run -p '<pattern>'` FIRST; `rg -n` only if it returns nothing (install: `npm i -g @ast-grep/cli`; never the `sg` alias — Linux shadow-utils). AST on minified code is garbage, so rg is correct there. >10 files of doc/test noise, or convention-named entries (`forwardRef`, `layout.tsx`), defeat keywords → ast-grep patterns, capped (`| head`).
+- Unfamiliar code: symbol outline first — `rg -n "^(export )?(async )?(function|class|interface|type)" <dir> | head -80`.
+
+**Reading**
+- `read` only, windowed (`offset`/`limit`) at the anchor. Never `cat`/`head`/`tail` a file path — inside pipes fine; `sed -n 'A,Bp'` only when batching 2+ regions in one call.
+- Minified/dist: `rg -o` or `| cut -c1-200` — `head -N` bounds lines, not bytes.
+- Never full-read >100 lines to find one block; a file already read/edited this session is in context. Iterative re-reads are the top measured waste (817K / 59%, 2026-09-14): after an edit, a ≤60-line window at the anchor is enough.
+- Never read task-unrelated files; no `ls -R`, `find -exec`, full `git log`.
+
+**Command output**
+- Cap verbose output before it lands in context (`| tail -40`; `head -c 4000` for long lines).
+- npm/build/typecheck/test: `| rg 'error TS|FAIL|Error' | sort -u | head -40`; `npm install` → `--no-fund --no-audit | tail -5`. One per turn; never re-run a result already in context.
 - `git` reads: `diff` / `show` / `log --oneline | head`.
-- Batch independent commands into one call (`a && b`); **and independent tool calls into one turn** — 94% of calling turns are single-call (2026-09-14 audit), each extra turn re-sends the whole prefix. Each round-trip re-sends and re-processes the whole conversation.
-- One call per question: pick the command that fully answers it (continuation `read`s of the same file are fine); no speculative preview commands (`git status`, `--stat`).
-- Cache-read tokens scale with turns — when the target is ~80% identified, batch search-then-act into one command instead of spending a round trip to confirm.
-- Never re-run a command whose result is already in context — reuse it.
-- Never read task-unrelated files. Never `ls -R`, `find -exec`, full `git log`.
+- Commands work on macOS and Linux: stick to BSD∩GNU flags (`head -c`, `tail -N`, `sed -n 'A,Bp'`); no `sed -i` (macOS needs `-i ''` — prefer the `edit` tool), no `stat -c/-f`, no `grep -P`.
+
+**Turns** (each round-trip re-sends and re-processes the whole prefix)
+- Batch independent commands (`a && b`) **and independent tool calls into one turn** — 94% of calling turns were single-call (2026-09-14).
+- One call per question; no speculative previews (`git status`, `--stat`). At ~80% identified, batch search-then-act instead of spending a turn to confirm.
+- Past ~150K context at a milestone, suggest a fresh session to the user.
 
 ## Safety
 - Ask before: commit, push, install packages, or any destructive command (rm, git reset, force-push, etc.).
