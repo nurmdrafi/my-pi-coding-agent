@@ -1,16 +1,8 @@
 # Changelog
 
-## 2026-09-15 — session-audit port: occluded-window freeze → 2 skill bodies; archiving declined
-- Ported the 09-15 react-bkoi-gl e2e trap (headed run "shows nothing" → suspect Chromium rAF/compositing freeze for occluded windows; verify before rerunning) into `skills/browser-tools/SKILL.md` (Debugging failing e2e §) and `skills/playwright-tester/SKILL.md` (Headed review runs §). Body-only edits — zero prefix cost.
-- User directive: **do not archive skills** — the 5-unused-skills recommendation is declined; all 17 stay in `skills/`. Future audits: do not re-propose skill archiving.
-
-## 2026-09-15 — harness audit: ponytail desc trim, portability PASS
-- Trimmed `skills/ponytail/SKILL.md` description (424→398 c): dropped AGENTS.md-ladder restatement, kept all fire cues; permanent floor ~1,235 tok (2 model-visible skills).
-- Portability quick-check: zero hits. Health score 75/100 (context 1,080 tok; 17 skills; intended AGENTS↔ponytail overlap).
-- Recommended (pending approval): archive 5 unused disabled skills (fallow-audit, refactoring-ui, systematic-debugging, tavily-extract, youtube-transcript) — declined same day, see next entry.
-- Measured: ponytail desc 424→398 c; Σ desc 5,224→5,198 c; skill count 17; portability 0→0 hits.
-
 All notable changes to this project will be documented in this file.
+Entries live ONLY in versioned sections below this header — never add freeform
+dated entries above it.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -27,7 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **2026-09-15 — ponytail ladder re-enabled; description trimmed**:
   - `AGENTS.md` ponytail bullet → full ladder rungs (need it? → codebase → stdlib → platform → dep → one line → minimal code), deletion-over-addition, `ponytail:` corner-cut comments. Re-enabled after user A/B showed overthinking/token use rise without it.
-  - `skills/ponytail/SKILL.md` description 424→398 c: dropped AGENTS.md-ladder restatement, kept all fire cues, states what loading adds.
+  - `skills/ponytail/SKILL.md` description 424→398 c (Σ descriptions 5,224→5,198 c): dropped AGENTS.md-ladder restatement, kept all fire cues, states what loading adds. Permanent floor ~1,235 tok (2 model-visible skills); portability 0 hits; health 75/100 (context 1,080 tok; 17 skills).
+  - User directive: **no skill archiving** — 5-unused-skills recommendation (fallow-audit, refactoring-ui, systematic-debugging, tavily-extract, youtube-transcript — 0 loads each) declined; all 17 skills stay in `skills/`. Future audits: do not re-propose.
 
 ### Removed
 
