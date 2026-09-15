@@ -24,3 +24,6 @@ skills-archive.tar.gz
 setup.sh
 bundle.sh
 __pycache__/
+
+# Transient locks
+*.lock

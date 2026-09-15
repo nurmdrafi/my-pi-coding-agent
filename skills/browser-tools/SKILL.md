@@ -152,6 +152,13 @@ anti-pattern: in the source session, hours of log analysis were settled in
 minutes of live replay, which surfaced real library bugs the logs never
 showed (crashing documented patterns, event-payload changes).
 
+**Occluded-window freeze — check the harness before rerunning.** Chromium
+freezes rendering (rAF + compositing) for occluded/backgrounded windows. If a
+headed visual/e2e step reports "nothing happened", suspect this first:
+verify by bringing the window to front or capturing a screenshot before
+rerunning the suite — blind reruns reproduce the same freeze (source session:
+same symptom list re-sent ~4× over ~45 min before the freeze was diagnosed).
+
 0. **Consume runner artifacts first**: the failure screenshot/trace/report and
    saved run logs usually answer the question with zero execution (see
    `playwright-tester` "Debugging a FAIL"). When the user asks for a screenshot
@@ -165,6 +172,10 @@ showed (crashing documented patterns, event-payload changes).
 4. Replay the spec's steps with `browser-eval.js` IIFEs — query the DOM, read
    app state (`window.__MAP__`, logs), compare against what the spec asserts.
 5. Fix the spec or the app, then re-run the runner headless to confirm.
+6. **A live window that shows nothing moving is usually occlusion, not a bug**:
+   Chromium suspends rAF/compositing for backgrounded or covered windows, so
+   map/canvas interactions replay silently. Bring the tab to front (or run the
+   step headless) before concluding events don't fire — don't rerun the suite.
 
 Vitest Browser Mode specs debug the same way — the same CDP Chrome serves
 them; replay the failing case URL exactly as for Playwright specs.

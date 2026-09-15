@@ -49,6 +49,12 @@ disable-model-invocation: true
 4. **Recon first, full suite second**: run the single failing spec before any full-suite
    run; long suites via `nohup … > /tmp/e2e.log 2>&1 &` + poll — a full suite can outlive
    a tool call and get aborted mid-run.
+5. **"Nothing happened" = diagnose the window, not the app** (2026-09-15, react-bkoi-gl:
+   ~45 min of blind `e2e:review` reruns): Chromium freezes rendering (rAF + compositing)
+   for occluded/backgrounded windows, so map/canvas/animation steps silently no-op in a
+   headed browser that isn't visible. Before rerunning anything, capture a screenshot
+   or re-run the one step headless — if headless works, the app is fine and the window
+   was occluded. One harness check beats N blind reruns.
 
 ## Timeout budgeting (measure, then set once)
 
@@ -175,6 +181,7 @@ two rounds of failed synthetic probing were once answered by one source grep.
 - **Geolocation tests:** prefer per-test `test.use({ geolocation, permissions: ['geolocation'] })` + `page.addInitScript` faking the API over `browser.newContext()` — one window, hold applies; a custom context is the usual source of "two windows at once" and a missing hold bar.
 - **Consecutive camera actions** (zoomOut ×2, chained flyTo): wait for camera-idle between them. A click landing mid-ease cancels the animation and re-eases from the intermediate zoom (13 → 11.96 instead of 11) — the assertion fails while the code is correct.
 - **One HUD across every headed suite:** framework-test review and e2e review share the same review chrome (bottom-center pill, timed progress bar) — a per-suite restyle once read to the user as "visual UI does not match". Case transitions must be instant: snapshot/prepare heavy setup once (prebuilt apps, stored state) and reuse the browser across cases — a fresh launch or reinstall per case adds dead seconds after every hold.
+- **Occluded/backgrounded windows freeze rendering** — Chromium pauses rAF + compositing for hidden, fully covered, or backgrounded windows. A headed review that "shows nothing" or stalls mid-animation is a harness artifact, not an app bug: verify by bringing the window to front, screenshotting, or headless mode before rerunning — reruns reproduce the same freeze.
 
 - **Fullscreen**: fires `fullscreenchange` at load in headless → assert toggle
   direction-agnostically (class swaps between two known values), never initial direction.

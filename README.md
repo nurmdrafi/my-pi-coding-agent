@@ -63,11 +63,6 @@ No env vars; default path only.
 │   ├── tavily-extract/       # URL → clean markdown via Tavily CLI
 │   └── youtube-transcript/
 │
-├── prompts/                  # slash commands only (NOT in prefix)
-│   └── commit.md             # kept minimal: --stat first, never plain git diff
-│                             # (deleted preflight/changelog/bump/release — 0 uses,
-│                             #  prescriptive bodies caused unbounded diffs + cache busts)
-│
 ├── README.md                 # this file (incl. portability contract)
 ├── CHANGELOG.md      # harness change log, latest-first (newest on top)
 ├── skills-audit.md           # append-only skill-set decisions
@@ -157,7 +152,6 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | `settings.json` | Provider/model/theme/thinking/packages (no secrets) |
 | `models.json` | Custom providers (currently empty; both active providers are built-in) |
 | `skills/` | All skills (real files, auto-trigger + `/skill:name`) |
-| `prompts/` | Prompt templates |
 | `skills-audit.md` | Skill audit + migration history (append-only) |
 | `README.md` / `CHANGELOG.md` | This file + change log |
 | `.nvmrc` | Pins required Node LTS (`22`) for `nvm use` in the harness dir |
@@ -222,10 +216,9 @@ After `git clone <repo> ~/.pi/agent` on a new machine:
 ```sh
 wc -c ~/.pi/agent/AGENTS.md
 # skill count + description byte sizes
-ls ~/.pi/agent/prompts/*.md 2>/dev/null | wc -l
 rg -n '/Users/|/home/|pbcopy|pbpaste|osascript|/opt/homebrew|launchctl' \
   ~/.pi/agent/AGENTS.md ~/.pi/agent/settings.json ~/.pi/agent/models.json \
-  ~/.pi/agent/*.sh ~/.pi/agent/prompts/ ~/.pi/agent/skills/ \
+  ~/.pi/agent/*.sh ~/.pi/agent/skills/ \
   --glob '!**/harness-engineer/**' --glob '!**/node_modules/**'
 ```
 

@@ -1,6 +1,6 @@
 ---
 name: ponytail
-description: "Ponytail intensity modes (lite/full/ultra) on top of the always-on AGENTS.md ladder. Use when the user says 'ponytail', 'be lazy', 'simplest', 'yagni', 'ultra' or complains of over-engineering."
+description: "Ponytail intensity modes (lite/full/ultra) on top of the always-on AGENTS.md ladder. Use when the user says 'ponytail', 'be lazy', 'simplest', 'yagni', 'ultra', complains of over-engineering, or the task/diff shows speculative abstractions, one-implementation interfaces, or new deps for solved problems — loads the full rules: output format, when NOT to be lazy, intensity table."
 argument-hint: "[lite|full|ultra]"
 license: MIT
 ---
