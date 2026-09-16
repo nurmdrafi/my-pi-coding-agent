@@ -104,6 +104,16 @@ specifiers, or read the bundler config.
   precisely (not `.env*`).
 - Cases use the app's real env mechanism — no invented `window.__*__` globals;
   a case fallback once referenced an undefined one and crashed.
+- **Sibling-reference rule (bkoi-gl-js postmortem 2026-09-16)**: when the same
+  org ships a sibling wrapper over the same engine (react-bkoi-gl ⇄ bkoi-gl),
+  the sibling's shipped components/CSS ARE the acceptance criteria for visual
+  contracts (attribution content & dedupe, logo asset/size/margins, control
+  stacking). Port them verbatim — a novel mechanism (e.g. `customAttribution`
+  where the style also carries source attributions → duplicate copyright) ships
+  visible bugs to the maintainer. Port its render gate (`idle` = tiles parsed &
+  painted, not just `isStyleLoaded()` — a white canvas passes style-load) and its
+  review harness (per-case pass/fail HUD, retained artifacts) rather than
+  building a weaker equivalent.
 
 ### Pack smoke test (`test:pack`)
 
