@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **2026-09-16 — AGENTS.md Turns: session-length hard stop + no skill-body injection** (from 09-16 react-bkoi-gl session audit):
+  - Hard stop at ~200 assistant turns → propose fresh session (cost-tail driver: 300+ turn sessions at $10–14 each; glm-5.3 reasoning share hit 53%). Never paste a skill's full body into a prompt — bodies ride every subsequent turn (measured 7,952-tok first turn vs ~3k baseline).
+  - `Measured:` AGENTS.md 4,704→4,743 B (+39 B, ~+10 tok); audit also found 126 tool-call violations across the two sessions (cat-for-viewing 86, speculative 30, minified-uncapped 7, pollution 2, rerun 1) — behavior unchanged since 09-14, rules already present.
+  - **Enforcement:** `extensions/token-economy-guard.ts` — `tool_call` hook blocks bash cat/sed-for-viewing, uncapped `git log`, and uncapped verbose runners (npm test/build, vitest, jest, playwright, tsc) with the corrective rule text. Verified: `pi -p` cat attempt blocked, model recovered via `read`. Zero prefix cost (extension, not prompt).
+
 - **2026-09-15 — occluded-window freeze guidance ported to browser skills**:
   - `skills/browser-tools/SKILL.md` (Debugging failing e2e §) + `skills/playwright-tester/SKILL.md` (Headed review runs §): a headed run that "shows nothing" → suspect Chromium rAF/compositing freeze for occluded/backgrounded windows; verify (front/screenshot/headless) before rerunning. Body-only edits — zero prefix cost. Source: 09-15 react-bkoi-gl session audit (~45 min of blind reruns).
   - `audit-reports/2026-09-15T063200Z.md` + `2026-09-15T090800Z.md` (react-bkoi-gl session audits, habit fixes ranked); `harness-audit-report.md` rewritten for 09-15 (health 75/100, portability PASS).

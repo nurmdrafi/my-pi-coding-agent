@@ -36,6 +36,8 @@
 - Batch independent commands (`a && b`) **and independent tool calls into one turn** — 94% of calling turns were single-call (2026-09-14).
 - One call per question; no speculative previews (`git status`, `--stat`). At ~80% identified, batch search-then-act instead of spending a turn to confirm.
 - Past ~150K context at a milestone, suggest a fresh session to the user.
+- Hard stop at ~200 assistant turns in one session: propose a fresh session (compaction or handoff summary). Long sessions are the top cost-tail driver (2026-09-16 audit: 300+ turn sessions, $10–14 each).
+- Never paste a skill's full body into a prompt/message — skills load on demand via their description only. Injected bodies ride every subsequent turn's context (2026-09-16: 7,952-tok first turn vs ~3k baseline).
 
 ## Safety
 - Ask before: commit, push, install packages, or any destructive command (rm, git reset, force-push, etc.).
