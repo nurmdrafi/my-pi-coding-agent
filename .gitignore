@@ -27,3 +27,4 @@ __pycache__/
 
 # Transient locks
 *.lock
+tavily/config.json

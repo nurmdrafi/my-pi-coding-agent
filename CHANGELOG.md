@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `skills/browser-tools/SKILL.md` (Debugging failing e2e §) + `skills/playwright-tester/SKILL.md` (Headed review runs §): a headed run that "shows nothing" → suspect Chromium rAF/compositing freeze for occluded/backgrounded windows; verify (front/screenshot/headless) before rerunning. Body-only edits — zero prefix cost. Source: 09-15 react-bkoi-gl session audit (~45 min of blind reruns).
   - `audit-reports/2026-09-15T063200Z.md` + `2026-09-15T090800Z.md` (react-bkoi-gl session audits, habit fixes ranked); `harness-audit-report.md` rewritten for 09-15 (health 75/100, portability PASS).
 
+- **2026-09-16 — map-integration: per-framework deep docs** — `docs/frameworks/<name>.md` (e.g. `cra.md`) added to the docs-split contract in the docs-split bullet. Body-only edit, zero prefix cost.
+- **2026-09-16 — tavily: gitignore `tavily/config.json`** — file holds live OAuth tokens from `tavily auth`; excluded from the repo. `tavily/session.json` (hash-only session state) stays tracked.
+
 ### Changed
 
 - **2026-09-15 — ponytail ladder re-enabled; description trimmed**:
