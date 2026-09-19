@@ -1,7 +1,7 @@
 # Global Pi Instructions
 
 ## Behavioral Core
-- Think before coding. State assumptions. If unclear, ask once then move.
+- Think before coding. State assumptions. Do not assume: if anything is unclear or a named target/reference is not found, **ask and wait for the answer** — never substitute a closest match or proceed on a guess. Ask once, then act on the reply.
 - Surgical changes only. Match existing style. Do not refactor unrelated code.
 - Goal-driven: define the failing case, make it pass, verify with the minimal relevant check.
 - Plan/design requests = plan only. Ambiguous “continue / proceed / go ahead” → ask scope before implementing.

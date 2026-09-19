@@ -7,6 +7,15 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 09-19-2026
+
+### Changed
+
+- **2026-09-19 — ask-don't-assume, enforced at both layers** (from discoverthreejs mis-targeted audit):
+  - `AGENTS.md` Behavioral Core line 1 rewritten: "If unclear, ask once then move" → "Do not assume: if anything is unclear or a named target/reference is not found, **ask and wait for the answer** — never substitute a closest match or proceed on a guess. Ask once, then act on the reply." Root cause: the old wording licensed proceeding without the answer; agent substituted react-bkoi-gl for the user-named discoverthreejs and spent a full audit pass on the wrong target.
+  - `skills/session-audit/SKILL.md` Phase 1: new hard rule — if a user-named target (project/path/session) is absent from the digest (including active-excluded), stop and ask; never audit a closest match or unilaterally choose fetch-inspection. Note: skill dir is the live copy; port the line to the skill source repo on next install.
+  - `audit-reports/2026-09-19T151000Z.md`: directory digest (84 sessions, 1,347K/$0.94 floor) + fetch-only inspection of the still-open discoverthreejs session; marathon-session pattern confirmed there too (pasted book chapters + growing README re-reads).
+
 ## [1.5.0] - 09-15-2026
 
 ### Added

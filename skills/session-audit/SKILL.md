@@ -50,6 +50,8 @@ Rules emitted: `CACHE_TTL_EXPIRY`, `DUP_TOOL_CALL`, `BIG_TOOL_OUTPUT`, `RETRY_ST
 
 ## Phase 1 — Read the aggregate landscape
 
+**If the user names a target (project, path, or session) that is absent from the digest — stop and ask.** Never substitute a closest-match project and proceed; a wrong-target audit wastes an entire run and reports confidently about the wrong code. This includes targets excluded as active: report the exclusion and ask whether to inspect via `fetch`, audit after close, or pick a different target — the user decides, not the auditor.
+
 ```sh
 node <skill-dir>/bin/audit.mjs views
 ```
