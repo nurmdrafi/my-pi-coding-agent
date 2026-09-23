@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - harness-engineer evidence JSON restored to `assets/` — it was staged as renamed but deleted in the worktree (pre-commit review catch); the SKILL.md reference and the "moves" claim above are true again.
 - browser-tools SKILL.md: first-run `npm install` pointed at nonexistent `{baseDir}/scripts/browser-tools` (the path rewrite propagated a stale pre-existing suffix); package.json lives at the skill root — now `cd {baseDir}` + pre-flight on `{baseDir}/node_modules` (`require` from `scripts/` already resolves upward).
 - README stale facts swept + made developer-friendly (badges, skills table): 16→17 skills, `audit`→`fallow-audit`, default model glm-5.2→glm-5.3, thinking default medium→`off`, `models.json` "empty"→defines `glm-5.3-flash`, three `.nvmrc` lines 22→24, auto-invocable set corrected (ponytail + tavily-search; the other 15 manual), dropped nonexistent `prompts/` claim and a future-dated note (2026-12-17).
+- README always-on floor re-anchored ~1.6K→~1.5K tok (post-commit re-measure, chars÷4: AGENTS.md 5,396 c + ponytail 380 + tavily-search 205; the 1.6K figure predated 1.6.0's AGENTS.md growth and 1.6.1's absolute-paths rule).
 - README skills tree: removed stale `youtube-transcript/` entry (skill deleted in 606993a); `└──` connector corrected.
 
 ## [1.6.0] - 09-23-2026

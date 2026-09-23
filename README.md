@@ -4,13 +4,14 @@
 [![Node](https://img.shields.io/badge/node_%E2%89%A522_%C2%B7_nvmrc_24-339933?logo=nodedotjs&logoColor=white)](#portability-contract)
 [![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555)](#portability-contract)
 [![skills](https://img.shields.io/badge/skills-17-2563eb)](#skills)
-[![always-on floor](https://img.shields.io/badge/always--on_floor_%7E1.6K_tok-f97316)](#always-on-token-budget-measure-this)
+[![always-on floor](https://img.shields.io/badge/always--on_floor_%7E1.5K_tok-f97316)](#always-on-token-budget-measure-this)
 
 Personal [pi coding agent](https://github.com/earendil-works/pi-coding-agent) harness — a
 single portable `~/.pi/agent/` directory, synced via this git repo between machines.
 
 **What you get:** a lean always-on behavioral core (AGENTS.md), 17 progressive-disclosure
-skills, and an audit methodology that keeps the permanent token floor ~1.6K tokens.
+skills, and an audit methodology that keeps the permanent token floor ~1.5K tokens
+(measured 2026-09-23: AGENTS.md 5,396 c + 2 model-visible descriptions 585 c ÷ 4).
 No env vars, no absolute paths — clone anywhere on macOS/Linux.
 
 ## Quick start (new machine)
