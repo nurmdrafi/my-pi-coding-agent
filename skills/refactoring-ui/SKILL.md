@@ -20,6 +20,22 @@ Audit-first system for **fixing existing UIs**. Sibling of `frontend-design` (gr
 - Do NOT run a production build to verify style-only changes in a dev-server project — HMR shows it live. Build only when imports/deps changed.
 - After ANY scripted/regex edit to JSX, parse every touched file (esbuild --loader:.jsx) before declaring success. A regex count check is NOT verification. Prefer `edit` tool over ad-hoc python replace for JSX blocks — string replace on JSX nests/duplicates tags silently.
 
+## 0b. Logic-in-UI hard rules (from ollama-review bot hits, 2026-09 audit)
+Apply whenever the "polish" touches data flow, not just styles:
+- Fetch-on-selection gets a staleness guard (cancelled flag / compare requested
+  id) AND a `.catch` that clears the previous entity's data — a late or failed
+  response must never leave old data savable against a new selection.
+- Clearing/resetting state: enumerate every derived field (grep its consumers).
+  Bot twice caught survivors: `polygonData` alive after "Clear Polygon";
+  villages list alive after union change.
+- Form pre-filled from row 1 + `values.x ?? o.x` fallback = dead fallback; bulk
+  saves then apply row 1's value to every row. Open fields empty or track
+  touched fields.
+- Lazy tab panes drop `setFieldsValue` made before mount (rc-tabs) —
+  `forceRender: true` or prefill on tab activation.
+- Conditional columns/panels: verify the DEFAULT state (bot caught the actions
+  panel at `span=0` unless the left nav was collapsed).
+
 ## Scoring
 Rate the UI 0–10 on the principles below. State the score and the specific fixes to reach 10.
 

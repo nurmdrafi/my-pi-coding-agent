@@ -22,6 +22,17 @@ Before writing any UI, determine whether you are **extending** an existing desig
 
 **FORBIDDEN in an existing codebase (unless the user explicitly asks for a redesign):** introducing new fonts, a new color palette, a new CSS/styled system, a parallel component library, "bold/unforgettable" deviations, or decorative flourishes absent from siblings. "Match existing pages' patterns" is not aspirational — it is the hard requirement.
 
+**Logic guards when the new UI mutates data (bot-hit classes, 2026-09):**
+- Mutating routes/admin panels: permission gating wired from day one.
+- Fetch-on-selection effects: staleness guard + `.catch` + clear the list while
+  refetching (out-of-order responses must not repaint the old entity's data).
+- Bulk-edit forms: open empty or track touched fields — a pre-filled field
+  makes every `values.x ?? o.x` fallback dead code.
+- Prefill into lazy tab panes (rc-tabs): `forceRender: true` or fill on
+  activation, else the first `setFieldsValue` is silently dropped.
+- Conditional visibility: check the polarity and the DEFAULT state of every
+  span/collapse condition before shipping.
+
 ## Stack Adaptation (part of the Pattern Audit)
 
 Before designing, detect the project's UI stack from `package.json` and existing components, and express the design through that stack's idioms — don't impose a foreign style system:

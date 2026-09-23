@@ -284,3 +284,24 @@ single-agent); compaction events counted as amplifier; timestamps normalized
 (ISO strings in new transcripts, epoch-ms ints in old). Manual invocation
 (`/skill:session-audit`) per 2026-09-02 policy. Desc 300 chars (~75 tok).
 Validator: PASS.
+
+## 2026-09-23 — pre-push-review added (COUNT 17 → 18, manual)
+
+Source: 7-day audit of `ollama-review` issues from barikoi/code-review@v1
+(11 issues / 17 findings, all MEDIUM, 4 repos). Checklist distilled from the
+bot's prompt.md plus observed failure clusters: ~60% async/stale-state
+lifecycle, 7/17 fix-induced regressions (one block took 5 consecutive fix
+pushes). Manual invocation per user note ("I will trigger PR review manually
+when needed") — disable-model-invocation: true, zero permanent-prefix cost.
+Desc 299 chars. Validator: PASS.
+
+## 2026-09-23 — audit lessons distributed to dev skills (bodies only)
+
+pre-push-review gained §0 auto-sync: fetches barikoi/code-review prompt.md
+per invocation (local clone → gh api raw → offline fallback); fetched prompt
+is authoritative over the embedded empirical checklist. Dev skills updated
+body-only (zero prefix delta): systematic-debugging (Phase 4 adjacent-path
+check), refactoring-ui (§0b logic-in-UI rules), frontend-design (mutating-UI
+logic guards), map-integration (§5.5–5.6 polygon-sync + geometry-load
+guards). playwright-tester already covered CI/headless — skipped.
+Descriptions byte-stable; validator re-run: PASS.

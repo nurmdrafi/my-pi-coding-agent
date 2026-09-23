@@ -188,6 +188,13 @@ You MUST complete each phase before proceeding to the next.
    - No other tests broken?
    - Issue actually resolved?
    - Use the `superpowers:verification-before-completion` skill before claiming success
+   - **Adjacent-path check** (bot evidence 2026-09: 7/17 review findings were
+     regressions introduced by the fix itself — one block took 5 consecutive
+     fix pushes): enumerate every other path the touched guard/effect/state
+     participates in and verify each still behaves. A guard that closes the
+     reported hole must neither skip a legitimate run nor fire when it should
+     stay silent; re-entered blocks must not stack handlers/listeners
+     (remove-then-add or a flag the right event resets).
 
 4. **If Fix Doesn't Work**
    - STOP

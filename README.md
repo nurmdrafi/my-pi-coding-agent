@@ -51,6 +51,8 @@ No env vars; default path only.
 │   ├── map-integration/      # react-bkoi-gl library dev + map integration work
 │   ├── harness-engineer/     # meta: audit/improve this harness
 │   ├── ponytail-review/      # over-engineering review format (sole carrier)
+│   ├── pre-push-review/      # /skill:pre-push-review — CI-bot-parity correctness
+│   │                         # review of the diff before commit+push (manual)
 │   ├── frontend-design/      # new UI from scratch
 │   ├── refactoring-ui/       # fix/polish existing UI
 │   ├── brainstorming/

@@ -7,6 +7,27 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] - 09-23-2026
+
+### Changed
+
+- **2026-09-23 — AGENTS.md Behavioral Core: global security rule** (user decision after 7-day bot audit):
+  - New line: "Security is build-time, not review-time: mutating routes/actions carry auth/permission checks when first written, secrets stay server-side, and guard/effect fixes re-check the adjacent paths they silenced or unblocked."
+  - Source: audit showed permission gating + fix-induced regressions as cross-domain classes (admin #66-6 ungated mutating route; 7/17 findings fix-induced). Supersedes the earlier skip recommendation; rest of audit lessons stay skill-local.
+  - `Measured:` AGENTS.md 4,916 → 5,137 B (+221 B, ~+55 tok/turn); portability 0 hits; prefix cache invalidated — fresh session required.
+  - Same decision thread: pre-push-review §2.7 expanded from 2 lines to the full security enumeration (route-level authz, object-level/IDOR, input validation at trust boundaries, output/log exposure, CI posture) — zero prefix cost; AGENTS.md stays stance-only by design.
+
+## [1.5.2] - 09-23-2026
+
+### Added
+
+- **2026-09-23 — pre-push-review skill: local mirror of the CI push-review bot** (from 7-day session + `ollama-review` issue audit):
+  - Evidence: 11 issues / 17 findings (all MEDIUM) filed 2026-09-16..22 by `barikoi/code-review@v1` across barikoi-admin-nextjs, bkoi-gl-js, dhaka-express-admin, dropx-admin. ~60% async/stale-state lifecycle; 7/17 were regressions introduced by pushed fixes to earlier findings (dhaka-express-admin edit-polygon block: 5 consecutive fix pushes). All 27 Barikoi sessions committed+pushed directly — review fired only post-push.
+  - `skills/pre-push-review/SKILL.md`: manual invocation only (`/skill:pre-push-review`, user preference), checklist ordered by observed bot-hit frequency, CI-parity severity + finding format, mandatory fix-loop re-review of fix diffs.
+  - **Auto-sync with the bot (same day):** skill §0 fetches live criteria from `barikoi/code-review` on every invocation (local clone → `gh api` raw fallback → offline proceeds on embedded checklist). Fetched prompt is authoritative; org-side rule changes apply without a skill edit.
+  - **Audit lessons pushed into dev skills (body-only, descriptions untouched → prefix byte-stable):** `systematic-debugging` Phase 4 adjacent-path check (7/17 findings were fix-induced); `refactoring-ui` §0b logic-in-UI hard rules (staleness/.catch, reset completeness, pre-fill-vs-fallback, lazy-tab prefill, default polarity); `frontend-design` logic guards for mutating UIs (permission gating day one + same set); `map-integration` §5.5–5.6 draw/polygon sync upsert + geometry load guards (10/17 findings were this domain). `playwright-tester` already covered CI/headless — no edit.
+  - `Measured:` AGENTS.md 4,916 B unchanged; skills 17→18; model-visible desc catalog unchanged (manual skill = zero prefix bytes); portability quick-check 0 hits before and after.
+
 ## [1.5.1] - 09-19-2026
 
 ### Changed

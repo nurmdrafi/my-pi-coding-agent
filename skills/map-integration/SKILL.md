@@ -68,6 +68,8 @@ const DeckGLOverlay = (props: MapboxOverlayProps) => {
 2. **mapbox-gl v3 transitive drift** — pin `mapbox-gl@1.13.3` as explicit dep or alias to maplibre.
 3. **flyTo with invalid coords** — validate lat/lon before dispatch + `flyTo({ center: [lon, lat] })`; note **[lng, lat] order everywhere**.
 4. **Geolocation** — use a shared validation helper for device position (auto-locate and current-location button share it); never trust raw `position.coords`.
+5. **Draw/edit polygon sync (MapboxDraw)** — 2026-09 bot chain: 5 consecutive fix pushes on one sync block. The sync must be an idempotent upsert (`_syncEditPolygon`) triggered by ALL of: draw instance appearing, `drawObj` changing, edit-mode enable transition. Never a bare one-shot flag (kills later drawObj updates → stale polygon on next zone edit), never presence-check-only (re-adds after user deletes), never on-every-update (stacks `draw.update` listeners — remove-then-add or its own one-shot).
+6. **Geometry load for the selected entity** — staleness guard (cancelled flag / compare requested id) AND a `.catch` clearing the previous entity's geometry: a late OR failed load must never leave entity A's polygon savable against entity B. Reset paths (clear polygon, hierarchy change) clear EVERYTHING derived: drawObj, geoJsonData, polygonData, centerPoint, loadedId.
 
 ## 6. Camera idioms
 
@@ -111,3 +113,4 @@ Read the project's `.env*` for actual names — don't invent. Common shapes: map
 4. Real-time: batch messages, LRU-cap markers, guard subscriptions, cleanup on unmount.
 5. Shared map state in a store slice — map components subscribe, don't own.
 6. react-bkoi-gl library work: framework apps install the fresh packed tarball (never link); every README claim covered by an e2e case; engine majors = silent render failures — run the README matrix first.
+7. Draw/edit flows: idempotent polygon-sync upsert covering all three triggers (§5.5); guarded geometry loads with failure-path clearing (§5.6); resets touch every derived field.

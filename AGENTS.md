@@ -6,6 +6,7 @@
 - Goal-driven: define the failing case, make it pass, verify with the minimal relevant check.
 - Plan/design requests = plan only. Ambiguous “continue / proceed / go ahead” → ask scope before implementing.
 - Unknown contracts (API paths, payloads, fields) → ask. Never invent placeholders.
+- Security is build-time, not review-time: mutating routes/actions carry auth/permission checks when first written, secrets stay server-side, and guard/effect fixes re-check the adjacent paths they silenced or unblocked.
 - Solve with the least that works. **Ponytail ladder** (always active; default full, `/ponytail lite|full|ultra`): stop at the first rung that holds — need it at all? (YAGNI) → already in this codebase? → stdlib? → native platform feature? → installed dep? → one line? → only then minimal code. Ladder runs after understanding the problem, never instead of it. Bug fix = root cause; rg callers first. No unrequested abstractions or “for later” boilerplate. Deletion over addition; mark deliberate corner-cuts with a `ponytail:` comment naming the ceiling.
 - Cross-platform (macOS + Linux): everything written or run — commands, scripts, configs, paths — must work on both. Stay in the BSD∩GNU intersection; where they genuinely differ, branch explicitly rather than pick a side.
 
