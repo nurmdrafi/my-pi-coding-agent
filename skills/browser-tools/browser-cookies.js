@@ -2,6 +2,10 @@
 
 import puppeteer from "puppeteer-core";
 
+const reveal = process.argv.includes("--reveal");
+// Mask by default: cookie values (session tokens) land in the agent transcript.
+const mask = (v) => (v.length <= 8 ? "•".repeat(v.length) : "••••" + v.slice(-4));
+
 const b = await Promise.race([
 	puppeteer.connect({
 		browserURL: "http://localhost:9222",
@@ -24,7 +28,7 @@ if (!p) {
 const cookies = await p.cookies();
 
 for (const cookie of cookies) {
-	console.log(`${cookie.name}: ${cookie.value}`);
+	console.log(`${cookie.name}: ${reveal ? cookie.value : mask(cookie.value)}`);
 	console.log(`  domain: ${cookie.domain}`);
 	console.log(`  path: ${cookie.path}`);
 	console.log(`  httpOnly: ${cookie.httpOnly}`);

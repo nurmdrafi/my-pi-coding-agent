@@ -22,7 +22,8 @@ cp "$AGENT_DIR/AGENTS.md" "$AGENT_DIR/auth.json" "$AGENT_DIR/settings.json" \
 for s in "${SKILLS[@]}"; do
   [ -d "$AGENT_DIR/skills/$s" ] || { echo "unknown skill: $s" >&2; exit 1; }
   cp -r "$AGENT_DIR/skills/$s" "$DEST_AGENT/skills/$s"
-  sed -i '/^disable-model-invocation:/d' "$DEST_AGENT/skills/$s/SKILL.md"
+  # portable in-place strip (bare `sed -i` breaks on BSD/macOS sed)
+  perl -ni -e 'print unless /^disable-model-invocation:/' "$DEST_AGENT/skills/$s/SKILL.md"
 done
 
 [ -d "$AGENT_DIR/tavily" ] && ln -sfn "$AGENT_DIR/tavily" "$DEST/.tavly"

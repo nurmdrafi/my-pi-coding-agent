@@ -109,9 +109,12 @@ if [[ -f "$PID_FILE" ]]; then
   rm -f "$PID_FILE" "$SERVER_ID_FILE" "${STATE_DIR}/server.log"
   mark_stopped "stop-server.sh"
 
-  # Only delete ephemeral /tmp directories
-  if [[ "$SESSION_DIR" == /tmp/* ]]; then
-    rm -rf "$SESSION_DIR"
+  # Only delete ephemeral /tmp brainstorm dirs — canonicalized (logical pwd,
+  # so macOS /tmp symlink is kept) so a caller-supplied /tmp/../x can't slip
+  # past the prefix check into rm -rf.
+  resolved_session_dir="$(cd "$SESSION_DIR" 2>/dev/null && pwd)"
+  if [[ "$resolved_session_dir" == /tmp/brainstorm-* ]]; then
+    rm -rf "$resolved_session_dir"
   fi
 
   echo '{"status": "stopped"}'

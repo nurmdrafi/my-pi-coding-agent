@@ -22,6 +22,7 @@ let res;
 try {
   res = await fetch(url, {
     redirect: "follow",
+    signal: AbortSignal.timeout(30_000),
     headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml,*/*" },
   });
 } catch (e) {

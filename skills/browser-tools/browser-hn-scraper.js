@@ -8,6 +8,7 @@
  */
 
 import * as cheerio from 'cheerio';
+import { pathToFileURL } from 'node:url';
 
 /**
  * Scrapes Hacker News front page
@@ -84,7 +85,7 @@ async function scrapeHackerNews(limit = 30) {
 }
 
 // CLI interface
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
   let limit = 30;
 

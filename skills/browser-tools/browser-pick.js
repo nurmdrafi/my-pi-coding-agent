@@ -36,6 +36,8 @@ await p.evaluate(() => {
 			if (!message) {
 				throw new Error("pick() requires a message parameter");
 			}
+			// Cancel a pick abandoned by a killed script so it can't hang later calls.
+			if (window.__pickCancel) window.__pickCancel();
 			return new Promise((resolve) => {
 				const selections = [];
 				const selectedElements = new Set();
@@ -69,7 +71,14 @@ await p.evaluate(() => {
 					selectedElements.forEach((el) => {
 						el.style.outline = "";
 					});
+					window.__pickCancel = null;
 				};
+
+				const done = (value) => {
+					cleanup();
+					resolve(value);
+				};
+				window.__pickCancel = () => done(null);
 
 				const onMove = (e) => {
 					const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -116,21 +125,18 @@ await p.evaluate(() => {
 							updateBanner();
 						}
 					} else {
-						cleanup();
 						const info = buildElementInfo(el);
-						resolve(selections.length > 0 ? selections : info);
+						done(selections.length > 0 ? selections : info);
 					}
 				};
 
 				const onKey = (e) => {
 					if (e.key === "Escape") {
 						e.preventDefault();
-						cleanup();
-						resolve(null);
+						done(null);
 					} else if (e.key === "Enter" && selections.length > 0) {
 						e.preventDefault();
-						cleanup();
-						resolve(selections);
+						done(selections);
 					}
 				};
 
