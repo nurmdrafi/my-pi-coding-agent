@@ -1,6 +1,6 @@
 ---
 name: map-integration
-description: "ANY map work: react-bkoi-gl/bkoi-gl/maplibre-gl setup, deck.gl overlays, turf geometry, draw polygons/polylines, camera flyTo/fitBounds, geolocation, MQTT real-time plotting, GPX routes, snap-to-road (OSRM), boundary layers, map bugs (style-load, marker drift). Detects stack from package.json; reuses existing idioms."
+description: "ANY map work: maplibre-gl/mapbox-gl (and react-map-gl-family wrappers), deck.gl overlays, turf geometry, draw polygons/polylines, camera flyTo/fitBounds, geolocation, MQTT real-time plotting, GPX routes, snap-to-road (OSRM), boundary layers, map bugs (style-load, marker drift). Detects stack from package.json; reuses existing idioms."
 disable-model-invocation: true
 ---
 
@@ -10,37 +10,34 @@ disable-model-invocation: true
 
 Check the project's `package.json`, bundler aliases, and existing map components before writing anything:
 
-- `react-bkoi-gl` (react-map-gl API over maplibre-gl) — Barikoi maps
+- `react-map-gl`-family wrappers (react-map-gl, or vendor wrappers over maplibre-gl) — same API surface
 - `maplibre-gl` — open base; some projects pin `mapbox-gl@1.13.3` or alias `mapbox-gl → maplibre-gl` in bundler config
 - `@deck.gl/*` (overlays), `@turf/turf` (geometry), `@mapbox/mapbox-gl-draw` (editing), `mqtt` / `socket.io-client` (real-time), polyline utilities
 
 Do not let `mapbox-gl` drift to v3 via transitive deps — v3 demands a Mapbox token and breaks custom/self-hosted styles.
 
-## 2. Developing react-bkoi-gl itself (v3)
+## 2. Developing a map wrapper library itself
 
-- Engine: `maplibre-gl` v6 (migrated 5.24.0 → 6.6.0). Engine majors break as **silent render failures** (worker resolution), not type errors — consult the maplibre v5→v6 migration guide, then run the README-matrix e2e first for the fastest contract-breakage signal.
-- **Zero-config worker is the v3 contract**: the branded worker ships at `dist/bkoi-map-worker.mjs`, exported as `react-bkoi-gl/worker`, auto-registered before the first `<Map>` mounts — bundler-emitted asset (webpack 5 / CRA / Next.js, Turbopack + webpack modes) with a same-origin Blob-worker fallback (Vite dev, esbuild/Rollup). `setWorkerUrl` / `workerUrl` overrides stay respected. Brand rule: consumers get **zero additional config** — the library ships the complete solution.
-- Consumers never import `maplibre-gl` directly (transitive deps don't resolve under pnpm strict layout or yarn PnP): re-export engine utils (`setWorkerUrl`, `getWorkerUrl`, `getVersion`, `GPUInitializationError`).
-- Package surface: `exports` = `.` (import/require + types), `./styles` (css), `./worker`; peer deps `react`/`react-dom` `>=18` — React 18 **and** 19 both tested.
-- **Framework suite** (`tests/framework/`): real repro apps — Vite 6/7, Next.js 15 (webpack + Turbopack), Next.js 16, CRA 5 — each installs the **packed tarball, never link**. Headless runs assert actual rendering: Worker constructed + HTTP 200, engine `load` + `idle`, zero uncaught errors — across React 18/19 and npm/pnpm/yarn/bun. Headed review: `npm run test:framework:review`, sharing the e2e review HUD (bottom-center, 10s progress bar). Snapshot-based prepare + sha-keyed tarball install keep reruns instant and never stale.
-- Docs split: consumer README = install, quick start, API, framework setup matrix, v2→v3 upgrade checklist only; bundler internals, CSP, self-hosting, troubleshooting live in `docs/framework-setup.md`; per-framework deep docs in `docs/frameworks/<name>.md` (e.g. `cra.md`).
-- Wrapper bug guards (fixed once — keep the pattern): strip wrapper-only props (`position`, `style`) before constructing engine controls — `TerrainControl` leaked them and `setTerrain` validation silently rejected every toggle. `<Marker>` with a popup-only child keeps the default pin.
-- Test layers: unit (Vitest 4) → browser mode (`tests/browser/`, real engine in headless Chromium) → e2e vs built `dist/` (`tests/e2e/`) → framework suite; `e2e:coverage` keeps README-claim → case → spec parity.
+- Engine majors (e.g. maplibre v5→v6) break as **silent render failures** (worker resolution), not type errors — consult the engine's migration guide, then run the README-matrix e2e first for the fastest contract-breakage signal.
+- Consumers never import the engine directly (transitive deps don't resolve under pnpm strict layout or yarn PnP): re-export engine utils (`setWorkerUrl`, `getWorkerUrl`, `getVersion`, `GPUInitializationError`) from the wrapper.
+- Package surface: `exports` = `.` (import/require + types), `./styles` (css), `./worker` (if shipped); peer deps `react`/`react-dom` across all supported React majors.
+- Framework suite: real repro apps (Vite, Next.js in both bundler modes, CRA…) each installing the **packed tarball, never link**; headless runs assert actual rendering (engine `load` + `idle`, zero uncaught errors). See the sdk-development skill for the full library pipeline (test pyramid, pack smoke, docs-as-contract).
+- Wrapper bug guards (fixed once — keep the pattern): strip wrapper-only props (`position`, `style`) before constructing engine controls — a leaked wrapper prop makes engine validation silently reject every toggle. `<Marker>` with a popup-only child keeps the default pin.
 
 ## 3. Base map
 
-- `react-bkoi-gl` API mirrors `react-map-gl`: `<Map>`, `useMap()`, `useControl()`, `MapRef`, `Source`/`Layer`.
+- `react-map-gl`-family API: `<Map>`, `useMap()`, `useControl()`, `MapRef`, `Source`/`Layer`.
 - Auth/config via env vars: map style token, routing API key (separate keys for separate services). Check the project's `.env*` for the naming convention in use; never introduce a provider token the project doesn't already use.
 
 ## 4. deck.gl overlays (established pattern)
 
-From `components/common/map/RouteViewer.tsx` / `OverlayLayers.tsx`:
+Typical overlay component (search the repo for an existing one and match its shape):
 
 ```tsx
 import { MapboxOverlay, MapboxOverlayProps } from '@deck.gl/mapbox'
 import { IconLayer, PathLayer, ScatterplotLayer } from '@deck.gl/layers/typed'
 import { PathStyleExtension } from '@deck.gl/extensions/typed'
-import { useControl } from 'react-bkoi-gl'
+import { useControl } from 'react-map-gl'
 
 const DeckGLOverlay = (props: MapboxOverlayProps) => {
   const overlay = useControl(() => new MapboxOverlay(props))
@@ -50,7 +47,7 @@ const DeckGLOverlay = (props: MapboxOverlayProps) => {
 ```
 
 - Paths: `PathLayer` with `PathStyleExtension({ dashed })`. Markers: `IconLayer` / `ScatterplotLayer`.
-- Existing layers to reuse before writing new ones (e.g. outlet/marker/trace/boundary layers under `components/common/Map/Layers/`) — search for them first.
+- Existing layers to reuse before writing new ones (marker/trace/boundary layers) — search the repo for its layer components first.
 
 ## 5. Known map bugs / pitfalls (fixed before — keep the guards)
 
@@ -68,7 +65,7 @@ const DeckGLOverlay = (props: MapboxOverlayProps) => {
 2. **mapbox-gl v3 transitive drift** — pin `mapbox-gl@1.13.3` as explicit dep or alias to maplibre.
 3. **flyTo with invalid coords** — validate lat/lon before dispatch + `flyTo({ center: [lon, lat] })`; note **[lng, lat] order everywhere**.
 4. **Geolocation** — use a shared validation helper for device position (auto-locate and current-location button share it); never trust raw `position.coords`.
-5. **Draw/edit polygon sync (MapboxDraw)** — 2026-09 bot chain: 5 consecutive fix pushes on one sync block. The sync must be an idempotent upsert (`_syncEditPolygon`) triggered by ALL of: draw instance appearing, `drawObj` changing, edit-mode enable transition. Never a bare one-shot flag (kills later drawObj updates → stale polygon on next zone edit), never presence-check-only (re-adds after user deletes), never on-every-update (stacks `draw.update` listeners — remove-then-add or its own one-shot).
+5. **Draw/edit polygon sync (MapboxDraw)** — the sync must be an idempotent upsert (`_syncEditPolygon`) triggered by ALL of: draw instance appearing, `drawObj` changing, edit-mode enable transition. Never a bare one-shot flag (kills later drawObj updates → stale polygon on next zone edit), never presence-check-only (re-adds after user deletes), never on-every-update (stacks `draw.update` listeners — remove-then-add or its own one-shot).
 6. **Geometry load for the selected entity** — staleness guard (cancelled flag / compare requested id) AND a `.catch` clearing the previous entity's geometry: a late OR failed load must never leave entity A's polygon savable against entity B. Reset paths (clear polygon, hierarchy change) clear EVERYTHING derived: drawObj, geoJsonData, polygonData, centerPoint, loadedId.
 
 ## 6. Camera idioms
@@ -112,5 +109,5 @@ Read the project's `.env*` for actual names — don't invent. Common shapes: map
 3. Guard `queryRenderedFeatures` / any style-dependent call.
 4. Real-time: batch messages, LRU-cap markers, guard subscriptions, cleanup on unmount.
 5. Shared map state in a store slice — map components subscribe, don't own.
-6. react-bkoi-gl library work: framework apps install the fresh packed tarball (never link); every README claim covered by an e2e case; engine majors = silent render failures — run the README matrix first.
+6. Map wrapper library work: framework apps install the fresh packed tarball (never link); every README claim covered by an e2e case; engine majors = silent render failures — run the README matrix first.
 7. Draw/edit flows: idempotent polygon-sync upsert covering all three triggers (§5.5); guarded geometry loads with failure-path clearing (§5.6); resets touch every derived field.

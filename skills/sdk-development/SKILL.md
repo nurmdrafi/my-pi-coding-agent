@@ -43,7 +43,7 @@ specifiers, or read the bundler config.
 ## Testing
 
 - **SDKs: real API, real responses.** No mocks, no smoke-only tests. Required env
-  (e.g. `BARIKOI_API_KEY`) read properly — tests fail loudly when missing, never skip silently.
+  (e.g. `API_KEY`) read properly — tests fail loudly when missing, never skip silently.
 - **Native test runners** — `node:test`, `go test`. No heavy test-framework dependency.
 - Table-driven per endpoint/method: happy path, each validation error, non-2xx and timeout
   mapped to SDK error types distinguishable via `errors.As` / typed catches.
@@ -104,9 +104,8 @@ specifiers, or read the bundler config.
   precisely (not `.env*`).
 - Cases use the app's real env mechanism — no invented `window.__*__` globals;
   a case fallback once referenced an undefined one and crashed.
-- **Sibling-reference rule (bkoi-gl-js postmortem 2026-09-16)**: when the same
-  org ships a sibling wrapper over the same engine (react-bkoi-gl ⇄ bkoi-gl),
-  the sibling's shipped components/CSS ARE the acceptance criteria for visual
+- **Sibling-reference rule**: when the same org ships a sibling wrapper over
+  the same engine, the sibling's shipped components/CSS ARE the acceptance criteria for visual
   contracts (attribution content & dedupe, logo asset/size/margins, control
   stacking). Port them verbatim — a novel mechanism (e.g. `customAttribution`
   where the style also carries source attributions → duplicate copyright) ships

@@ -22,7 +22,7 @@ Before writing any UI, determine whether you are **extending** an existing desig
 
 **FORBIDDEN in an existing codebase (unless the user explicitly asks for a redesign):** introducing new fonts, a new color palette, a new CSS/styled system, a parallel component library, "bold/unforgettable" deviations, or decorative flourishes absent from siblings. "Match existing pages' patterns" is not aspirational — it is the hard requirement.
 
-**Logic guards when the new UI mutates data (bot-hit classes, 2026-09):**
+**Logic guards when the new UI mutates data:**
 - Mutating routes/admin panels: permission gating wired from day one.
 - Fetch-on-selection effects: staleness guard + `.catch` + clear the list while
   refetching (out-of-order responses must not repaint the old entity's data).

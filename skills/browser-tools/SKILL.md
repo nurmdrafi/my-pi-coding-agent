@@ -148,16 +148,15 @@ Navigate to a URL and extract readable content as markdown. Uses Mozilla Readabi
 When a Playwright or Vitest-browser spec fails and the runner log doesn't
 explain it, inspect the live case instead of guessing from stack traces.
 **Go live after ONE unexplained failure** — repeated log re-reads are the
-anti-pattern: in the source session, hours of log analysis were settled in
-minutes of live replay, which surfaced real library bugs the logs never
-showed (crashing documented patterns, event-payload changes).
+anti-pattern: live replay routinely settles in minutes what hours of log
+analysis couldn't, surfacing real library bugs the logs never show (crashing
+documented patterns, event-payload changes).
 
 **Occluded-window freeze — check the harness before rerunning.** Chromium
 freezes rendering (rAF + compositing) for occluded/backgrounded windows. If a
 headed visual/e2e step reports "nothing happened", suspect this first:
 verify by bringing the window to front or capturing a screenshot before
-rerunning the suite — blind reruns reproduce the same freeze (source session:
-same symptom list re-sent ~4× over ~45 min before the freeze was diagnosed).
+rerunning the suite — blind reruns reproduce the same freeze.
 
 0. **Consume runner artifacts first**: the failure screenshot/trace/report and
    saved run logs usually answer the question with zero execution (see
@@ -170,7 +169,7 @@ same symptom list re-sent ~4× over ~45 min before the freeze was diagnosed).
    below — idempotent, survives this tab), then run the standard recon eval
    (Efficiency Guide) as the baseline.
 4. Replay the spec's steps with `browser-eval.js` IIFEs — query the DOM, read
-   app state (`window.__MAP__`, logs), compare against what the spec asserts.
+   app state (any global the app exposes, e.g. `window.__APP__`), compare against what the spec asserts.
 5. Fix the spec or the app, then re-run the runner headless to confirm.
 6. **A live window that shows nothing moving is usually occlusion, not a bug**:
    Chromium suspends rAF/compositing for backgrounded or covered windows, so
@@ -344,7 +343,7 @@ done
 (async () => {
   const t0 = Date.now();
   while (Date.now() - t0 < 10000) {
-    const m = window.__APP__ || window.__MAP__;
+    const m = window.__APP__;
     if (m && m.isReady && m.isReady())
       return JSON.stringify({ready: true, ms: Date.now() - t0});
     await new Promise(r => setTimeout(r, 200));

@@ -20,13 +20,11 @@ curl -fsSL https://cli.tavily.com/install.sh | bash && tvly login
 
 Do not skip this step or fall back to other tools.
 
-See [tavily-cli](../tavily-cli/SKILL.md) for alternative install methods and auth options.
-
 ## When to use
 
 - You have a specific URL and want its content
 - You need text from JavaScript-rendered pages
-- Step 2 in the [workflow](../tavily-cli/SKILL.md): search → **extract** → map → crawl → research
+- Step 2 of the workflow: search → **extract** → map → crawl → research
 
 ## Quick start
 
@@ -78,4 +76,3 @@ tvly extract "https://example.com/article" -o article.md
 ## See also
 
 - [tavily-search](../tavily-search/SKILL.md) — find pages when you don't have a URL
-- [tavily-crawl](../tavily-crawl/SKILL.md) — extract content from many pages on a site

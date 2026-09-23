@@ -175,7 +175,6 @@ You MUST complete each phase before proceeding to the next.
    - Automated test if possible
    - One-off test script if no framework
    - MUST have before fixing
-   - Use the `superpowers:test-driven-development` skill for writing proper failing tests
 
 2. **Implement Single Fix**
    - Address the root cause identified
@@ -187,10 +186,8 @@ You MUST complete each phase before proceeding to the next.
    - Test passes now?
    - No other tests broken?
    - Issue actually resolved?
-   - Use the `superpowers:verification-before-completion` skill before claiming success
-   - **Adjacent-path check** (bot evidence 2026-09: 7/17 review findings were
-     regressions introduced by the fix itself — one block took 5 consecutive
-     fix pushes): enumerate every other path the touched guard/effect/state
+   - **Adjacent-path check** (fixes themselves are the most common source of
+     regressions): enumerate every other path the touched guard/effect/state
      participates in and verify each still behaves. A guard that closes the
      reported hole must neither skip a legitimate run nor fire when it should
      stay silent; re-entered blocks must not stack handlers/listeners

@@ -13,7 +13,7 @@ disable-model-invocation: true
 - One-off live inspection / screenshots / DOM poking → `browser-tools`. Reproducible
   automated tests → here. Complements, never duplicates.
 
-## Acceptance & artifacts (bkoi-gl-js postmortem 2026-09-16)
+## Acceptance & artifacts
 
 1. **Style-load ≠ a rendered map.** `isStyleLoaded()` + logo-visible + no-page-errors
    can ALL pass while the canvas is white (tiles never painted). A render claim
@@ -22,9 +22,8 @@ disable-model-invocation: true
    rendering — say so, don't report "all green".
 2. **Port the sibling repo's branding patterns verbatim before authoring.** When
    an upstream/sibling library already solved the exact UI contract (attribution
-   dedupe via MutationObserver content-replace, logo SVG at fixed 88×23 with
-   `margin:0 0 -4px -4px`, always-expanded attribution, logo anchor position vs
-   stacked controls), copy that implementation — inventing a different mechanism
+   dedupe via MutationObserver content-replace, logo size/margins, attribution
+   expansion, control stacking), copy that implementation — inventing a different mechanism
    (e.g. `customAttribution` where the style also carries source attributions)
    ships duplicate copyright text and size/position mismatches on first headed
    review. Read the sibling's control components and CSS before writing a line.
@@ -78,8 +77,8 @@ disable-model-invocation: true
 4. **Recon first, full suite second**: run the single failing spec before any full-suite
    run; long suites via `nohup … > /tmp/e2e.log 2>&1 &` + poll — a full suite can outlive
    a tool call and get aborted mid-run.
-5. **"Nothing happened" = diagnose the window, not the app** (2026-09-15, react-bkoi-gl:
-   ~45 min of blind `e2e:review` reruns): Chromium freezes rendering (rAF + compositing)
+5. **"Nothing happened" = diagnose the window, not the app** — blind reruns of a
+   headed suite are the failure mode: Chromium freezes rendering (rAF + compositing)
    for occluded/backgrounded windows, so map/canvas/animation steps silently no-op in a
    headed browser that isn't visible. Before rerunning anything, capture a screenshot
    or re-run the one step headless — if headless works, the app is fine and the window
@@ -209,7 +208,8 @@ two rounds of failed synthetic probing were once answered by one source grep.
 - **Per-test hold:** wrap the `page` fixture itself (`page: async ({ page: basePage }, use, testInfo) => { await use(basePage); await hold(basePage, testInfo) }`) — lazy (instantiates a page only when the test depends on it) and applies in every spec file. Module-level hooks in a shared fixture module (`test.afterEach`) attach only to the FIRST importing file; an auto fixture instantiates the default page even for tests using `{ browser }` (stray about:blank window). Guard with `project.use.headless === false`, `page.isClosed()`, `page.url() !== 'about:blank'` — and wrap the hold body in try/catch: it is cosmetic, a destroyed execution context must never fail the test.
 - **Geolocation tests:** prefer per-test `test.use({ geolocation, permissions: ['geolocation'] })` + `page.addInitScript` faking the API over `browser.newContext()` — one window, hold applies; a custom context is the usual source of "two windows at once" and a missing hold bar.
 - **Consecutive camera actions** (zoomOut ×2, chained flyTo): wait for camera-idle between them. A click landing mid-ease cancels the animation and re-eases from the intermediate zoom (13 → 11.96 instead of 11) — the assertion fails while the code is correct.
-- **One HUD across every headed suite:** framework-test review and e2e review share the same review chrome (bottom-center pill, timed progress bar) — a per-suite restyle once read to the user as "visual UI does not match". Case transitions must be instant: snapshot/prepare heavy setup once (prebuilt apps, stored state) and reuse the browser across cases — a fresh launch or reinstall per case adds dead seconds after every hold.
+- **One review harness across every headed suite:** shared review chrome — a
+   per-suite restyle reads to the user as "visual UI does not match". Case transitions must be instant: snapshot/prepare heavy setup once (prebuilt apps, stored state) and reuse the browser across cases — a fresh launch or reinstall per case adds dead seconds after every hold.
 - **Occluded/backgrounded windows freeze rendering** — Chromium pauses rAF + compositing for hidden, fully covered, or backgrounded windows. A headed review that "shows nothing" or stalls mid-animation is a harness artifact, not an app bug: verify by bringing the window to front, screenshotting, or headless mode before rerunning — reruns reproduce the same freeze.
 
 - **Fullscreen**: fires `fullscreenchange` at load in headless → assert toggle

@@ -18,13 +18,11 @@ curl -fsSL https://cli.tavily.com/install.sh | bash && tvly login
 
 Do not skip this step or fall back to other tools.
 
-See [tavily-cli](../tavily-cli/SKILL.md) for alternative install methods and auth options.
-
 ## When to use
 
 - You need to find information on any topic
 - You don't have a specific URL yet
-- First step in the [workflow](../tavily-cli/SKILL.md): **search** → extract → map → crawl → research
+- First step of the workflow: **search** → extract → map → crawl → research
 
 ## Quick start
 
@@ -88,4 +86,3 @@ tvly search "react hooks tutorial" --include-raw-content --max-results 3 --json
 ## See also
 
 - [tavily-extract](../tavily-extract/SKILL.md) — extract content from specific URLs
-- [tavily-research](../tavily-research/SKILL.md) — comprehensive multi-source research
