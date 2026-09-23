@@ -1,13 +1,19 @@
 # my-pi-coding-agent
 
+[![pi coding agent](https://img.shields.io/badge/pi-coding_agent-8A2BE2)](https://github.com/earendil-works/pi-coding-agent)
+[![Node](https://img.shields.io/badge/node_%E2%89%A522_%C2%B7_nvmrc_24-339933?logo=nodedotjs&logoColor=white)](#portability-contract)
+[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555)](#portability-contract)
+[![skills](https://img.shields.io/badge/skills-17-2563eb)](#skills)
+[![always-on floor](https://img.shields.io/badge/always--on_floor_%7E1.6K_tok-f97316)](#always-on-token-budget-measure-this)
+
 Personal [pi coding agent](https://github.com/earendil-works/pi-coding-agent) harness — a
 single portable `~/.pi/agent/` directory, synced via this git repo between machines.
 
-**What you get:** a lean always-on behavioral core (AGENTS.md), 16 progressive-disclosure
-skills, prompt templates, and an audit methodology that keeps the permanent token floor
-~1.6K tokens. No env vars, no absolute paths — clone anywhere on macOS/Linux.
+**What you get:** a lean always-on behavioral core (AGENTS.md), 17 progressive-disclosure
+skills, and an audit methodology that keeps the permanent token floor ~1.6K tokens.
+No env vars, no absolute paths — clone anywhere on macOS/Linux.
 
-**Quick start (new machine):**
+## Quick start (new machine)
 
 ```sh
 git clone <repo> ~/.pi/agent
@@ -16,7 +22,7 @@ mv ~/.agents/skills ~/.agents/skills.disabled.$(date +%Y%m%d-%H%M%S) 2>/dev/null
 pi   # first run regenerates bin/, npm/, models-store.json
 ```
 
-Requires Node LTS ≥ 22 (`.nvmrc` pins it). Full details below.
+Requires Node ≥ 22 (`.nvmrc` pins 24, the current LTS). Full details below.
 
 ---
 
@@ -25,7 +31,7 @@ Requires Node LTS ≥ 22 (`.nvmrc` pins it). Full details below.
 Map of this pi harness. Re-read at the start of any harness-engineering session.
 Update when structure, skill set, or always-on budget changes.
 
-Last updated: 2026-09-02
+Last updated: 2026-09-23
 
 ## Portable unit
 
@@ -35,45 +41,62 @@ No env vars; default path only.
 ```
 ~/.pi/agent/
 ├── AGENTS.md                 # ALWAYS-ON behavioral core (keep short & stable)
-├── settings.json             # provider / model / theme / thinking
-├── auth.json                 # keys (zai default + deepseek secondary; both portable)
-├── models.json               # custom providers (empty: zai + deepseek are built-in)
-├── models-store.json         # catalog cache
+├── settings.json             # provider / model / theme / thinking (no secrets)
+├── auth.json                 # keys — gitignored, copied once per machine
+├── models.json               # custom model defs (glm-5.3-flash)
+├── models-store.json         # catalog cache (machine-local, regen)
 │
-├── skills/                   # 2026-09-02 17:48Z: all manual (/skill:name) EXCEPT
-│   │                         # ponytail (always-carried in catalog); bodies stay
-│   │                         # on-demand via read either way
-│   ├── ponytail/             # ALWAYS-CARRIED: intensity modes lite/full/ultra
-│   ├── sdk-development/      # packages: Go/npm/CLI — codegen, pyramid, publish (merged
-│   │                         #  sdk-development-npm into it 2026-08-28)
-│   ├── playwright-tester/    # e2e via CDP-attached Chrome; isolated fallback
-│   ├── browser-tools/        # live DOM via CDP :9222 (deps NOT bundled: npm install)
-│   ├── map-integration/      # react-bkoi-gl library dev + map integration work
-│   ├── harness-engineer/     # meta: audit/improve this harness
-│   ├── ponytail-review/      # over-engineering review format (sole carrier)
-│   ├── pre-push-review/      # /skill:pre-push-review — CI-bot-parity correctness
-│   │                         # review of the diff before commit+push (manual)
-│   ├── frontend-design/      # new UI from scratch
-│   ├── refactoring-ui/       # fix/polish existing UI
-│   ├── brainstorming/
-│   ├── systematic-debugging/
-│   ├── audit/                # dead-code cleanup via static analysis
-│   ├── skill-manager/        # SKILL.md spec + validator (scripts/validate-skill.mjs)
-│   ├── session-audit/        # token/cost waste audit of ~/.pi/agent/sessions
-│   │                         # (L0/L1 scripts + L2/L3 report loop; /skill:session-audit)
-│   ├── tavily-search/        # web research via Tavily CLI (primary research route)
-│   ├── tavily-extract/       # URL → clean markdown via Tavily CLI
-│   └── youtube-transcript/
-│
+├── skills/                   # 17 skills; each: SKILL.md + scripts/ references/ assets/
 ├── README.md                 # this file (incl. portability contract)
-├── CHANGELOG.md      # harness change log, latest-first (newest on top)
+├── CHANGELOG.md              # harness change log, latest-first (newest on top)
 ├── skills-audit.md           # append-only skill-set decisions
-├── .nvmrc
+├── .nvmrc                    # pins 24
 └── .gitignore                # git is the sync; secrets/caches excluded
 
 # NOT BUNDLED (machine-local / auto-regen)
 # bin/  npm/  sessions/  skills/**/node_modules/  *.log
 ```
+
+## Skills
+
+Auto-invocable (the model may load them on match): **ponytail**, **tavily-search**.
+Everything else is manual — invoke with `/skill:<name>`.
+
+| Skill | Purpose | Invocation |
+|---|---|---|
+| ponytail | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder | auto |
+| tavily-search | Web research via Tavily CLI (`tvly search`) — primary research route | auto |
+| brainstorming | Explore genuinely-unclear feature direction; one question at a time | `/skill:brainstorming` |
+| browser-tools | Live DOM via CDP `:9222` — Playwright/e2e only (deps: `npm install` at skill root) | `/skill:browser-tools` |
+| fallow-audit | Dead-code / unused-export / unused-dependency cleanup (fallow, knip, ts-prune, depcheck) | `/skill:fallow-audit` |
+| frontend-design | New web components/pages/apps from scratch (detects the UI stack) | `/skill:frontend-design` |
+| harness-engineer | Meta: audit/improve this harness (budgets, evidence, skill audits) | `/skill:harness-engineer` |
+| map-integration | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw | `/skill:map-integration` |
+| playwright-tester | e2e specs, stress/update-flow runs, bug-hunt iterations, slow-startup diagnosis | `/skill:playwright-tester` |
+| ponytail-review | Over-engineering review: finds what to delete | `/skill:ponytail-review` |
+| pre-push-review | CI-parity correctness review of the diff before commit/push | `/skill:pre-push-review` |
+| refactoring-ui | Audit/fix existing UI: hierarchy, spacing, color, depth | `/skill:refactoring-ui` |
+| sdk-development | Installable packages (Go/npm/CLI): OpenAPI codegen, test, publish | `/skill:sdk-development` |
+| session-audit | Token/cost waste audit of `~/.pi/agent/sessions` | `/skill:session-audit` |
+| skill-manager | Create/modify SKILL.md + mandatory validator gate | `/skill:skill-manager` |
+| systematic-debugging | Phased root-cause debugging before proposing any fix | `/skill:systematic-debugging` |
+| tavily-extract | URL → clean markdown via Tavily CLI (`tvly extract`) | `/skill:tavily-extract` |
+
+### Skill layout (convention — validator-enforced)
+
+```text
+<name>/
+├── SKILL.md        # required; the only loose file allowed at top level
+├── scripts/        # executable code (.sh/.mjs/.py/...), incl. helper modules
+├── references/     # additional docs read on demand (progressive disclosure)
+└── assets/         # static resources: templates, images, data files
+```
+
+`package.json` + `node_modules/` are tolerated at the skill root for declared deps
+(e.g. `browser-tools`). Enforced by
+`node skills/skill-manager/scripts/validate-skill.mjs <skill-dir>` (exit 0 required);
+`node skills/harness-engineer/scripts/mdcmdcheck.mjs` additionally verifies every
+command/path declared in markdown resolves (also exits 1 on findings).
 
 ## Layers (what loads when)
 
@@ -83,7 +106,6 @@ No env vars; default path only.
 | **AGENTS.md** | global behavioral rules | every turn | **must stay byte-stable** |
 | Skill descriptions | frontmatter only | every turn | **must stay byte-stable** |
 | Skill bodies | SKILL.md full text | on match or `/skill:name` | load on demand |
-| Prompts | `/name` templates | only when invoked | not in prefix |
 | Project AGENTS.md | repo rules | when present | overlays global |
 
 ## Always-on token budget (measure this)
@@ -99,9 +121,9 @@ wc -c ~/.pi/agent/AGENTS.md
 |-----------|--------|-------|
 | AGENTS.md | as small as possible (behavioral core only) | no stack essays, no skill lists |
 | Skill descriptions | short; delete dead skills | largest descriptions cost every session |
-| **Total always-on** | prefer ≤ ~2K tok | bodies/prompts stay out until needed |
+| **Total always-on** | prefer ≤ ~2K tok | bodies/refs stay out until needed |
 
-Thinking default: `medium`. Bump per-task with `--thinking high` if needed.
+Thinking default: `off` (token economy). Bump per-task with `--thinking high` if needed.
 
 ## Skill discovery order
 
@@ -151,12 +173,12 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | Path | Purpose |
 |---|---|
 | `AGENTS.md` | Always-on behavioral core + efficiency ladder |
-| `settings.json` | Provider/model/theme/thinking/packages (no secrets) |
-| `models.json` | Custom providers (currently empty; both active providers are built-in) |
+| `settings.json` | Provider/model/theme/thinking (no secrets) |
+| `models.json` | Custom model definitions (currently: `glm-5.3-flash`) |
 | `skills/` | All skills (real files, auto-trigger + `/skill:name`) |
 | `skills-audit.md` | Skill audit + migration history (append-only) |
 | `README.md` / `CHANGELOG.md` | This file + change log |
-| `.nvmrc` | Pins required Node LTS (`22`) for `nvm use` in the harness dir |
+| `.nvmrc` | Pins Node 24 (current LTS) for `nvm use` in the harness dir |
 | `.gitignore` | Secret/caches hygiene |
 
 ### Machine-local (gitignored, never synced)
@@ -165,8 +187,8 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 |---|---|
 | `auth.json` | Secrets — copy once per machine via `scp`; never in git. |
 | `bin/fd`, `bin/rg` | Platform binaries. **pi auto-downloads** the correct arch (arm64/x86_64) on first run. |
-| `npm/node_modules/` | Extension deps. **pi reinstalls** from `settings.json` → `packages` on first run (currently empty — all packages removed 2026-12-17). |
-| `skills/**/node_modules/` | Per-skill deps (e.g. `browser-tools`: puppeteer-core, jsdom, `@mozilla/readability`, turndown). Regenerable — run `npm install` in the skill dir on first use (each skill documents this). |
+| `npm/node_modules/` | Extension deps. **pi reinstalls** from `settings.json` → `packages` on first run (currently none). |
+| `skills/**/node_modules/` | Per-skill deps (e.g. `browser-tools`: puppeteer-core, jsdom, `@mozilla/readability`, turndown). Regenerable — `npm install` in the skill dir on first use. |
 | `models-store.json` | Built-in provider model catalog (regenerable cache). |
 | `sessions/` | Session history, keyed by absolute project paths → inherently per-machine. |
 | `*.log` | Debug logs. |
@@ -175,10 +197,10 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 
 Two providers, **both portable** (keys identical across machines):
 
-- **`zai`** (in `auth.json`) — **default** provider, model `glm-5.2`.
-- **`deepseek`** (in `auth.json`) — secondary, use via `/model`.
+- **`zai`** (key in `auth.json`) — **default** provider, model `glm-5.3`;
+  `models.json` adds `glm-5.3-flash` (1M context, reasoning).
+- **`deepseek`** (key in `auth.json`) — secondary, use via `/model`.
 
-`models.json` holds no custom providers — `zai` and `deepseek` are built into pi.
 `auth.json` is **not in git**; copy it once per machine (`scp`). When you rotate a
 key, update `auth.json` (via `/login`) on each machine.
 
@@ -199,9 +221,10 @@ After `git clone <repo> ~/.pi/agent` on a new machine:
 - No `/Users/...` or `/home/...` literals in any shipped file (only `~` / `$HOME`).
 - Shell helpers are POSIX (`#!/usr/bin/env sh`) or bash-portable.
 - No OS-only commands unguarded (`/proc` reads in `brainstorming` fall back to `ps`;
-  `brainstorming/server.cjs` picks `xdg-open` on Linux vs `open` on macOS).
+  `brainstorming/scripts/server.cjs` picks `xdg-open` on Linux vs `open` on macOS).
 - No pi env vars (`PI_AGENT_DIR`, …) — config relies on the default `~/.pi/agent`.
-- **Node LTS required (≥ 22).** `skills/browser-tools/package.json` sets `engines.node`; `~/.pi/agent/.nvmrc` pins `22` for `nvm use` inside the harness dir. To run `pi` on Node 22 from any directory: `nvm alias default 22`.
+- **Node ≥ 22 required.** `skills/browser-tools/package.json` sets `engines.node`;
+  `~/.pi/agent/.nvmrc` pins `24` for `nvm use` inside the harness dir.
 
 ## Design rules (non-negotiable)
 
@@ -230,8 +253,8 @@ Report deltas. No improvement claim without a number or a concrete behavioral be
 
 - Core behavioral rules live in AGENTS.md (intentional). Edit rarely; each edit changes every session's prefix.
 - Skills under `~/.pi/agent/skills/` are real files (not plugin cache). Upstream updates do not auto-propagate.
-- `zai` (default) and `deepseek` (secondary) are built-in providers; `models.json` holds no custom providers. Both keys live in `auth.json` and are bundled.
-- If `defaultThinkingLevel` drifts to `max`, restore to `medium`.
+- `zai` (default, `glm-5.3`) and `deepseek` (secondary) are built-in providers; `models.json` only defines `glm-5.3-flash`. Both keys live in `auth.json` and are bundled.
+- Thinking default is `off` (deliberate token economy); raise per-task, not globally.
 
 ## Goal
 

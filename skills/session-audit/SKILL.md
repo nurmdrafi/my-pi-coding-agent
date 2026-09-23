@@ -35,13 +35,13 @@ Keeping past reports is also the only way to answer "am I improving?": trend com
 4. **(I4)** All aggregation is deduped by `responseId` (the scripts do this — do not hand-roll parsing).
 5. **(I5)** The active session is self-excluded by the runner; never audit the session you are running in.
 6. **(I6)** Report the audit's own self-cost from `fetch_log.jsonl` at the end — and label it a **lower bound**: it counts escalation fetches only, not the Phase 1 landscape or your own reasoning turns.
-7. **(I7)** **Write only to `$AUDIT_WORKDIR` and the report.** Never edit this skill's own files (`SKILL.md`, `bin/`, `src/`) or the user's repo. You are an installed bundle: a relative path like `src/views.mjs` points at *your own running code*. An audit that patches its own renderer measures itself with something that changed mid-run, and the next install destroys the change without a word.
+7. **(I7)** **Write only to `$AUDIT_WORKDIR` and the report.** Never edit this skill's own files (`SKILL.md`, `scripts/`) or the user's repo. You are an installed bundle: a relative path like `scripts/views.mjs` points at *your own running code*. An audit that patches its own renderer measures itself with something that changed mid-run, and the next install destroys the change without a word.
 
 ## Phase 0 — Digest (L0 + L1, zero LLM)
 
 ```sh
-node <skill-dir>/bin/audit.mjs run            # full directory
-node <skill-dir>/bin/audit.mjs run --max 50   # quick pass, newest 50 sessions
+node <skill-dir>/scripts/audit.mjs run            # full directory
+node <skill-dir>/scripts/audit.mjs run --max 50   # quick pass, newest 50 sessions
 ```
 
 Writes to `$AUDIT_WORKDIR`: `manifest.json` (thresholds + `pricing`: derived per-model input rates from logged `usage.cost`, unpriced models seen, and the share of waste that carries a price), `l1_findings.json` (rule findings: `{rule, severity, sessionId, turnPointers, evidenceStats, estWasteTokens, project}`), `overview.json` (aggregates: `projects`, `tools`, `models`, `gapBuckets`, `dates`, `skills`, `sessions` sorted by waste). Per-session and per-project rollups carry `wasteUsd` alongside `wasteTokens`, plus `models`, `usdPerMTok`, `pricedShare`, and `compactions`.
@@ -53,7 +53,7 @@ Rules emitted: `CACHE_TTL_EXPIRY`, `DUP_TOOL_CALL`, `BIG_TOOL_OUTPUT`, `RETRY_ST
 **If the user names a target (project, path, or session) that is absent from the digest — stop and ask.** Never substitute a closest-match project and proceed; a wrong-target audit wastes an entire run and reports confidently about the wrong code. This includes targets excluded as active: report the exclusion and ask whether to inspect via `fetch`, audit after close, or pick a different target — the user decides, not the auditor.
 
 ```sh
-node <skill-dir>/bin/audit.mjs views
+node <skill-dir>/scripts/audit.mjs views
 ```
 
 One bounded block: totals (tokens **and** dollars), findings-by-rule with a sessions-affected count, cache hit-ratio distribution, projects and worst sessions by waste (full session ids, with the `fetch` command to inspect one), idle-gap cost curve, tools by bytes, peak-context and compactions, per-date trend, skill usage.
@@ -74,7 +74,7 @@ Two traps the view exists to prevent:
 3. Where metadata cannot resolve intent, escalate with fetch:
 
 ```sh
-node <skill-dir>/bin/audit.mjs fetch <session-id> --kind <kind> [--limit N] [--max-bytes B] [--uuid U] [--radius K]
+node <skill-dir>/scripts/audit.mjs fetch <session-id> --kind <kind> [--limit N] [--max-bytes B] [--uuid U] [--radius K]
 ```
 
 | kind | returns | use to judge |
@@ -120,7 +120,7 @@ The report is read by a developer deciding **whether to spend an afternoon on th
 4. **Ranked fixes**, each carrying all five of:
    - **Evidence** — real file names, real behaviors, the user's own quoted words where fetched.
    - **Full session ids** (the uuid), never truncated, plus the command to check one:
-     `node <skill-dir>/bin/audit.mjs fetch <session-id> --kind user_text --limit 3 --max-bytes 500`
+     `node <skill-dir>/scripts/audit.mjs fetch <session-id> --kind user_text --limit 3 --max-bytes 500`
    - **Cost** — dollars and tokens, with the share of headline.
    - **Attribution** — habit / skill_file / config.
    - **A target metric** — the exact row and number that should move by the next audit ("`CACHE_TTL_EXPIRY` 4,202K / $21 → under 1,500K"). Without one, the fix is unfalsifiable.

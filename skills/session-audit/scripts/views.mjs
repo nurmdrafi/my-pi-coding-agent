@@ -34,7 +34,7 @@ export function renderViews(workdir) {
   const turns = sessions.reduce((s, x) => s + (x.apiTurns ?? 0), 0);
   const compactions = sessions.reduce((s, x) => s + (x.compactions ?? 0), 0);
 
-  // Dollars are priced per session (src/pricing.mjs), so every rule- and
+  // Dollars are priced per session (scripts/pricing.mjs), so every rule- and
   // project-level figure joins back through this map rather than applying one
   // directory-wide rate that no individual session actually paid.
   const rateOf = new Map(sessions.map((s) => [s.sessionId, (s.usdPerMTok ?? null) === null ? null : s.usdPerMTok / 1e6]));
@@ -120,7 +120,7 @@ export function renderViews(workdir) {
     const rules = Object.entries(s.findingsByRule ?? {}).map(([r, n]) => `${r}×${n}`).join(',');
     say(`${s.sessionId} ${pad(proj(s.project), 22)} ${s.date} turns ${lpad(s.apiTurns, 4)} peak ${lpad(K(s.peakContext), 5)} comp ${s.compactions ?? 0} waste ${lpad(K(s.wasteTokens), 7)} ${lpad(usd(s.wasteUsd ?? 0), 9)}  ${rules}`);
   }
-  say(`inspect: node <skill-dir>/bin/audit.mjs fetch <session-id> --kind user_text --limit 3 --max-bytes 500`);
+  say(`inspect: node <skill-dir>/scripts/audit.mjs fetch <session-id> --kind user_text --limit 3 --max-bytes 500`);
   say();
 
   // Idle-gap excess, priced against the <1m baseline. Reported in RAW cache

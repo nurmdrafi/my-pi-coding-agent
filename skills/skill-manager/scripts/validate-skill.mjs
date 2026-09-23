@@ -67,6 +67,8 @@ function parseSkill(skillDir) {
     if (!/^[a-z0-9-]+$/.test(name)) errors.push(`name "${name}" has invalid chars (only a-z 0-9 -)`);
     if (/^-|-$/.test(name)) errors.push(`name "${name}" starts/ends with hyphen`);
     if (name.includes("--")) errors.push(`name "${name}" has consecutive hyphens`);
+    if (/<\/?[a-zA-Z][^>]*>/.test(name)) errors.push(`name "${name}" contains XML tags`);
+    if (/anthropic|claude/i.test(name)) errors.push(`name "${name}" contains reserved word (anthropic/claude)`);
     const dirName = path.basename(skillDir);
     if (name !== dirName) errors.push(`name "${name}" != directory "${dirName}"`);
   }
@@ -75,6 +77,7 @@ function parseSkill(skillDir) {
   if (!desc) errors.push("description missing (skill won't load)");
   else {
     if (desc.length > 1024) errors.push(`description is ${desc.length} chars > 1024`);
+    if (/<\/?[a-zA-Z][^>]*>/.test(desc)) errors.push("description contains XML tags");
     const words = desc.split(/\s+/).length;
     if (words < 10) errors.push(`description too vague (${words} words) — specify what + when + keywords`);
   }
@@ -82,6 +85,13 @@ function parseSkill(skillDir) {
   // Body size
   const totalLines = lines.length;
   if (totalLines > 500) errors.push(`${totalLines} lines > 500-line guideline — split into references/`);
+
+  // Directory layout (harness convention per agentskills.io)
+  const ALLOWED = new Set(["SKILL.md", "scripts", "references", "assets",
+    "package.json", "package-lock.json", "node_modules", ".gitignore"]);
+  for (const e of fs.readdirSync(skillDir)) {
+    if (!ALLOWED.has(e)) errors.push(`nonstandard top-level entry "${e}" — executables → scripts/, docs → references/, static data → assets/`);
+  }
 
   return { errors, name, desc, lines: totalLines };
 }

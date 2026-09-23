@@ -85,7 +85,7 @@ Optional deep evidence (only when user asks for skill-usage or token audit):
   `bash scripts/ab_prefix.sh "<prompt>" <dest> [model]` runs one prompt under both
   configs and prints first-turn tokens / cache-read / cost / wall time.
 - Evidence from the 2026-09-03 L2-vs-L3 decision (glm-5.3, 10 runs, tasks T1–T5):
-  `evidence/2026-09-03_l2_vs_l3_matrix.json` — only tavily-search fired (enabled
+  `assets/2026-09-03_l2_vs_l3_matrix.json` — only tavily-search fired (enabled
   model-visible as a result); L3-as-a-set failed the ≤20% median-cost rule.
 - pi sessions: `~/.pi/agent/sessions/*/*.jsonl` — skill loads, `/skill:` invocations, correction words
 - Rank skills: auto-load vs explicit vs never fire — `uv run --script scripts/skill_usage_audit.py` (from this skill dir) counts per-skill invocations across all sessions and tiers them high/medium/low/unused

@@ -9,6 +9,7 @@
 - Security is build-time, not review-time: mutating routes/actions carry auth/permission checks when first written, secrets stay server-side, and guard/effect fixes re-check the adjacent paths they silenced or unblocked.
 - Solve with the least that works. **Ponytail ladder** (always active; default full, `/ponytail lite|full|ultra`): stop at the first rung that holds — need it at all? (YAGNI) → already in this codebase? → stdlib? → native platform feature? → installed dep? → one line? → only then minimal code. Ladder runs after understanding the problem, never instead of it. Bug fix = root cause; rg callers first. No unrequested abstractions or “for later” boilerplate. Deletion over addition; mark deliberate corner-cuts with a `ponytail:` comment naming the ceiling.
 - Cross-platform (macOS + Linux): everything written or run — commands, scripts, configs, paths — must work on both. Stay in the BSD∩GNU intersection; where they genuinely differ, branch explicitly rather than pick a side.
+- No absolute user paths in anything written (`/home/...`, `/Users/...` — breaks on every other machine): use `~`/`$HOME` or relative paths; a script needing its repo root derives it from its own location (`$(dirname "$0")`, `import.meta.url`), never a hardcoded path.
 
 ## Communication
 - Be concise and direct. Technical prose only.
@@ -18,7 +19,7 @@
 
 **Searching**
 - Text presence, configs/JSON/CSS/MD, dist/node_modules → `rg` (-l / -n / -q). Every printing `rg` gets a cap (`-m <n>`, `| head -N`, `-l`/`-q`/`-c`); `jq` for JSON fields.
-- Construct shape in first-party TS/TSX/JS — imports, call sites (`foo(`), `new X(`, definitions, JSX — → `ast-grep run -p '<pattern>'` FIRST; `rg -n` only if it returns nothing (install: `npm i -g @ast-grep/cli`; never the `sg` alias — Linux shadow-utils). AST on minified code is garbage, so rg is correct there. >10 files of doc/test noise, or convention-named entries (`forwardRef`, `layout.tsx`), defeat keywords → ast-grep patterns, capped (`| head`).
+- Construct shape in first-party TS/TSX/JS (call sites, JSX): `ast-grep run -p 'foo($$$)'` — patterns must be complete valid code; bodyless fragments (`function $F($$$)`) silently match nothing — use `function $F($$$) { $$$ }` (typed returns need `: $RET`) (install: `npm i -g @ast-grep/cli`; never the `sg` alias — Linux shadow-utils). `rg` stays correct for keywords/minified and is the better definitions route (symbol outline below). Cap either.
 - Unfamiliar code: symbol outline first — `rg -n "^(export )?(async )?(function|class|interface|type)" <dir> | head -80`.
 
 **Reading**

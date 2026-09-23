@@ -3,26 +3,26 @@
  * session-audit runner (L0/L1 digest + fetch interface) — the CLI SKILL.md
  * documents. Phase 0 (`run`) digests raw session logs into metadata-only
  * artifacts in $AUDIT_WORKDIR; Phase 1 (`views`) renders the landscape via
- * src/views.mjs; Phase 2 (`fetch`) is the budget-capped content-escalation
+ * scripts/views.mjs; Phase 2 (`fetch`) is the budget-capped content-escalation
  * interface. The reasoning layer never calls anything else (invariants 1, 4, 5).
  *
  * Usage:
- *   node bin/audit.mjs run [--max N]
- *   node bin/audit.mjs views
- *   node bin/audit.mjs fetch <session-id> --kind <kind> \
+ *   node scripts/audit.mjs run [--max N]
+ *   node scripts/audit.mjs views
+ *   node scripts/audit.mjs fetch <session-id> --kind <kind> \
  *        [--limit N] [--max-bytes B] [--uuid U] [--radius K]
  */
 import { mkdirSync, appendFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { discoverSessions, findSession } from '../src/discover.mjs';
+import { discoverSessions, findSession } from './discover.mjs';
 import {
   parseSessionFile, apiTurns, toolCalls, toolResults, totalContext,
   compactionCount, loadedSkillName, isAssistant, isUser, isToolResult, isoTs,
-} from '../src/parser.mjs';
-import { deriveRates, sessionRate } from '../src/pricing.mjs';
-import { THRESHOLDS, runRules } from '../src/rules.mjs';
-import { renderViews } from '../src/views.mjs';
+} from './parser.mjs';
+import { deriveRates, sessionRate } from './pricing.mjs';
+import { THRESHOLDS, runRules } from './rules.mjs';
+import { renderViews } from './views.mjs';
 
 const workdir = process.env.AUDIT_WORKDIR;
 const die = (msg) => { console.error(`audit: ${msg}`); process.exit(1); };
@@ -307,9 +307,9 @@ function parseArgs(argv) {
 }
 
 const HELP = `usage:
-  node bin/audit.mjs run [--max N]        phase 0: digest → $AUDIT_WORKDIR artifacts
-  node bin/audit.mjs views                phase 1: bounded landscape block
-  node bin/audit.mjs fetch <session-id> --kind <user_text|error_head|tool_input|assistant_head|turn_window>
+  node scripts/audit.mjs run [--max N]        phase 0: digest → $AUDIT_WORKDIR artifacts
+  node scripts/audit.mjs views                phase 1: bounded landscape block
+  node scripts/audit.mjs fetch <session-id> --kind <user_text|error_head|tool_input|assistant_head|turn_window>
         [--limit N] [--max-bytes B] [--uuid U] [--radius K]`;
 
 const [, , cmd, ...rest] = process.argv;

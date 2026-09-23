@@ -275,7 +275,7 @@ the diff ignore list.
 
 ## Scaffold
 
-Copy from `{baseDir}/template/`: `playwright.config.ts`, `e2e/fixtures/*.ts` (`cdp`,
+Copy from `{baseDir}/assets/`: `playwright.config.ts`, `e2e/fixtures/*.ts` (`cdp`,
 `api`, `report`), `e2e/example.spec.ts`. All e2e code lives in the target repo (`e2e/`).
 Add `"e2e": "playwright test"` to package.json. Env config: `E2E_APP_URL`,
 `E2E_AUTH_TOKEN_KEY`, `E2E_EMAIL`, `E2E_PASSWORD`, `E2E_ITERATIONS` — credentials never

@@ -39,7 +39,7 @@ If browser interaction feels slow, attribute the delay before changing
 anything. Time, separately: CDP connection (`curl -sf localhost:9222/json/version`
   in a loop until it answers — that's Chrome's readiness), context discovery
   (`/json/list`), page discovery, and first action
-  (`browser-eval.js '1+1'` end-to-end). Classify the delay as: connection,
+  (`scripts/browser-eval.js '1+1'` end-to-end). Classify the delay as: connection,
   browser launch, context creation, page creation, navigation, or application
   readiness (app boot / API dependencies). Typical signatures: everything fast
   except `goto`-like actions → application/server, not the browser; slow first
@@ -53,21 +53,21 @@ Chrome DevTools Protocol tools for agent-assisted web automation. These tools co
 Run once before first use (deps are not committed):
 
 ```bash
-cd {baseDir}/browser-tools
+cd {baseDir}   # package.json sits at the skill root
 npm install
 ```
 
 Pre-flight before any session: `node_modules` exists in
-`{baseDir}/browser-tools`, the dev server is reachable
+`{baseDir}`, the dev server is reachable
 (`curl -sf localhost:PORT`), and `:9222` is not already taken by another
 debug Chrome instance.
 
 ## Start Chrome
 
 ```bash
-{baseDir}/browser-start.js              # Fresh profile
-{baseDir}/browser-start.js --profile    # Copy user's profile (cookies, logins)
-CHROME_PATH=/path/to/chrome {baseDir}/browser-start.js   # Explicit executable
+{baseDir}/scripts/browser-start.js              # Fresh profile
+{baseDir}/scripts/browser-start.js --profile    # Copy user's profile (cookies, logins)
+CHROME_PATH=/path/to/chrome {baseDir}/scripts/browser-start.js   # Explicit executable
 ```
 
 Launch Chrome with remote debugging on `:9222`. Chrome is auto-detected per OS (macOS: `/Applications`, Linux: `google-chrome`/`chromium`/snap); override with `CHROME_PATH` if detection fails.
@@ -83,8 +83,8 @@ Fresh vs `--profile`:
 ## Navigate
 
 ```bash
-{baseDir}/browser-nav.js https://example.com
-{baseDir}/browser-nav.js https://example.com --new
+{baseDir}/scripts/browser-nav.js https://example.com
+{baseDir}/scripts/browser-nav.js https://example.com --new
 ```
 
 Navigate to URLs. Use `--new` flag to open in a new tab instead of reusing current tab.
@@ -92,8 +92,8 @@ Navigate to URLs. Use `--new` flag to open in a new tab instead of reusing curre
 ## Evaluate JavaScript
 
 ```bash
-{baseDir}/browser-eval.js 'document.title'
-{baseDir}/browser-eval.js 'document.querySelectorAll("a").length'
+{baseDir}/scripts/browser-eval.js 'document.title'
+{baseDir}/scripts/browser-eval.js 'document.querySelectorAll("a").length'
 ```
 
 Execute JavaScript in the active tab. Code runs in async context. Use this to extract data, inspect page state, or perform DOM operations programmatically.
@@ -101,7 +101,7 @@ Execute JavaScript in the active tab. Code runs in async context. Use this to ex
 ## Screenshot
 
 ```bash
-{baseDir}/browser-screenshot.js
+{baseDir}/scripts/browser-screenshot.js
 ```
 
 Capture current viewport and return temporary file path. Use this to visually inspect page state or verify UI changes.
@@ -109,7 +109,7 @@ Capture current viewport and return temporary file path. Use this to visually in
 ## Pick Elements
 
 ```bash
-{baseDir}/browser-pick.js "Click the submit button"
+{baseDir}/scripts/browser-pick.js "Click the submit button"
 ```
 
 **IMPORTANT**: Use this tool when the user wants to select specific DOM elements on the page. This launches an interactive picker that lets the user click elements to select them. The user can select multiple elements (Cmd/Ctrl+Click) and press Enter when done. The tool returns CSS selectors for the selected elements.
@@ -122,7 +122,7 @@ Common use cases:
 ## Cookies
 
 ```bash
-{baseDir}/browser-cookies.js
+{baseDir}/scripts/browser-cookies.js
 ```
 
 Display all cookies for the current tab including domain, path, httpOnly, and secure flags. Use this to debug authentication issues or inspect session state.
@@ -130,7 +130,7 @@ Display all cookies for the current tab including domain, path, httpOnly, and se
 ## Extract Page Content
 
 ```bash
-{baseDir}/browser-content.js https://example.com
+{baseDir}/scripts/browser-content.js https://example.com
 ```
 
 Navigate to a URL and extract readable content as markdown. Uses Mozilla Readability for article extraction and Turndown for HTML-to-markdown conversion. Works on pages with JavaScript content (waits for page to load).
@@ -139,7 +139,7 @@ Navigate to a URL and extract readable content as markdown. Uses Mozilla Readabi
 
 **This skill exists for Playwright/e2e testing only.** Anything else routes elsewhere:
 
-- Read-only research / web content → tavily-search / tavily-extract skills (`tvly search`, `tvly extract`); for static pages `{baseDir}/web-fetch.mjs <url> <maxChars>` is the cheapest extractor (headless, capped, no quota). Never this skill for research.
+- Read-only research / web content → tavily-search / tavily-extract skills (`tvly search`, `tvly extract`); for static pages `{baseDir}/scripts/web-fetch.mjs <url> <maxChars>` is the cheapest extractor (headless, capped, no quota). Never this skill for research.
 - Manual QA / visual review → refactoring-ui or user-driven, not agent browser driving.
 - General debugging (runtime errors, wrong data) → systematic-debugging; go live only when the failing spec needs it.
 
@@ -164,7 +164,7 @@ rerunning the suite — blind reruns reproduce the same freeze.
    of a failing case, prefer the runner's failure screenshot over a live one.
    Go live only when the artifacts don't explain the failure.
 1. Start the dev/test server in the background (e.g. `npm run e2e:serve &`).
-2. `{baseDir}/browser-start.js` → `{baseDir}/browser-nav.js <failing case URL>`.
+2. `{baseDir}/scripts/browser-start.js` → `{baseDir}/scripts/browser-nav.js <failing case URL>`.
 3. **Install the error collector immediately after navigation** (snippet
    below — idempotent, survives this tab), then run the standard recon eval
    (Efficiency Guide) as the baseline.
@@ -331,7 +331,7 @@ here. Poll a predicate — page first, then app readiness:
 
 ```bash
 for i in $(seq 1 20); do
-  {baseDir}/browser-eval.js 'document.readyState' | grep -q interactive && break
+  {baseDir}/scripts/browser-eval.js 'document.readyState' | grep -q interactive && break
   sleep 0.25
 done
 ```
