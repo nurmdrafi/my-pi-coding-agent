@@ -26,6 +26,9 @@
 - `read` only, windowed (`offset`/`limit`) at the anchor. Never `cat`/`head`/`tail` a file path — inside pipes fine; `sed -n 'A,Bp'` only when batching 2+ regions in one call.
 - Minified/dist: `rg -o` or `| cut -c1-200` — `head -N` bounds lines, not bytes.
 - Never full-read >100 lines to find one block; a file already read/edited this session is in context. Iterative re-reads are the top measured waste (817K / 59%, 2026-09-14): after an edit, a ≤60-line window at the anchor is enough.
+
+**Editing**
+- Edit `oldText` anchors must be bytes actually seen in a read result this session. If the anchor needs lines beyond a read-window edge (above `offset` or past `offset+limit`), widen the read — never infer the missing lines. Fuzzy matching tolerates quotes/trailing whitespace, not text that doesn't exist.
 - Never read task-unrelated files; no `ls -R`, `find -exec`, full `git log`.
 
 **Command output**
