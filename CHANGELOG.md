@@ -7,6 +7,12 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 09-24-2026
+
+### Added
+
+- **`skills/auth`** — NextAuth v4 credentials auth skill for Next.js App Router apps whose identity provider is an external REST backend issuing bearer tokens. Covers: `authorize()` with server-side backend calls, session-token plumbing for RTK Query/fetch layers, proxy/middleware route protection, 401 retry + sign-out ladder, OTP registration/password-reset, social-login token exchange, deterministic post-login redirects, and a legacy-auth migration path. References split per concern (`nextauth-setup`, `token-plumbing`, `route-protection`, `login-flows`, `otp-flows`, `social-login`, `migration`) — Agent Skills layout (`references/`). Manual invocation; scoped to NextAuth v4 + App Router, explicitly NOT for OAuth-first, Auth.js v5, or Firebase. Skills count 17 → 18.
+
 ## [1.6.1] - 09-23-2026
 
 ### Changed
