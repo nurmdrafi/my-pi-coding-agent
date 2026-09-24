@@ -7,7 +7,7 @@
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { hydrateSessionToken } from "@/lib/session-token";
+import { hydrateSessionToken } from "@/lib/auth";
 
 const router = useRouter();
 const searchParams = useSearchParams();
@@ -111,7 +111,7 @@ export async function handleLogout(callbackUrl: string = "/") {
 
 | Where | Fallback |
 |---|---|
-| Session cookie maxAge | backend JWT `exp` → else 24h |
+| Session cookie maxAge | backend JWT `exp` — no fallback; sign-in fails if the token has no usable expiry |
 | Login redirect | `callbackUrl` (same-origin validated) → same-origin referrer (≠ auth page) → default route |
 | Auth-page redirect (proxy) | referer path if non-auth → `/` |
 | `authorize()` failure | thrown backend message → `result.error` → toast; `null` only for missing input |

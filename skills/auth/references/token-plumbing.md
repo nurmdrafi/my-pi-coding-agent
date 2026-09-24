@@ -1,4 +1,4 @@
-# Token plumbing (session-token + SessionTokenSync + base query)
+# Token plumbing (lib/auth/session.ts + SessionTokenSync + base query)
 
 Three layers, one token:
 
@@ -6,7 +6,7 @@ Three layers, one token:
 2. **React tree** — `useSession()` for UI concerns (header, gated widgets).
 3. **Non-React** — module holder read synchronously per API request.
 
-## `lib/session-token.ts`
+## `lib/auth/session.ts`
 
 ```ts
 let accessToken: string | null = null;
@@ -49,7 +49,7 @@ export async function hydrateSessionToken(): Promise<void> {
 "use client";
 import { useSession } from "next-auth/react";
 import { useEffect } from "react";
-import { setSessionToken, setSessionUser } from "@/lib/session-token";
+import { setSessionToken, setSessionUser } from "@/lib/auth";
 
 export default function SessionTokenSync() {
   const { data: session } = useSession();
@@ -87,8 +87,8 @@ import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from "@reduxjs/toolkit/query";
 import { signOut } from "next-auth/react";
 import { API_URL } from "@/app.config";
-import { isProtectedRoute } from "@/lib/auth-routes";
-import { getSessionToken } from "@/lib/session-token";
+import { isProtectedRoute } from "@/lib/auth";
+import { getSessionToken } from "@/lib/auth";
 
 const baseQuery = fetchBaseQuery({
   baseUrl: API_URL,

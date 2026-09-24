@@ -33,22 +33,24 @@ File map (every piece exists for a reason; do not skip one):
 
 | File | Role |
 |---|---|
-| `lib/auth.ts` | `authOptions`: credentials `authorize()`, social exchange in `jwt` callback, type augmentation, `auth()` = `getServerSession` |
+| `lib/auth/index.ts` | public surface — import everything from `@/lib/auth`, never deep paths |
+| `lib/auth/options.ts` | `authOptions`: credentials `authorize()`, social exchange in `jwt` callback, type augmentation, `auth()` = `getServerSession` |
+| `lib/api.ts` | server-side backend REST wrappers (`loginApi`/`getProfileApi`) used by `authorize()` |
 | `app/api/auth/[...nextauth]/route.ts` | 4-line route handler exporting GET/POST |
-| `lib/session-token.ts` | module-level token holder + `hydrateSessionToken()` |
+| `lib/auth/session.ts` | module-level token holder + `hydrateSessionToken()` |
 | `components/provider/SessionTokenSync.tsx` | `useSession` → `setSessionToken` on every session change |
 | `components/provider/AuthProvider.tsx` | `SessionProvider` + `SessionTokenSync` |
 | `app/layout.tsx` | `const session = await auth()` → `<AuthProvider session>` (zero round-trip bootstrap) |
-| `lib/auth-routes.ts` | protected/auth route lists + helpers |
+| `lib/auth/routes.ts` | protected/auth route lists + helpers |
 | `proxy.ts` (or `middleware.ts`) | `getToken()` signature check, redirects both directions |
 | `redux/features/api/apiSlice.ts` | `baseQueryWithAuth`: Bearer from `getSessionToken()`, 401 retry once, then signOut |
 | `components/auth/LoginPageClient.tsx` | signIn → hydrate → redirect chain; OTP and register steps for OTP-gated backends |
 
 ## Implementation sequence (new integration)
 
-1. **NextAuth setup** — `lib/auth.ts` + route handler + env (`NEXTAUTH_SECRET`, `NEXTAUTH_URL`). See `references/nextauth-setup.md`.
-2. **Route protection** — `lib/auth-routes.ts` + `proxy.ts`. See `references/route-protection.md`.
-3. **Token plumbing** — `session-token.ts`, `SessionTokenSync`, `AuthProvider`, base query. See `references/token-plumbing.md`.
+1. **NextAuth setup** — `lib/auth/options.ts` + route handler + env (`NEXTAUTH_SECRET`, `NEXTAUTH_URL`). See `references/nextauth-setup.md`.
+2. **Route protection** — `lib/auth/routes.ts` + `proxy.ts`. See `references/route-protection.md`.
+3. **Token plumbing** — `lib/auth/session.ts`, `SessionTokenSync`, `AuthProvider`, base query. See `references/token-plumbing.md`.
 4. **Flows** — login client, register auto-signIn, logout helper: `references/login-flows.md`.
 5. **Optional flows** — OTP registration/forgot-password: `references/otp-flows.md`; Google/Facebook exchange: `references/social-login.md`.
 
@@ -58,7 +60,7 @@ File map (every piece exists for a reason; do not skip one):
 - **All backend auth calls inside `authorize()`, server-side.** Client-side post-login fetch chains (profile fetch → set-cookie → redirect) are the root cause of the no-redirect bug. One `signIn()` = one response = one cookie.
 - **`await hydrateSessionToken()` after every successful `signIn`** (login, register auto-login, any programmatic sign-in) before any authorized request or redirect. `signIn({redirect:false})` resolves *before* the `useSession` cache updates; acting on the stale empty token sends requests as anonymous → 401 → logout loop.
 - **Redirect = awaited `router.push(callbackUrl)` in the component**, never `window.location.href` buried in an API layer, never conditional on a profile fetch succeeding. Sanitize `callbackUrl` to a same-origin relative path first — it's a query param, fully user-controllable, and `router.push("https://evil.com")` navigates off-origin (open redirect).
-- **Session cookie maxAge = backend token `exp`** (decode with `jose`), fallback 24h. Custom `jwt.encode` override, not the default.
+- **Session cookie maxAge = backend token `exp`** (decode with `jose`) — always, no fallback. `authorize()` rejects tokens without a usable expiry (`'Login token has no expiry'`); a guessed lifetime (fixed 24h etc.) either kills live sessions early or leaves expired ones minted. Custom `jwt.encode` override, not the default.
 - **401 ladder in the base query:** retry only if something can actually rotate the token between attempts (a refresh endpoint, a re-fetch of the session). With a static module-holder token the retry is byte-identical — skip it and go straight to `signOut({redirect:false})` + `location.replace('/login?callbackUrl=...')` gated by `isProtectedRoute()` so public pages don't bounce.
 - **No token in localStorage, ever.** The only client-visible token copy is the NextAuth session; API layers read it via the module holder.
 - **Social logins exchange the provider token for a backend token inside the `jwt` callback** — the provider token is never stored as the app token.

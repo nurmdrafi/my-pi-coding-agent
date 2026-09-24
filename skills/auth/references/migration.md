@@ -37,7 +37,7 @@ call site, the logout path, and the 401 handler.
 **Phase 1 — build alongside (zero user impact)**
 
 Add the full new stack (sequence in SKILL.md steps 1–4) without touching
-legacy: `lib/auth.ts` + route handler, session-token plumbing, `AuthProvider`,
+legacy: `lib/auth/options.ts` + route handler, session-token plumbing, `AuthProvider`,
 `auth-routes.ts`. The NextAuth cookie is additive; legacy cookie/storage still
 work. The base query change is the only shared piece — land it behind a
 feature flag or a separate exported slice if the legacy token must keep working

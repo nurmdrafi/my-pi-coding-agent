@@ -3,13 +3,13 @@
 [![pi coding agent](https://img.shields.io/badge/pi-coding_agent-8A2BE2)](https://github.com/earendil-works/pi-coding-agent)
 [![Node](https://img.shields.io/badge/node_%E2%89%A522_%C2%B7_nvmrc_24-339933?logo=nodedotjs&logoColor=white)](#portability-contract)
 [![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555)](#portability-contract)
-[![skills](https://img.shields.io/badge/skills-17-2563eb)](#skills)
+[![skills](https://img.shields.io/badge/skills-18-2563eb)](#skills)
 [![always-on floor](https://img.shields.io/badge/always--on_floor_%7E1.5K_tok-f97316)](#always-on-token-budget-measure-this)
 
 Personal [pi coding agent](https://github.com/earendil-works/pi-coding-agent) harness — a
 single portable `~/.pi/agent/` directory, synced via this git repo between machines.
 
-**What you get:** a lean always-on behavioral core (AGENTS.md), 17 progressive-disclosure
+**What you get:** a lean always-on behavioral core (AGENTS.md), 18 progressive-disclosure
 skills, and an audit methodology that keeps the permanent token floor ~1.5K tokens
 (measured 2026-09-23: AGENTS.md 5,396 c + 2 model-visible descriptions 585 c ÷ 4).
 No env vars, no absolute paths — clone anywhere on macOS/Linux.
@@ -32,7 +32,7 @@ Requires Node ≥ 22 (`.nvmrc` pins 24, the current LTS). Full details below.
 Map of this pi harness. Re-read at the start of any harness-engineering session.
 Update when structure, skill set, or always-on budget changes.
 
-Last updated: 2026-09-23
+Last updated: 2026-09-24
 
 ## Portable unit
 
@@ -47,7 +47,8 @@ No env vars; default path only.
 ├── models.json               # custom model defs (glm-5.3-flash)
 ├── models-store.json         # catalog cache (machine-local, regen)
 │
-├── skills/                   # 17 skills; each: SKILL.md + scripts/ references/ assets/
+├── skills/                   # 18 skills; each: SKILL.md + scripts/ references/ assets/
+├── extensions/               # always-on TS extensions (guards, error-log)
 ├── README.md                 # this file (incl. portability contract)
 ├── CHANGELOG.md              # harness change log, latest-first (newest on top)
 ├── skills-audit.md           # append-only skill-set decisions
@@ -67,6 +68,7 @@ Everything else is manual — invoke with `/skill:<name>`.
 |---|---|---|
 | ponytail | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder | auto |
 | tavily-search | Web research via Tavily CLI (`tvly search`) — primary research route | auto |
+| auth | NextAuth v4 credentials auth for Next.js App Router against an external REST backend | `/skill:auth` |
 | brainstorming | Explore genuinely-unclear feature direction; one question at a time | `/skill:brainstorming` |
 | browser-tools | Live DOM via CDP `:9222` — Playwright/e2e only (deps: `npm install` at skill root) | `/skill:browser-tools` |
 | fallow-audit | Dead-code / unused-export / unused-dependency cleanup (fallow, knip, ts-prune, depcheck) | `/skill:fallow-audit` |
@@ -98,6 +100,16 @@ Everything else is manual — invoke with `/skill:<name>`.
 `node skills/skill-manager/scripts/validate-skill.mjs <skill-dir>` (exit 0 required);
 `node skills/harness-engineer/scripts/mdcmdcheck.mjs` additionally verifies every
 command/path declared in markdown resolves (also exits 1 on findings).
+
+## Extensions
+
+Always-on TypeScript modules in `extensions/` (loaded by pi, never in the model
+prefix). `error-log.ts` captures every LLM runtime error — tool failures,
+provider HTTP ≥ 400, compaction failures — into machine-local, gitignored
+`logs/errors-YYYY-MM-DD.jsonl` — review live with `/errors [n]` or batch
+with `skills/harness-engineer/scripts/error_audit.py --live`. Guards:
+`token-economy-guard.ts` (reading/output economy) and `edit-anchor-guard.ts`
+(oldText fabrication).
 
 ## Layers (what loads when)
 
@@ -177,6 +189,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | `settings.json` | Provider/model/theme/thinking (no secrets) |
 | `models.json` | Custom model definitions (currently: `glm-5.3-flash`) |
 | `skills/` | All skills (real files, auto-trigger + `/skill:name`) |
+| `extensions/` | Always-on extensions (token-economy + edit-anchor guards, error-log) |
 | `skills-audit.md` | Skill audit + migration history (append-only) |
 | `README.md` / `CHANGELOG.md` | This file + change log |
 | `.nvmrc` | Pins Node 24 (current LTS) for `nvm use` in the harness dir |
@@ -192,6 +205,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | `skills/**/node_modules/` | Per-skill deps (e.g. `browser-tools`: puppeteer-core, jsdom, `@mozilla/readability`, turndown). Regenerable — `npm install` in the skill dir on first use. |
 | `models-store.json` | Built-in provider model catalog (regenerable cache). |
 | `sessions/` | Session history, keyed by absolute project paths → inherently per-machine. |
+| `logs/` | Daily `errors-YYYY-MM-DD.jsonl` runtime-error logs from `error-log.ts` (like sessions/). |
 | `*.log` | Debug logs. |
 
 ### Providers & API keys

@@ -1,6 +1,6 @@
-# Route protection (proxy.ts + auth-routes + layout bootstrap)
+# Route protection (proxy.ts + lib/auth/routes.ts + layout bootstrap)
 
-## `lib/auth-routes.ts` — single source of truth
+## `lib/auth/routes.ts` — single source of truth
 
 ```ts
 export const PROTECTED_ROUTE_PREFIXES = [
@@ -25,7 +25,7 @@ export const isAuthRoute = (pathname: string): boolean =>
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { isProtectedRoute, isAuthRoute } from "@/lib/auth-routes";
+import { isProtectedRoute, isAuthRoute } from "@/lib/auth";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

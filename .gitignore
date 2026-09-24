@@ -3,6 +3,7 @@ auth.json
 
 # Local state / history
 sessions/
+logs/
 
 # Machine-local binaries & deps (pi regenerates)
 /bin/

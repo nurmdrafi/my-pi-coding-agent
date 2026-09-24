@@ -5,7 +5,7 @@ The provider's access token is **exchanged for a backend bearer token** inside
 the NextAuth `jwt` callback; everything downstream (session, API calls,
 protection) is identical to credentials login.
 
-## Provider config (`lib/auth.ts`)
+## Provider config (`lib/auth/options.ts`)
 
 ```ts
 import GoogleProvider from "next-auth/providers/google";

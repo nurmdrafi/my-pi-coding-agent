@@ -1,4 +1,4 @@
-# NextAuth setup (lib/auth.ts + route handler)
+# NextAuth setup (lib/auth/options.ts + route handler)
 
 ## Route handler — `app/api/auth/[...nextauth]/route.ts`
 
@@ -47,34 +47,36 @@ export const getProfileApi = (accessToken: string) =>
   });
 ```
 
-## `lib/auth.ts`
+## `lib/auth/options.ts`
 
 ```ts
 import { getServerSession, NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { JWT } from "next-auth/jwt";
 import { decodeJwt } from "jose";
-import { getProfileApi, loginApi } from "./api";
-
-const FALLBACK_SESSION_MAX_AGE = 24 * 60 * 60; // backend token has no exp
+import { getProfileApi, loginApi } from "@/lib/api";
 
 const extractTokenExpiry = (token: string): number | null => {
   try {
     const { exp } = decodeJwt(token);
     if (!exp) return null;
     const remaining = exp - Math.floor(Date.now() / 1000);
-    return remaining > 0 ? remaining : null;
+    return remaining > 0 ? remaining : null; // already expired → no session
   } catch {
     return null;
   }
 };
 
-const mapProfileToAuthUser = (profile: Profile, accessToken: string) => ({
+const mapProfileToAuthUser = (
+  profile: Profile,
+  accessToken: string,
+  sessionDuration: number
+) => ({
   id: String(profile.id),
   name: profile.name ?? "",
   email: profile.email ?? null,
   accessToken,
-  sessionDuration: extractTokenExpiry(accessToken) ?? undefined,
+  sessionDuration,
 });
 
 export const authOptions: NextAuthOptions = {
@@ -90,7 +92,11 @@ export const authOptions: NextAuthOptions = {
         try {
           const accessToken = await loginApi(credentials.mobile, credentials.password);
           const profile = await getProfileApi(accessToken);
-          return mapProfileToAuthUser(profile, accessToken);
+          // Backend is the single source of truth for session lifetime — a
+          // token without a usable exp gets NO session, never a guessed one
+          const sessionDuration = extractTokenExpiry(accessToken);
+          if (!sessionDuration) throw new Error("Login token has no expiry");
+          return mapProfileToAuthUser(profile, accessToken, sessionDuration);
         } catch (err) {
           // THROW, don't return null — the message reaches the client
           throw new Error(err instanceof Error ? err.message : "Invalid credentials");
@@ -100,9 +106,11 @@ export const authOptions: NextAuthOptions = {
   ],
   session: { strategy: "jwt" },
   jwt: {
-    // Cookie dies with the backend token, not on a fixed schedule
+    // Cookie maxAge always mirrors the backend token's exp — no fallback.
+    // authorize() already rejected tokens without a usable expiry, so
+    // sessionDuration is always set by the time encode runs.
     async encode({ secret, token, salt }) {
-      const maxAge = (token?.sessionDuration as number) || FALLBACK_SESSION_MAX_AGE;
+      const maxAge = token?.sessionDuration as number;
       const { encode } = await import("next-auth/jwt");
       return encode({ secret, token, maxAge, salt });
     },
