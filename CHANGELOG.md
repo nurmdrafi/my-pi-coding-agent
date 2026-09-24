@@ -7,6 +7,25 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 09-24-2026
+
+### Changed
+
+- **Extension consolidation** (upstream-convention alignment): `edit-anchor-guard.ts` + `token-economy-guard.ts` merged into **`permission-gate.ts`** — both were `tool_call` interceptors; one handler now runs anchor pre-validation, re-read freshness (R1), and bash economy rules in deterministic order, with validation preceding `pendingEdits` registration — a blocked edit can never enter the freshness map. User-preferred name `permission-gate` (blocks unconditionally, unlike upstream's confirm-style namesake — the planned commit/push confirmation gate stays `commit-gate.ts`); `error-log.ts` → **`error-telemetry.ts`** (kept after the 09-24 decision — it feeds the audit loop; renamed to name the observer role). Block-reason prefixes per rule family (`Anchor Guard:`, `Token Economy (…)`) unchanged. Rollback: restore the pre-merge pair from git HEAD.
+- **`extensions/README.md`** (new, enriched) — per-extension docs modeled on the upstream examples README: role/hooks table, `permission-gate` rule catalog (R1/R2/R5/R6/R7 + anchor checks with reason prefixes and state model), `error-telemetry` capture table + `/errors` + audit-loop rationale, pi conventions (single-file/default-export, blocking vs confirming semantics, pi-native packaging via `pi install npm:<pkg>` → `settings.json` `packages`), verification recipe, adding-a-new-extension checklist, adoption-candidate shortlist; links https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions for future follow-ups.
+- **Deleted `npm/`** — orphaned nested package (`opencode-pi`, `pi-session-analyzer`, `pi-token-burden`): zero callers anywhere in the harness, no `packages` declared in `settings.json`, gitignored/regenerable. Pi-native package mechanism is `settings.json` → `packages` (installs under `npm/`), *not* root `package.json` — root keeps repo tooling (husky/commitlint) only. `bin/` stays: pi-managed, auto-downloads arch-correct binaries (documented machine-local).
+- Measured: strict `tsc` clean ×3 under new filenames; `mdcmdcheck` exit 0 (no findings from changed files); model-visible prefix unchanged (AGENTS.md 5,718 B, 18 skill dirs, 0 prompt files); portability hits in `extensions/`: 0.
+- **Docs drift fix**: `bin/{fd,rg}` → generic `bin/` in `README.md` + `skills-audit.md` (`rg` absent from `bin/`; enumeration invites drift). Pre-push review (pre-push-review skill) run on the full uncommitted diff: medium (unverified changelog claim) and low (`-e`-form sed batching) fixed in place, all findings closed.
+
+## [1.10.0] - 09-24-2026
+
+### Changed
+
+- **`extensions/edit-anchor-guard.ts`** — intra-call overlap pre-check: exact-match spans of verified anchors are compared pairwise; overlapping `edits[i]`/`edits[j]` are blocked naming the pair *before* the edit tool rejects the whole call (same failure class as anchor misses: one failed round-trip saved). Fuzzy-matched anchors excluded — their indices live in normalized space.
+- **`extensions/token-economy-guard.ts`** — R7: recursive directory walks blocked with corrective text (`ls -R`/`--recursive`/combined `-R…` flags, `find -exec`/`-execdir`; redirected `ls -R > file` exempt) → `rg --files <dir> | head -N` / `rg -l`. Closes the last mechanically-checkable AGENTS.md searching rule ("no `ls -R`, `find -exec`"). R2 false-positive fix: `sed -n` with 2+ `;`-separated print regions (AGENTS.md-allowed batching) is no longer blocked — observed live this session (`sed -n '1,7p;108,120p'`).
+- **Extension renames evaluated, none made** — all three names already match the upstream examples convention (`dirty-repo-guard.ts` guard family, noun-phrase loggers like `session-name.ts`); upstream `-gate` (`permission-gate.ts`) means user-confirmation gates, which these are not. Renaming would churn 6 referencing files (CHANGELOG, README, SKILL.md, two audit reports, `error_audit.py`) for zero functional gain. `error-log` enrichment (session id per record) skipped: `ExtensionContext` exposes no session identifier — not inventing an API contract.
+- Measured: extensions are runtime-only — model-visible prefix unchanged before→after (AGENTS.md 5,718 B, 0 prompt files, 18 skill dirs, extensions 3 → 2 files); strict `tsc` clean (merged `permission-gate.ts` + `error-log.ts`); R7/R2 regexes smoke-tested (9/9 cases + edge fixes).
+
 ## [1.9.0] - 09-24-2026
 
 ### Added

@@ -160,7 +160,7 @@ rm -rf ~/.pi/agent/skills ~/.pi/agent/AGENTS.md ~/.pi/agent/skills-audit.md
 
 **New portable infra (all inside `~/.pi/agent/`):** `PORTABILITY.md` (the contract: in-bundle vs machine-local, API-key story, sync procedure), `setup.sh` (idempotent per-machine: neutralize `.agents`, sanity-check files), `bundle.sh` (builds `~/pi-portable-<date>.tar.gz` excluding `bin/`, `npm/`, `sessions/`, logs), `CHANGELOG.md` (continuous-improvement log).
 
-**Excluded from bundle (machine-local / auto-regenerated):** `bin/{fd,rg}`, `npm/node_modules/` (pi reinstalls from `settings.json` → `packages`), `sessions/` (keyed by absolute project paths), `*.log`.
+**Excluded from bundle (machine-local / auto-regenerated):** `bin/` (pi-downloaded platform binaries), `npm/node_modules/` (pi reinstalls from `settings.json` → `packages`), `sessions/` (keyed by absolute project paths), `*.log`.
 
 **Final state (portable unit = `~/.pi/agent/`):**
 ```

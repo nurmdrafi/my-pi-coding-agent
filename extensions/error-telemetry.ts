@@ -1,5 +1,5 @@
 /**
- * Error log — captures every runtime error while the LLM works, appending to
+ * Error telemetry — captures every runtime error while the LLM works, appending to
  * machine-local, gitignored ~/.pi/agent/logs/errors-<YYYY-MM-DD>.jsonl:
  *   - tool failures     (tool_result isError: bash exit≠0, edit anchor misses,
  *                        blocked guard calls, fs errors)
@@ -91,7 +91,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const n = Math.max(1, Math.min(100, parseInt(args, 10) || 10));
 			if (!existsSync(LOG_DIR)) {
-				ctx.ui.notify("error-log: nothing logged yet", "info");
+				ctx.ui.notify("error-telemetry: nothing logged yet", "info");
 				return;
 			}
 			const days = readdirSync(LOG_DIR)
@@ -137,7 +137,7 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 			ctx.ui.notify(
-				rows.length ? rows.join("\n") : "error-log: nothing logged yet",
+				rows.length ? rows.join("\n") : "error-telemetry: nothing logged yet",
 				rows.length ? "warning" : "info",
 			);
 		},

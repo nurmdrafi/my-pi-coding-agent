@@ -83,7 +83,7 @@ Optional deep evidence (only when user asks for skill-usage or token audit):
 - Run `python3 scripts/error_audit.py [--live] [path]` (skill dir) — error mining:
   joins toolResult.isError back to the originating toolCall input; reports by
   tool/kind/project + top failing command heads (default scans all sessions;
-  --live reads the error-log extension's daily JSONL).
+  --live reads the error-telemetry extension's daily JSONL).
 - A/B prefix cost: `bash scripts/make_test_home.sh <skills-csv> [dest]` builds a temp
   HOME with those skills model-visible (real harness untouched), then
   `bash scripts/ab_prefix.sh "<prompt>" <dest> [model]` runs one prompt under both

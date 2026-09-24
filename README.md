@@ -48,7 +48,7 @@ No env vars; default path only.
 ├── models-store.json         # catalog cache (machine-local, regen)
 │
 ├── skills/                   # 18 skills; each: SKILL.md + scripts/ references/ assets/
-├── extensions/               # always-on TS extensions (guards, error-log)
+├── extensions/               # always-on TS extensions (guards, error-telemetry)
 ├── README.md                 # this file (incl. portability contract)
 ├── CHANGELOG.md              # harness change log, latest-first (newest on top)
 ├── skills-audit.md           # append-only skill-set decisions
@@ -104,12 +104,13 @@ command/path declared in markdown resolves (also exits 1 on findings).
 ## Extensions
 
 Always-on TypeScript modules in `extensions/` (loaded by pi, never in the model
-prefix). `error-log.ts` captures every LLM runtime error — tool failures,
+prefix). `error-telemetry.ts` captures every LLM runtime error — tool failures,
 provider HTTP ≥ 400, compaction failures — into machine-local, gitignored
 `logs/errors-YYYY-MM-DD.jsonl` — review live with `/errors [n]` or batch
 with `skills/harness-engineer/scripts/error_audit.py --live`. Guards:
-`token-economy-guard.ts` (reading/output economy) and `edit-anchor-guard.ts`
-(oldText fabrication).
+`permission-gate.ts` — one `tool_call` interceptor: edit-anchor
+pre-validation plus reading/output economy rules. Full per-extension docs:
+`extensions/README.md`.
 
 ## Layers (what loads when)
 
@@ -189,7 +190,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | `settings.json` | Provider/model/theme/thinking (no secrets) |
 | `models.json` | Custom model definitions (currently: `glm-5.3-flash`) |
 | `skills/` | All skills (real files, auto-trigger + `/skill:name`) |
-| `extensions/` | Always-on extensions (token-economy + edit-anchor guards, error-log) |
+| `extensions/` | Always-on extensions (`permission-gate`, `error-telemetry`) |
 | `skills-audit.md` | Skill audit + migration history (append-only) |
 | `README.md` / `CHANGELOG.md` | This file + change log |
 | `.nvmrc` | Pins Node 24 (current LTS) for `nvm use` in the harness dir |
@@ -200,12 +201,12 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | Path | Why |
 |---|---|
 | `auth.json` | Secrets — copy once per machine via `scp`; never in git. |
-| `bin/fd`, `bin/rg` | Platform binaries. **pi auto-downloads** the correct arch (arm64/x86_64) on first run. |
-| `npm/node_modules/` | Extension deps. **pi reinstalls** from `settings.json` → `packages` on first run (currently none). |
+| `bin/` | Platform binaries, auto-downloaded per arch (arm64/x86_64; machine-local). Currently `fd`. |
+| `npm/` | pi-managed package installs via `pi install npm:<pkg>` → `settings.json` `packages` (currently none declared). |
 | `skills/**/node_modules/` | Per-skill deps (e.g. `browser-tools`: puppeteer-core, jsdom, `@mozilla/readability`, turndown). Regenerable — `npm install` in the skill dir on first use. |
 | `models-store.json` | Built-in provider model catalog (regenerable cache). |
 | `sessions/` | Session history, keyed by absolute project paths → inherently per-machine. |
-| `logs/` | Daily `errors-YYYY-MM-DD.jsonl` runtime-error logs from `error-log.ts` (like sessions/). |
+| `logs/` | Daily `errors-YYYY-MM-DD.jsonl` runtime-error logs from `error-telemetry.ts` (like sessions/). |
 | `*.log` | Debug logs. |
 
 ### Providers & API keys

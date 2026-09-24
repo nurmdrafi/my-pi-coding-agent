@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize tool errors across pi session transcripts (or the live error-log).
+"""Summarize tool errors across pi session transcripts (or the live error-telemetry logs).
 
 Usage:
   python3 error_audit.py [path]   # .jsonl file OR directory (recursive)
@@ -110,7 +110,7 @@ def main():
     if live:
         paths = sorted(glob.glob(os.path.expanduser("~/.pi/agent/logs/errors-*.jsonl")))
         if not paths:
-            print("no live error-log files (~/.pi/agent/logs/)")
+            print("no live error-telemetry files (~/.pi/agent/logs/)")
             return 0
         errors = list(iter_live(paths))
     else:
