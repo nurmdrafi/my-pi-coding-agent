@@ -33,7 +33,7 @@ if (newTab) {
 	await p.goto(url, { waitUntil: "domcontentloaded" });
 	console.log("✓ Opened:", url);
 } else {
-	const p = (await b.pages()).at(-1);
+	const p = (await b.pages()).at(-1) ?? (await b.newPage()); // no restored tab (e.g. profile w/ only extension pages) - open one
 	await p.goto(url, { waitUntil: "domcontentloaded" });
 	if (reload) {
 		await p.reload({ waitUntil: "domcontentloaded" });

@@ -11,13 +11,13 @@ OUT=$(mktemp -d)
 
 run() { # label home
   local label="$1" home="$2" t0 t1
-  t0=$(date +%s.%N)
+  t0=$(python3 -c 'import time; print(time.time())')  # date +%s.%N is GNU-only (prints literal N on macOS)
   if [ "$home" = "-" ]; then
     pi --provider zai --model "$MODEL" --mode json --no-session -p "$PROMPT" > "$OUT/$label.jsonl" 2>&1
   else
     env HOME="$home" pi --provider zai --model "$MODEL" --mode json --no-session -p "$PROMPT" > "$OUT/$label.jsonl" 2>&1
   fi
-  t1=$(date +%s.%N)
+  t1=$(python3 -c 'import time; print(time.time())')
   python3 - "$OUT/$label.jsonl" "$label" "$t0" "$t1" <<'PY'
 import json, sys
 path, label, t0, t1 = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4])

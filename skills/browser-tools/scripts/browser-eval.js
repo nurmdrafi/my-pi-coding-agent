@@ -23,7 +23,7 @@ const b = await Promise.race([
 	process.exit(1);
 });
 
-const p = (await b.pages()).at(-1);
+const p = (await b.pages()).at(-1) ?? (await b.newPage()); // no restored tab (e.g. profile w/ only extension pages) - open one
 
 if (!p) {
 	console.error("✗ No active tab found");
