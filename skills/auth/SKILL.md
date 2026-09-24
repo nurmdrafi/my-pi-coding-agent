@@ -57,20 +57,20 @@ File map (every piece exists for a reason; do not skip one):
 - **`authorize()` throws** `new Error(backendMessage)` on bad credentials — never `return null`. With `signIn({redirect:false})` the thrown message becomes `result.error` shown to the user; `null` gives a generic failure.
 - **All backend auth calls inside `authorize()`, server-side.** Client-side post-login fetch chains (profile fetch → set-cookie → redirect) are the root cause of the no-redirect bug. One `signIn()` = one response = one cookie.
 - **`await hydrateSessionToken()` after every successful `signIn`** (login, register auto-login, any programmatic sign-in) before any authorized request or redirect. `signIn({redirect:false})` resolves *before* the `useSession` cache updates; acting on the stale empty token sends requests as anonymous → 401 → logout loop.
-- **Redirect = awaited `router.push(callbackUrl)` in the component**, never `window.location.href` buried in an API layer, never conditional on a profile fetch succeeding.
+- **Redirect = awaited `router.push(callbackUrl)` in the component**, never `window.location.href` buried in an API layer, never conditional on a profile fetch succeeding. Sanitize `callbackUrl` to a same-origin relative path first — it's a query param, fully user-controllable, and `router.push("https://evil.com")` navigates off-origin (open redirect).
 - **Session cookie maxAge = backend token `exp`** (decode with `jose`), fallback 24h. Custom `jwt.encode` override, not the default.
-- **401 ladder in the base query:** retry once with re-read token → still 401 → `signOut({redirect:false})` + `location.replace('/login?callbackUrl=...')` gated by `isProtectedRoute()` so public pages don't bounce.
+- **401 ladder in the base query:** retry only if something can actually rotate the token between attempts (a refresh endpoint, a re-fetch of the session). With a static module-holder token the retry is byte-identical — skip it and go straight to `signOut({redirect:false})` + `location.replace('/login?callbackUrl=...')` gated by `isProtectedRoute()` so public pages don't bounce.
 - **No token in localStorage, ever.** The only client-visible token copy is the NextAuth session; API layers read it via the module holder.
 - **Social logins exchange the provider token for a backend token inside the `jwt` callback** — the provider token is never stored as the app token.
 
 ## Checklist
 
 - [ ] `authorize()` throws with backend message; does all backend auth calls
-- [ ] `hydrateSessionToken()` called after signIn and register-auto-login
-- [ ] Redirect chain: `callbackUrl` → same-origin referrer (≠ auth page) → default
+- [ ] `hydrateSessionToken()` called after signIn and register-auto-login; sets both the token and user holders
+- [ ] Redirect chain: `callbackUrl` (same-origin validated) → same-origin referrer (≠ auth page) → default
 - [ ] Route guard uses `getToken()` (signature-verified), not cookie presence
 - [ ] Unauthenticated on protected → `/login?callbackUrl=<path>`
-- [ ] Base query: Bearer per request, 401 retry once, signOut fallback
+- [ ] Base query: Bearer per request, 401 ladder (retry only with real token rotation), signOut fallback
 - [ ] Layout passes server session into `SessionProvider`
 - [ ] OTP flows: plain endpoints, no auth side effects; resend cooldown enforced
 - [ ] Social: provider token exchanged for backend token before session write

@@ -57,8 +57,12 @@ Order minimizes broken windows:
 
 Remove everything Phase 0 recorded: storage keys + crypto helpers, internal
 cookie routes, `setAuthData`/`clearAuthData`-style helpers, side-effect blocks
-in `onQueryStarted`, dead redirect call sites, and their tests. Dormant legacy
-auth code is the #1 source of "ghost sessions" reported months later.
+in `onQueryStarted`, dead redirect call sites, and their tests. Then sweep the
+seams: `rg -n "<removed export>"` for every deleted export (a leftover
+`import { STORAGE_KEYS }` after deleting the constant is a typecheck failure
+that `ignoreBuildErrors` silently hides), and run `npx tsc --noEmit` — the
+error count must not grow versus baseline. Dormant legacy auth code is the #1
+source of "ghost sessions" reported months later.
 
 **Phase 4 — parity verification (all must pass)**
 
@@ -67,7 +71,7 @@ auth code is the #1 source of "ghost sessions" reported months later.
 - [ ] Deep link to protected route logged-out → `/login?callbackUrl=` → returns after login
 - [ ] Logged-in visit to `/login` → bounced to app, not a second session
 - [ ] Session outlives a hard refresh; dies with backend token expiry
-- [ ] 401 mid-session → one retry → sign-out → login with return path
+- [ ] 401 mid-session → sign-out → login with return path (retry only if token rotation exists)
 - [ ] Logout clears the NextAuth cookie and the app shell
 - [ ] Register (if OTP-gated) → auto-login → redirect, no manual step
 - [ ] Social buttons (if present) → exchange → session → redirect

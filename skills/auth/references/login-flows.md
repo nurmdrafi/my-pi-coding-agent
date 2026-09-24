@@ -24,9 +24,22 @@ const handleSubmit = async (mobile: string, password: string) => {
   await handleLoginSuccess();
 };
 
-// Redirect chain: explicit callback → same-origin referrer (≠ auth page) → default
+// Query params are user-controllable: "?callbackUrl=https://evil.com" must
+// not survive into router.push — an absolute URL full-navigates off-origin.
+const toSameOriginPath = (value: string): string | null => {
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return url.pathname + url.search;
+  } catch {
+    return null;
+  }
+};
+
+// Redirect chain: explicit callback (same-origin) → same-origin referrer (≠ auth page) → default
 const handleLoginSuccess = async () => {
-  if (callbackUrl) return router.push(callbackUrl);
+  const destination = (callbackUrl && toSameOriginPath(callbackUrl)) || "/";
+  if (callbackUrl) return router.push(destination);
   if (typeof document !== "undefined" && document.referrer) {
     try {
       const referrerUrl = new URL(document.referrer);
@@ -99,11 +112,11 @@ export async function handleLogout(callbackUrl: string = "/") {
 | Where | Fallback |
 |---|---|
 | Session cookie maxAge | backend JWT `exp` → else 24h |
-| Login redirect | `callbackUrl` → same-origin referrer (≠ auth page) → default route |
+| Login redirect | `callbackUrl` (same-origin validated) → same-origin referrer (≠ auth page) → default route |
 | Auth-page redirect (proxy) | referer path if non-auth → `/` |
 | `authorize()` failure | thrown backend message → `result.error` → toast; `null` only for missing input |
 | Backend error text | `data.message` → 5xx "Service temporarily unavailable" → "Something went wrong" |
-| 401 on API call | retry once with re-read token → `signOut` + `/login?callbackUrl=` (public pages: silent signOut) |
+| 401 on API call | retry only with real token rotation → `signOut` + `/login?callbackUrl=` (public pages: silent signOut) |
 | `hydrateSessionToken` | fetch fail → token `null` → anonymous requests, login proceeds |
 | Logout | try/catch → unconditional final `signOut` |
 | Post-login deferred intents (e.g. buy-now) | keep intent in sessionStorage; target page replays it after session hydrates — don't act while `useSession` is still stale |
@@ -113,3 +126,4 @@ export async function handleLogout(callbackUrl: string = "/") {
 - Multi-second `setTimeout` before redirect — never; await the chain instead.
 - Acting on `useSession()` immediately after `signIn` resolves — cache is stale; that's what `hydrateSessionToken` is for.
 - Forgetting `callbackUrl` propagation through proxy redirects loses the user's place.
+- Trusting `callbackUrl` because "the proxy sets it safely" — the proxy sets a pathname-only value, but the query param itself is user-editable; sanitize at the consumption site regardless.

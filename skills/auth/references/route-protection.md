@@ -98,6 +98,7 @@ flash on protected shells.
 
 ## Pitfalls
 
+- `proxy.ts` **is** the middleware on Next 16+ (root-level convention, exported function named `proxy`). Don't report it as dead wiring because `middleware.ts` doesn't exist — pre-16 the same file is `middleware.ts` with the export named `middleware`. Verify wiring by version, not by filename.
 - `getToken()` verifies the cookie signature — replaces presence-only cookie checks (`request.cookies.get('token')`), which anyone can forge with devtools.
 - Public pages that must stay reachable logged-out (e.g. `/tracking`) simply don't appear in the matcher.
 - Do not put `/api/auth/*` in the matcher — NextAuth routes must not be intercepted.

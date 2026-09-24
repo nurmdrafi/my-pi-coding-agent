@@ -7,6 +7,15 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 09-24-2026
+
+### Fixed
+
+- **skills/auth (SKILL.md + 4 references)** — two correctness holes found in review:
+  - `callbackUrl` is a user-controllable query param: `router.push("https://evil.com")` navigates off-origin (open redirect). Skill now mandates sanitizing `callbackUrl` to a same-origin relative path before pushing; checklist and login-flow references updated.
+  - 401 retry ladder retried even when nothing can rotate the token between attempts — with a static module-holder token the retry is byte-identical. Retry is now gated on a real rotation source (refresh endpoint / session re-fetch); otherwise go straight to `signOut` + gated redirect.
+  - `hydrateSessionToken()` contract clarified: sets both the token and user module holders (references aligned).
+
 ## [1.8.0] - 09-24-2026
 
 ### Added

@@ -10,6 +10,7 @@ Three layers, one token:
 
 ```ts
 let accessToken: string | null = null;
+let sessionUser: Session["user"] | null = null;
 
 export function setSessionToken(token: string | null) {
   accessToken = token;
@@ -19,13 +20,23 @@ export function getSessionToken(): string | null {
   return accessToken;
 }
 
+export function setSessionUser(user: Session["user"] | null) {
+  sessionUser = user;
+}
+
+export function getSessionUser(): Session["user"] | null {
+  return sessionUser;
+}
+
 // signIn({redirect:false}) resolves before useSession() cache updates.
-// Fetch the session once so the next API call carries the token.
+// Fetch the session once so the next API call carries the token and
+// non-React consumers (pusher/notification init) see the user immediately.
 export async function hydrateSessionToken(): Promise<void> {
   try {
     const res = await fetch("/api/auth/session", { credentials: "include" });
     const data = await res.json();
     accessToken = data?.accessToken ?? null;
+    sessionUser = (data?.user ?? null) ?? null;
   } catch {
     accessToken = null; // requests go anonymous; never blocks login UX
   }
@@ -38,13 +49,14 @@ export async function hydrateSessionToken(): Promise<void> {
 "use client";
 import { useSession } from "next-auth/react";
 import { useEffect } from "react";
-import { setSessionToken } from "@/lib/session-token";
+import { setSessionToken, setSessionUser } from "@/lib/session-token";
 
 export default function SessionTokenSync() {
   const { data: session } = useSession();
   useEffect(() => {
     setSessionToken(session?.accessToken ?? null);
-  }, [session?.accessToken]);
+    setSessionUser(session?.user ?? null);
+  }, [session]);
   return null;
 }
 ```
@@ -108,21 +120,12 @@ const baseQueryWithAuth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQuery
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
   };
 
-  let result = await baseQuery(normalizedArgs, api, extraOptions);
+  const result = await baseQuery(normalizedArgs, api, extraOptions);
 
-  if (result?.error?.status === 401) {
-    const retryToken = getSessionToken();
-    if (retryToken) {
-      normalizedArgs.headers = {
-        ...normalizedArgs.headers,
-        Authorization: `Bearer ${retryToken}`,
-      };
-      result = await baseQuery(normalizedArgs, api, extraOptions);
-      if (result?.error?.status === 401) handle401();
-    } else {
-      handle401();
-    }
-  }
+  // No retry: nothing rotates the module-holder token between attempts, so a
+  // retry would be byte-identical. Add a retry only alongside a real refresh
+  // path (token rotation), and re-apply auth from the new token then.
+  if (result?.error?.status === 401) handle401();
 
   return result;
 };
@@ -143,5 +146,7 @@ in components; backend auth lives in `authorize()`.
 ## Pitfalls
 
 - Forgetting `hydrateSessionToken()` after signIn → first post-login request fires anonymous → 401 → instant logout loop. This is the #1 regression.
+- Hydrate the user holder too: consumers that read `getSessionUser()` right after login (pusher/notification activation) get `null` until `useSession` updates otherwise.
+- A 401 "retry with re-read token" against a static holder is dead code — the request is identical. Reviewers flag it as misleading; only retry when a refresh path changed the token.
 - Don't read the token from `document.cookie` — the session cookie is httpOnly by design.
 - `refetchOnWindowFocus={false}` avoids pointless session refetch storms; the 401 ladder is the real invalidation path.
