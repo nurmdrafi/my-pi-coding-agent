@@ -54,6 +54,7 @@ Rules emitted: `CACHE_TTL_EXPIRY`, `DUP_TOOL_CALL`, `BIG_TOOL_OUTPUT`, `RETRY_ST
 
 ```sh
 node <skill-dir>/scripts/audit.mjs views
+node <skill-dir>/scripts/audit.mjs views --project <name>   # per-project slice: sessions, finding detail, per-date trend
 ```
 
 One bounded block: totals (tokens **and** dollars), findings-by-rule with a sessions-affected count, cache hit-ratio distribution, projects and worst sessions by waste (full session ids, with the `fetch` command to inspect one), idle-gap cost curve, tools by bytes, peak-context and compactions, per-date trend, skill usage.

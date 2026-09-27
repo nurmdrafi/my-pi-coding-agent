@@ -4,14 +4,15 @@
  *   - edit calls: oldText anchor pre-validation — existence (exact + fuzzy),
  *     uniqueness with line numbers, intra-call overlap — with actual file
  *     context on a miss, so the model fixes its anchor in one retry
- *   - read calls: no full re-read of a file whose edit result is already in
- *     context (R1)
+ *   - read calls: no full re-read of a file whose edit result or last full
+ *     read is already in context (R1; read-after-read added 2026-09-27)
  *   - bash calls: reading/output economy — R2 cat/standalone-sed viewing,
  *     R5 git log caps, R6 rg -o caps, R7 recursive walks, verbose runner caps
  * Sources: 2026-09-16 audit (cat-for-viewing 86, uncapped runners, git log),
  * 2026-09-23 audit (read-after-edit re-read loops 316K/wk, uncapped rg -o
  * 119K/wk), 2026-09-24 (anchor overlap pre-check, R7, sed -n batching fix,
- * anchor-guard merged in — both were tool_call interceptors).
+ * anchor-guard merged in — both were tool_call interceptors), 2026-09-27
+ * audit (R8 git-hook output caps, read-after-read dups).
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
@@ -31,12 +32,14 @@ function isCapped(seg: string): boolean {
 	return /\|\s*(head|tail|rg|grep|cut|jq|sort|uniq|wc)\b/.test(seg);
 }
 
-/** read-after-edit freshness: path -> seq of the last confirmed edit/write result */
-const lastInContext = new Map<string, number>();
+/** context freshness: path -> { at, kind } of the last confirmed edit/write OR full-read result */
+const lastInContext = new Map<string, { at: number; kind: "edit" | "read" }>();
 /** edit/write toolCallId -> path, awaiting its tool_result */
 const pendingEdits = new Map<string, string>();
+/** read toolCallId -> { path, windowed }, awaiting its tool_result */
+const pendingReads = new Map<string, { path: string; windowed: boolean }>();
 let seq = 0;
-/** a full re-read within this many tool calls of a confirmed edit is redundant (~3 turns) */
+/** a full re-read within this many tool calls of a confirmed edit/read is redundant (~3 turns) */
 const REREAD_WINDOW = 6;
 
 function normPath(p: unknown): string {
@@ -193,20 +196,26 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		// R1 (2026-09-23): no full re-read of a file whose edit result is already in context
+		// R1 (2026-09-23): no full re-read of a file whose edit result (09-23) or
+		// last full read (09-27) is already in context
 		if (isToolCallEventType("read", event)) {
 			const path = normPath(event.input.path);
-			const editedAt = lastInContext.get(path);
+			const prior = lastInContext.get(path);
 			const windowed = typeof event.input.offset === "number" || typeof event.input.limit === "number";
-			if (editedAt !== undefined && seq - editedAt <= REREAD_WINDOW && !windowed) {
+			if (prior !== undefined && seq - prior.at <= REREAD_WINDOW && !windowed) {
 				return {
 					block: true,
 					reason:
-						`Token Economy (Re-read): '${path}' was edited in the last few turns — the new content is already in ` +
-						`context from the edit result. Don't re-read after a successful edit. If you need a different region, ` +
-						`use a windowed read (offset/limit); if the file changed externally, grep it instead.`,
+						prior.kind === "edit"
+							? `Token Economy (Re-read): '${path}' was edited in the last few turns — the new content is already in ` +
+								`context from the edit result. Don't re-read after a successful edit. If you need a different region, ` +
+								`use a windowed read (offset/limit); if the file changed externally, grep it instead.`
+							: `Token Economy (Re-read): '${path}' was fully read in the last few turns — its content is already in ` +
+								`context. Don't re-read the whole file; if you need another region, use a windowed read (offset/limit) ` +
+								`at the anchor; if it may have changed externally, grep it instead.`,
 				};
 			}
+			pendingReads.set(event.toolCallId, { path, windowed });
 		}
 
 		if (isToolCallEventType("write", event)) {
@@ -259,6 +268,19 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			// R8 (2026-09-27): commit/push re-run repo hooks (lint/test/build) whose
+			// output floods context (44-48K/call measured). Heredoc messages split
+			// across segments put the cap pipe on a later line — a cap anywhere in
+			// the full command satisfies the check; --no-verify skips hooks entirely.
+			if (/^git (commit|push)\b/.test(seg) && !/--no-verify/.test(seg) && !isCapped(seg) && !isCapped(cmd)) {
+				return {
+					block: true,
+					reason:
+						`Token Economy (git hooks): '${seg.split(/\s+/).slice(0, 2).join(" ")}' re-runs repo hooks (lint/test/build) whose ` +
+						`output floods context. Append '2>&1 | tail -20'; if it fails, re-run the hook part with a wider tail or rg for the error.`,
+				};
+			}
+
 			// R7 (2026-09-24): recursive directory walks pollute context (no ls -R, find -exec)
 			const lsRecursive = /\bls\b[^|]*\s(--recursive|-[a-zA-Z]*R[a-zA-Z]*)\b/.test(seg) && !/>/.test(seg);
 			if (lsRecursive || /\bfind\b[^|]*\s-exec(dir)?\b/.test(seg)) {
@@ -289,6 +311,13 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_result", async (event) => {
+		const read = pendingReads.get(event.toolCallId);
+		if (read !== undefined) {
+			pendingReads.delete(event.toolCallId);
+			// only a successful full read certifies the content is in context
+			if (!event.isError && read.path && !read.windowed) lastInContext.set(read.path, { at: seq, kind: "read" });
+			return;
+		}
 		const path = pendingEdits.get(event.toolCallId);
 		if (path === undefined) return;
 		pendingEdits.delete(event.toolCallId);
@@ -297,7 +326,7 @@ export default function (pi: ExtensionAPI) {
 			// failed edit: content may have drifted — a re-read is legitimate
 			lastInContext.delete(path);
 		} else {
-			lastInContext.set(path, seq);
+			lastInContext.set(path, { at: seq, kind: "edit" });
 		}
 	});
 }

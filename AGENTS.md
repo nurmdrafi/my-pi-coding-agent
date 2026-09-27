@@ -34,7 +34,7 @@
 **Command output**
 - Cap verbose output before it lands in context (`| tail -40`; `head -c 4000` for long lines).
 - npm/build/typecheck/test: `| rg 'error TS|FAIL|Error' | sort -u | head -40`; `npm install` → `--no-fund --no-audit | tail -5`. One per turn; never re-run a result already in context.
-- `git` reads: `diff` / `show` / `log --oneline | head`.
+- `git` reads: `diff` / `show` / `log --oneline | head -c 4000` (never tens-of-KB caps); commit/push: append `2>&1 | tail -20` (hooks re-run lint/test/build — tens of KB).
 - Commands work on macOS and Linux: stick to BSD∩GNU flags (`head -c`, `tail -N`, `sed -n 'A,Bp'`); no `sed -i` (macOS needs `-i ''` — prefer the `edit` tool), no `stat -c/-f`, no `grep -P`.
 
 **Turns** (each round-trip re-sends and re-processes the whole prefix)

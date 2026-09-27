@@ -223,3 +223,91 @@ export function renderViews(workdir) {
 
   return out.join('\n');
 }
+
+// ---- project slice ----
+// `views --project <name>`: the per-project questions (which sessions, which
+// findings on which tools, per-date trend) previously cost 3-4 unlogged
+// hand-rolled jq queries per audit — every query and its output rides the
+// transcript. This renders the same slice deterministically.
+export function renderProject(workdir, name) {
+  const overview = read(workdir, 'overview.json');
+  const findings = read(workdir, 'l1_findings.json');
+  const out = [];
+  const say = (s = '') => out.push(s);
+
+  const target = String(name).replace(/\/+$/, '');
+  const matches = (p) => {
+    const q = String(p).replace(/\/+$/, '');
+    return q === target || q.endsWith('/' + target) || basename(q) === target;
+  };
+  const sessions = (overview.sessions ?? []).filter((s) => matches(s.project));
+  if (!sessions.length) {
+    const avail = Object.entries(overview.projects ?? {})
+      .sort((a, b) => b[1].wasteTokens - a[1].wasteTokens).slice(0, 10)
+      .map(([p]) => proj(p)).join(', ');
+    return `no sessions match project '${name}' — available: ${avail}`;
+  }
+  const ids = new Set(sessions.map((s) => s.sessionId));
+  const pfindings = findings.filter((f) => ids.has(f.sessionId));
+
+  // per-session rates, same as renderViews: rule dollars join through the
+  // session that actually paid them, not a project-wide average
+  const rateOf = new Map(sessions.map((s) => [s.sessionId, (s.usdPerMTok ?? null) === null ? null : s.usdPerMTok / 1e6]));
+  const dollars = (tokens, sessionId) => {
+    const r = rateOf.get(sessionId);
+    return r === null || r === undefined ? 0 : tokens * r;
+  };
+
+  const tot = sessions.reduce((a, s) => ({
+    turns: a.turns + (s.apiTurns ?? 0), read: a.read + (s.cacheRead ?? 0),
+    waste: a.waste + (s.wasteTokens ?? 0), usd: a.usd + (s.wasteUsd ?? 0),
+  }), { turns: 0, read: 0, waste: 0, usd: 0 });
+  const dates = sessions.map((s) => s.date).sort();
+
+  say(`## Project ${proj(sessions[0].project)} (${sessions[0].project})`);
+  say(`sessions ${sessions.length} · window ${dates[0]} → ${dates.at(-1)} · apiTurns ${tot.turns} · read ${M(tot.read)}`);
+  say(`waste ${K(tot.waste)} = ${usd(tot.usd)} · share of read volume ${((tot.waste / tot.read) * 100).toFixed(2)}%`);
+  say();
+
+  say(`## Sessions by waste`);
+  for (const s of [...sessions].sort((a, b) => b.wasteTokens - a.wasteTokens)) {
+    const rules = Object.entries(s.findingsByRule ?? {}).map(([r, n]) => `${r}×${n}`).join(',');
+    say(`${s.sessionId} ${s.date} turns ${lpad(s.apiTurns, 4)} peak ${lpad(K(s.peakContext), 5)} comp ${s.compactions ?? 0} waste ${lpad(K(s.wasteTokens), 7)} ${lpad(usd(s.wasteUsd ?? 0), 9)} rate ${lpad((s.usdPerMTok ?? 0).toFixed(2), 5)}/M  ${rules}`);
+  }
+  say();
+
+  say(`## Findings by rule`);
+  const byRule = {};
+  for (const f of pfindings) {
+    const r = (byRule[f.rule] ??= { n: 0, w: 0, usd: 0, sess: new Set() });
+    r.n++; r.w += f.estWasteTokens ?? 0;
+    r.usd += dollars(f.estWasteTokens ?? 0, f.sessionId);
+    r.sess.add(f.sessionId);
+  }
+  for (const [rule, v] of Object.entries(byRule).sort((a, b) => b[1].w - a[1].w)) {
+    say(`${pad(rule, 18)} ${lpad(v.n, 4)}  ${lpad(v.sess.size + ' sess', 7)}  ${lpad(K(v.w), 7)}  ${lpad(usd(v.usd), 9)}`);
+  }
+  say();
+
+  say(`## Finding detail  (rule · session · severity · evidence · estWaste)`);
+  const detail = [...pfindings].sort((a, b) => b.estWasteTokens - a.estWasteTokens);
+  for (const f of detail.slice(0, 40)) {
+    say(`${pad(f.rule, 18)} ${f.sessionId.slice(0, 8)} ${pad(f.severity, 8)} ${JSON.stringify(f.evidenceStats ?? {})}  ${K(f.estWasteTokens ?? 0)}`);
+  }
+  if (detail.length > 40) say(`… ${detail.length - 40} more findings not shown`);
+  say();
+
+  say(`## Per-date trend  (oldest → newest)`);
+  const byDate = {};
+  for (const s of sessions) {
+    const d = (byDate[s.date] ??= { sessions: 0, waste: 0, usd: 0 });
+    d.sessions++;
+    d.waste += s.wasteTokens ?? 0;
+    d.usd += s.wasteUsd ?? 0;
+  }
+  for (const [d, v] of Object.entries(byDate).sort()) {
+    say(`${d}  sessions ${lpad(v.sessions, 3)}  waste ${lpad(K(v.waste), 7)}  ${usd(v.usd)}`);
+  }
+
+  return out.join('\n');
+}

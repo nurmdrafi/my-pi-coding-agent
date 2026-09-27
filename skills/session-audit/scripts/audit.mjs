@@ -22,7 +22,7 @@ import {
 } from './parser.mjs';
 import { deriveRates, sessionRate } from './pricing.mjs';
 import { THRESHOLDS, runRules } from './rules.mjs';
-import { renderViews } from './views.mjs';
+import { renderProject, renderViews } from './views.mjs';
 
 const workdir = process.env.AUDIT_WORKDIR;
 const die = (msg) => { console.error(`audit: ${msg}`); process.exit(1); };
@@ -250,8 +250,19 @@ function cmdFetch(opts, sessionId) {
     for (const r of toolResults(entries).filter((r) => r.isError).slice(-limit).reverse())
       add({ tool: names.get(r.toolUseId) ?? '?', ts: r.timestamp, head: cap(resultText(r.toolUseId), maxBytes) });
   } else if (opts.kind === 'tool_input') {
-    for (const c of toolCalls(entries).slice(-limit).reverse())
-      add({ ts: c.timestamp, tool: c.name, input: cap(JSON.stringify(c.input ?? {}), maxBytes) });
+    const calls = toolCalls(entries);
+    if (opts.uuid) {
+      // anchor on the exact toolCall id (findings' turnPointers for DUP/BIG/
+      // RETRY are call ids) — a ts-ordered tail window silently ignored --uuid
+      const idx = calls.findIndex((c) => c.id === opts.uuid);
+      if (idx === -1) die(`toolCall id not found: ${opts.uuid}`);
+      const half = Math.max(1, Math.floor(limit / 2));
+      for (const c of calls.slice(Math.max(0, idx - half), idx + half + 1).reverse())
+        add({ ts: c.timestamp, tool: c.name, match: c.id === opts.uuid || undefined, input: cap(JSON.stringify(c.input ?? {}), maxBytes) });
+    } else {
+      for (const c of calls.slice(-limit).reverse())
+        add({ ts: c.timestamp, tool: c.name, input: cap(JSON.stringify(c.input ?? {}), maxBytes) });
+    }
   } else if (opts.kind === 'turn_window') {
     if (!opts.uuid) die('turn_window requires --uuid <responseId>');
     const radius = opts.radius ?? 2;
@@ -300,6 +311,7 @@ function parseArgs(argv) {
     else if (a === '--max-bytes') opts.maxBytes = Number(argv[++i]);
     else if (a === '--uuid') opts.uuid = argv[++i];
     else if (a === '--radius') opts.radius = Number(argv[++i]);
+    else if (a === '--project') opts.project = argv[++i];
     else if (a === '--help' || a === '-h') opts.help = true;
     else positional.push(a);
   }
@@ -308,7 +320,7 @@ function parseArgs(argv) {
 
 const HELP = `usage:
   node scripts/audit.mjs run [--max N]        phase 0: digest → $AUDIT_WORKDIR artifacts
-  node scripts/audit.mjs views                phase 1: bounded landscape block
+  node scripts/audit.mjs views [--project <name>]  phase 1: bounded landscape block (or one project's slice)
   node scripts/audit.mjs fetch <session-id> --kind <user_text|error_head|tool_input|assistant_head|turn_window>
         [--limit N] [--max-bytes B] [--uuid U] [--radius K]`;
 
@@ -317,7 +329,7 @@ const { opts, positional } = parseArgs(rest);
 if (!cmd || opts.help) { console.log(HELP); process.exit(cmd ? 0 : 1); }
 if (cmd === 'run') cmdRun(opts);
 else if (cmd === 'views') {
-  try { console.log(renderViews(workdir)); }
+  try { console.log(opts.project ? renderProject(workdir, opts.project) : renderViews(workdir)); }
   catch (e) { die(`cannot render views (${e.message}) — run \`audit.mjs run\` first`); }
 } else if (cmd === 'fetch') {
   if (!positional[0]) die('fetch requires a <session-id>');
