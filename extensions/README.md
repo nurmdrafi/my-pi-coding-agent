@@ -20,6 +20,7 @@ Edits take effect on the next session start (or via `/reload-runtime` if adopted
 |---|---|---|
 | `permission-gate.ts` | Blocks rule-violating tool calls before execution, with corrective rule text | `tool_call`, `tool_result` |
 | `error-telemetry.ts` | Captures runtime errors to daily machine-local JSONL; `/errors [n]` reviews the tail | `tool_result`, `tool_execution_end`, `after_provider_response`, `session_compact_failed` |
+| `session-learnings.ts` | Tier-1 self-learning collector: one summary line per signal-bearing settled run → `learnings/pending.md` | `agent_start`, `turn_end`, `tool_execution_start`, `tool_result`, `tool_execution_end`, `after_provider_response`, `message_end`, `agent_settled` |
 
 ## `permission-gate.ts` — rule catalog
 
@@ -51,6 +52,18 @@ State (per session): `pendingEdits` (toolCallId → {path, edited spans}), `pend
 - **Review**: `/errors [n]` (default 10, max 100) — newest-first tail across days.
 - **Batch mining**: `skills/harness-engineer/scripts/error_audit.py` (default scans session transcripts; `--live` reads these daily files).
 - **Why it exists**: the sensor of the measure → guard → verify loop. Every rule above was ranked into existence by an error audit (2026-09-16, 09-23, 09-24); post-guard error counts verify the guards actually work. Deleting it is safe for enforcement (rules live in `permission-gate`) but blinds the audit loop.
+
+## `session-learnings.ts` — the self-learning queue
+
+Tier 1 of the measure → learn → guard loop (learn-claude-code s09 pattern, cache-safe adaptation): collectors feed a candidate queue; Tier 2 (harness-engineer review) promotes recurring items into AGENTS.md rules, skills, or permission-gate guards — every promotion needs a `Measured:` CHANGELOG line, then consumed lines are deleted from the queue.
+
+- **Trigger**: `agent_settled` — one append-only line per run; never a prefix mutation (cache-is-sacred; recall happens by reading the file on demand, not by injection — deliberate divergence from s09's per-request system-prompt rebuild).
+- **Write filter** (deterministic, zero model calls): a run is queued only if it has signal — tool errors, guard blocks, provider ≥400, ≥10 tool calls, ≥15 turns, or >100k tokens with <40% cache-read (prefix-instability flag `⚠cache`).
+- **Line shape**: `- <ts> · <project> [⚠cache] · turns=N tools=N errs=[tool×n] blocks=[rule-family×n] provErrs=N tok in=..k/out=..k cache=N% dur=Nm`. Errors count from `tool_result`; blocks from `tool_execution_end` reason prefixes — disjoint sources, no id dedupe needed.
+- **Storage**: `learnings/pending.md` — machine-local, gitignored (same class as `logs/`).
+- **Review**: read the file in the periodic harness-engineer session; promote with `Measured:`, delete consumed lines. Never edit AGENTS.md directly from raw queue lines — the human gate is the admission check (s09 `should_store_memory` analogue).
+- **Why it exists**: closes the loop's missing trigger — audit scripts previously ran only when manually invoked; now every signal-bearing run self-reports.
+- ponytail: a killed process loses the in-flight run (session JSONLs stay the source of truth — the queue is an index, not a ledger); per-request memory injection deliberately rejected (cache).
 
 ## Conventions (pi)
 

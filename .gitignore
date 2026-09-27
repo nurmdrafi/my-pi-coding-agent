@@ -4,6 +4,7 @@ auth.json
 # Local state / history
 sessions/
 logs/
+learnings/
 
 # Machine-local binaries & deps (pi regenerates)
 /bin/
@@ -29,3 +30,4 @@ __pycache__/
 # Transient locks
 *.lock
 tavily/config.json
+tavily/session.json

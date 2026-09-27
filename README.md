@@ -32,7 +32,7 @@ Requires Node ≥ 22 (`.nvmrc` pins 24, the current LTS). Full details below.
 Map of this pi harness. Re-read at the start of any harness-engineering session.
 Update when structure, skill set, or always-on budget changes.
 
-Last updated: 2026-09-24
+Last updated: 2026-09-27
 
 ## Portable unit
 
@@ -48,7 +48,7 @@ No env vars; default path only.
 ├── models-store.json         # catalog cache (machine-local, regen)
 │
 ├── skills/                   # 18 skills; each: SKILL.md + scripts/ references/ assets/
-├── extensions/               # always-on TS extensions (guards, error-telemetry)
+├── extensions/               # always-on TS extensions (guards, error-telemetry, self-learning collector)
 ├── README.md                 # this file (incl. portability contract)
 ├── CHANGELOG.md              # harness change log, latest-first (newest on top)
 ├── skills-audit.md           # append-only skill-set decisions
@@ -109,7 +109,13 @@ provider HTTP ≥ 400, compaction failures — into machine-local, gitignored
 `logs/errors-YYYY-MM-DD.jsonl` — review live with `/errors [n]` or batch
 with `skills/harness-engineer/scripts/error_audit.py --live`. Guards:
 `permission-gate.ts` — one `tool_call` interceptor: edit-anchor
-pre-validation plus reading/output economy rules. Full per-extension docs:
+pre-validation plus reading/output economy rules. `session-learnings.ts`
+closes the self-learning loop: every settled run with signal (tool errors,
+guard blocks, provider ≥400, heavy tool use, cache instability) appends one
+deterministic line to machine-local `learnings/pending.md`; the periodic
+harness-engineer review (Audit mode step 0) drains the queue and promotes
+recurring items into rules/skills/guards — each with a `Measured:` CHANGELOG
+line, consumed lines deleted. Full per-extension docs:
 `extensions/README.md`.
 
 ## Layers (what loads when)
@@ -190,7 +196,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | `settings.json` | Provider/model/theme/thinking (no secrets) |
 | `models.json` | Custom model definitions (currently: `glm-5.3-flash`) |
 | `skills/` | All skills (real files, auto-trigger + `/skill:name`) |
-| `extensions/` | Always-on extensions (`permission-gate`, `error-telemetry`) |
+| `extensions/` | Always-on extensions (`permission-gate`, `error-telemetry`, `session-learnings`) |
 | `skills-audit.md` | Skill audit + migration history (append-only) |
 | `README.md` / `CHANGELOG.md` | This file + change log |
 | `.nvmrc` | Pins Node 24 (current LTS) for `nvm use` in the harness dir |
@@ -207,6 +213,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | `models-store.json` | Built-in provider model catalog (regenerable cache). |
 | `sessions/` | Session history, keyed by absolute project paths → inherently per-machine. |
 | `logs/` | Daily `errors-YYYY-MM-DD.jsonl` runtime-error logs from `error-telemetry.ts` (like sessions/). |
+| `learnings/` | Self-learning queue (`pending.md`) — machine-local candidate index; session JSONLs stay the source of truth. |
 | `*.log` | Debug logs. |
 
 ### Providers & API keys

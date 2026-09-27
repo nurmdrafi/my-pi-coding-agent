@@ -305,3 +305,15 @@ check), refactoring-ui (§0b logic-in-UI rules), frontend-design (mutating-UI
 logic guards), map-integration (§5.5–5.6 polygon-sync + geometry-load
 guards). playwright-tester already covered CI/headless — skipped.
 Descriptions byte-stable; validator re-run: PASS.
+
+## 2026-09-27 — usage audit: 18/18 used, no deletions (COUNT stays 18)
+
+`skill_usage_audit.py` across all sessions: 135 invocations, 0 unused skills.
+HIGH (≥10): pre-push-review 19, playwright-tester 18, tavily-search 14,
+harness-engineer 12. LOW (1–2): refactoring-ui 2, fallow-audit 1,
+tavily-extract 1 — rare-but-fired beats deleted; rare skills keep full
+trigger descriptions (the description is the retrieval index, not prose).
+Decision: the health-score "skill count > 15: −10" rule is miscalibrated
+against measured 100% usage — keep the set; revisit only when a skill hits
+0 across a full audit window. Source: learn-claude-code repo analysis
+session (data-gated pruning recommendation closed with evidence).

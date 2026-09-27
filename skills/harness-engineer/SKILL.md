@@ -45,6 +45,7 @@ If `README.md` is missing, create a minimal version first.
 
 One skill covers the full loop: inspect → audit/score → diagnose → change → measure → log. Audit-only mode: **do not modify any files** (except writing the report) unless the user asks.
 
+0. **Drain the learnings queue first** — read `~/.pi/agent/learnings/pending.md` (written by `extensions/session-learnings.ts`, one line per signal-bearing settled run). Recurring items — same rule family, tool, project, or repeated `⚠cache` across lines — are pre-ranked candidates; promote via *Workflow* (every promotion needs a `Measured:` line), then delete the consumed lines. Absent/empty file: skip.
 1. **Inventory** (chars/4 as token heuristic):
    - Context files: `AGENTS.md` (+ any always-loaded file) byte size → tokens.
    - Every skill: `description` field char count → tokens (extract frontmatter only, never load bodies).

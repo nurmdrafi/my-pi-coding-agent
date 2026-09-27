@@ -7,6 +7,41 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.2] - 09-27-2026
+
+### Changed
+
+- **Docs sync (living map)** — `README.md`: Last updated 09-27; extensions tree/table rows + Extensions section now document `session-learnings.ts` and the self-learning loop (queue → Audit-mode step 0 drain → `Measured:` promotion); machine-local table gains `learnings/`. `skills-audit.md`: dated entry — usage audit 18/18 skills used, 135 invocations, 0 unused; data-gated pruning recommendation closed with evidence; health-score "count > 15: −10" flagged miscalibrated against measured 100% usage.
+- Measured: README.md 278 → 284 lines (5 edits, zero command/path claims added beyond `learnings/` which mdcmdcheck treats as ~-path); skills-audit.md 307 → 319 lines (append-only); model-visible prefix unchanged (AGENTS.md 5,738 B, 18 descriptions byte-stable, 0 prompts); skills 18/18 used (skill_usage_audit.py, 135 invocations).
+
+### Fixed
+
+- **`extensions/session-learnings.ts`** — pre-push-review F1 (high): block-detection regex anchored `:$`, but permission-gate emits `Prefix: corrective text...` on one line — `blocks` would have stayed permanently empty (the extension's primary signal). Regex now `/^(Anchor Guard:|Token Economy \([^)]*\):)/`, family = match minus trailing colon. Verified: strict tsc clean; both §3 failure modes checked (prefix-only lines still match; real tool errors can't false-fire).
+- **`tavily/session.json`** — pre-push-review F2 (low): tavily CLI port→hash state, mutated by tool usage; tracked by accident and the `git add -A` sync flow would commit it forever. Now gitignored next to `tavily/config.json` and untracked (`git rm --cached`, working-tree file kept).
+- **`skills/harness-engineer/scripts/mdcmdcheck.mjs`** — pre-existing red, root-caused (F3): `git <sub> --help` emits man pages with overstrike formatting (15,180 backspace bytes on `git log --help`), so flag extraction missed every bold-rendered option — six permanent FLAG false-positives since those entries landed. Fix: strip char+backspace pairs before extraction (git-log flag set 153 → 371; `--grep`/`--oneline`/`--no-merges` now found). Plus CHANGELOG 1.12.0's inline "git commit|push" shorthand (pipe-split made `push` a phantom binary) → `git commit` / `git push`. `--help` exempted at validation (universal flag, absent from git man pages — this fix's own documentation tripped it). Measured: checker exit 0 — first time since 1.13.0's contract; MAC-ONLY info items remain deliberate (systematic-debugging documents macOS codesign flows).
+
+## [1.15.1] - 09-27-2026
+
+### Changed
+
+- **`skills/harness-engineer/SKILL.md`** — Audit mode gains step 0: drain `~/.pi/agent/learnings/pending.md` first; recurring items (same rule family / tool / project / repeated `⚠cache`) are pre-ranked candidates, promoted via Workflow with `Measured:` lines, consumed lines deleted. Closes the discovery gap from 1.15.0: the queue's designated Tier-2 consumer had no pointer to it — a fresh audit session would have run the scripts and missed the queue (including the session that built it). Skill body only — loads on demand; description untouched.
+- Measured: SKILL.md 120 → 121 lines (+1); skill description unchanged at 266 chars (0 prefix bytes — bodies are not model-visible until loaded, catalog byte-stable); skills 18, AGENTS.md 5,738 B, prompts 0 — all unchanged; mdcmdcheck failure set identical to pre-existing (BINARY 1 / FLAG 6 / SYNTAX 0 — no new findings).
+
+## [1.15.0] - 09-27-2026
+
+### Added
+
+- **`extensions/session-learnings.ts`** — Tier 1 of the self-learning loop (learn-claude-code s09 pattern, cache-safe adaptation): deterministic per-run collector. On `agent_settled`, appends one line to `~/.pi/agent/learnings/pending.md` when the run has signal — tool errors (from `tool_result`), permission-gate blocks by rule family (from `tool_execution_end` reason prefixes; disjoint from `tool_result`, no dedupe), provider ≥400, ≥10 tool calls, ≥15 turns, or >100k tok with <40% cache-read (`⚠cache` prefix-instability flag). Zero model calls, zero prefix bytes, external storage. Tier 2: harness-engineer review promotes recurring items with `Measured:` lines and deletes consumed queue lines; never auto-edits AGENTS.md — the human gate is the admission check. Closes the loop's missing trigger: audit scripts previously ran only when manually invoked. Source: learn-claude-code repo analysis (this session).
+- **`extensions/README.md`** — table row + `session-learnings.ts` section; `.gitignore` + `learnings/` (machine-local, `logs/` class).
+- Measured: strict `tsc` clean (7.0.2 paths-mapped via ephemeral /tmp tsconfig; TS 7 removed `baseUrl` — recipe drops it, `paths` with absolute generated targets); model-visible prefix unchanged (AGENTS.md 5,738 B, 18 skills, 0 prompts — extension is runtime-only, loads at next session start); portability hits: 0 (`os.homedir()` paths only). Live evidence during the change itself: permission-gate blocked this session's own uncapped `npx tsc` — guard fired while building the collector that documents it.
+
+## [1.14.0] - 09-27-2026
+
+### Changed
+
+- **AGENTS.md** — removed the four inline dated audit statistics (severity-only parentheticals; conditions and actions untouched): re-reads `(817K / 59%, 2026-09-14)`; single-call turns `(94%, 2026-09-14)`; long-session cost-tail `(2026-09-16 audit: 300+ turn sessions, $10–14 each)`; injected skill bodies `(2026-09-16: 7,952-tok first turn vs ~3k baseline)` → dateless magnitude (`~2.6×`). Undated severity phrases retained (`top measured waste`, `top cost-tail driver`). Rationale: a dated stat is a scheduled mutation — every audit pressured a prefix edit, violating cache-is-sacred; the numbers carry no conditional weight (this evidence now lives here and in `skills-audit.md`). AGENTS.md is now immutable-by-construction across future audits.
+- Measured: AGENTS.md 5,835 → 5,738 B (−97 B, ~24 tok/turn); remaining `2026-` references in AGENTS.md: 0 (`rg -c` exit 1); skills 18, prompts 0, portability hits — all unchanged. Prefix changed → fresh session advised.
+
 ## [1.13.0] - 09-27-2026
 
 ### Changed
@@ -20,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **AGENTS.md** — Token Economy → Command output: `git commit/push` must append `2>&1 | tail -20` (repo hooks re-run lint/test/build; session audit 2026-09-27T071942Z measured 44–48K bytes per call in ubl-survey-dashboard — 5 hook dumps + 2 `git diff | head -c 45000` over-wide caps, 62% of that project's waste; directory-wide BIG_TOOL_OUTPUT 991K/$1.27). Git-read caps tightened to `head -c 4000`. +117 B.
-- **`extensions/permission-gate.ts`** — R8: uncapped `git commit|push` blocked with corrective pipe text (`--no-verify` exempt; a cap anywhere in the full command passes — heredoc messages split across segments). R1 extended read-after-edit → read-after-**read**: successful full reads now register in `lastInContext` (kind-tagged `{at, kind}`), a second full read within `REREAD_WINDOW` (6 calls) is blocked with kind-specific text — the audit's 17 read-dups were read-after-read, structurally invisible to the edit-keyed map (directory-wide read dupWaste 1771K). Source: 2026-09-27 audit. Verified: strict `tsc` clean (paths-mapped tsconfig per extensions/README recipe). Meta: the guard blocked this session's own first edit attempt (stale anchor) and an uncapped `npx tsc` — rules fired live during the change itself.
+- **`extensions/permission-gate.ts`** — R8: uncapped `git commit` / `git push` blocked with corrective pipe text (`--no-verify` exempt; a cap anywhere in the full command passes — heredoc messages split across segments). R1 extended read-after-edit → read-after-**read**: successful full reads now register in `lastInContext` (kind-tagged `{at, kind}`), a second full read within `REREAD_WINDOW` (6 calls) is blocked with kind-specific text — the audit's 17 read-dups were read-after-read, structurally invisible to the edit-keyed map (directory-wide read dupWaste 1771K). Source: 2026-09-27 audit. Verified: strict `tsc` clean (paths-mapped tsconfig per extensions/README recipe). Meta: the guard blocked this session's own first edit attempt (stale anchor) and an uncapped `npx tsc` — rules fired live during the change itself.
 - **`skills/session-audit`** (installed bundle, no upstream repo — reinstall overwrites; diff kept minimal) — `views --project <name>` renders the per-project slice (sessions w/ full ids + per-session rates, findings by rule w/ sessions-affected, finding detail w/ evidenceStats, per-date trend) that previously cost 3–4 unlogged hand-rolled jq queries per audit; `fetch --kind tool_input --uuid` now anchors on the exact toolCall id with a `match:true` marker (was: ts-ordered tail window that silently ignored `--uuid` — anchoring immediately corrected this audit's rank-1 attribution: 2 of 7 BIG findings were `git diff | head -c 45000` over-wide caps, not hook dumps). SKILL.md Phase 1 documents the flag.
 - **Repo fix (outside harness)**: `ubl-survey-dashboard/.npmrc` `loglevel=verbose` → `warn` — npm-verbose hook logging was the flood amplifier.
 - Measured: AGENTS.md 5,718 → 5,835 B; skills 18 (unchanged); prompts 0; permission-gate.ts 12,327 → 14,147 B (lazy-loaded, zero prefix); portability hits 1 benign (AGENTS.md's own rule text). Next-audit targets: ubl-survey-dashboard BIG_TOOL_OUTPUT ≤2 findings/<20K (from 7/79.5K); read-dups <5 (from 17).

@@ -25,7 +25,7 @@
 **Reading**
 - `read` only, windowed (`offset`/`limit`) at the anchor. Never `cat`/`head`/`tail` a file path — inside pipes fine; `sed -n 'A,Bp'` only when batching 2+ regions in one call.
 - Minified/dist: `rg -o` or `| cut -c1-200` — `head -N` bounds lines, not bytes.
-- Never full-read >100 lines to find one block; a file already read/edited this session is in context. Iterative re-reads are the top measured waste (817K / 59%, 2026-09-14): after an edit, a ≤60-line window at the anchor is enough.
+- Never full-read >100 lines to find one block; a file already read/edited this session is in context. Iterative re-reads are the top measured waste: after an edit, a ≤60-line window at the anchor is enough.
 
 **Editing**
 - Edit `oldText` anchors must be bytes actually seen in a read result this session. If the anchor needs lines beyond a read-window edge (above `offset` or past `offset+limit`), widen the read — never infer the missing lines. Fuzzy matching tolerates quotes/trailing whitespace, not text that doesn't exist.
@@ -38,11 +38,11 @@
 - Commands work on macOS and Linux: stick to BSD∩GNU flags (`head -c`, `tail -N`, `sed -n 'A,Bp'`); no `sed -i` (macOS needs `-i ''` — prefer the `edit` tool), no `stat -c/-f`, no `grep -P`.
 
 **Turns** (each round-trip re-sends and re-processes the whole prefix)
-- Batch independent commands (`a && b`) **and independent tool calls into one turn** — 94% of calling turns were single-call (2026-09-14).
+- Batch independent commands (`a && b`) **and independent tool calls into one turn** — most calling turns were measured single-call.
 - One call per question; no speculative previews (`git status`, `--stat`). At ~80% identified, batch search-then-act instead of spending a turn to confirm.
 - Past ~150K context at a milestone, suggest a fresh session to the user.
-- Hard stop at ~200 assistant turns in one session: propose a fresh session (compaction or handoff summary). Long sessions are the top cost-tail driver (2026-09-16 audit: 300+ turn sessions, $10–14 each).
-- Never paste a skill's full body into a prompt/message — skills load on demand via their description only. Injected bodies ride every subsequent turn's context (2026-09-16: 7,952-tok first turn vs ~3k baseline).
+- Hard stop at ~200 assistant turns in one session: propose a fresh session (compaction or handoff summary). Long sessions are the top cost-tail driver.
+- Never paste a skill's full body into a prompt/message — skills load on demand via their description only. Injected bodies ride every subsequent turn's context (~2.6× first-turn prefix vs baseline).
 
 ## Safety
 - Ask before: commit, push, install packages, or any destructive command (rm, git reset, force-push, etc.).

@@ -35,6 +35,7 @@ const helpFlags = (key) => {
   const args = sub ? [sub, '--help'] : ['--help'];
   let out = '';
   try { out = execFileSync(bin, args, { encoding: 'utf8', timeout: 15000 }) + ''; } catch (e) { out = (e.stdout || '') + ''; }
+  out = out.replace(/.\x08/g, ''); // strip man-page overstrike (bold X\bX, 15K bytes on git subcommand help) so --flag extraction sees real flags
   const flags = new Set();
   for (const m of out.matchAll(/--?[a-zA-Z][a-zA-Z0-9-]*/g)) flags.add(m[0]);
   helpCache.set(key, flags);
@@ -152,7 +153,10 @@ for (const md of mds) {
 }
 for (const [key, flags] of flagByKey) {
   const help = helpFlags(key);
-  for (const f of flags) if (!help.has(f)) flagFail.push(`${key} ${f}`);
+  for (const f of flags) {
+    if (f === '--help') continue; // universal flag; git man pages don't list it — documenting help commands is legit prose
+    if (!help.has(f)) flagFail.push(`${key} ${f}`);
+  }
 }
 
 console.log(`md files scanned: ${mds.length}`);
