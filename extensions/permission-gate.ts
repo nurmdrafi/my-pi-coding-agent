@@ -5,14 +5,17 @@
  *     uniqueness with line numbers, intra-call overlap — with actual file
  *     context on a miss, so the model fixes its anchor in one retry
  *   - read calls: no full re-read of a file whose edit result or last full
- *     read is already in context (R1; read-after-read added 2026-09-27)
+ *     read is already in context, and no windowed re-read covering the
+ *     just-edited lines (R1; read-after-read + windowed-overlap 2026-09-27)
  *   - bash calls: reading/output economy — R2 cat/standalone-sed viewing,
  *     R5 git log caps, R6 rg -o caps, R7 recursive walks, verbose runner caps
  * Sources: 2026-09-16 audit (cat-for-viewing 86, uncapped runners, git log),
  * 2026-09-23 audit (read-after-edit re-read loops 316K/wk, uncapped rg -o
  * 119K/wk), 2026-09-24 (anchor overlap pre-check, R7, sed -n batching fix,
  * anchor-guard merged in — both were tool_call interceptors), 2026-09-27
- * audit (R8 git-hook output caps, read-after-read dups).
+ * audit (R8 git-hook output caps, read-after-read dups) + 2026-09-27
+ * agent-project audit (post-edit windowed re-reads over the edited anchor:
+ * sessions 01a0d347 / 01a0d1f6 / 01a0d33a).
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
@@ -32,10 +35,16 @@ function isCapped(seg: string): boolean {
 	return /\|\s*(head|tail|rg|grep|cut|jq|sort|uniq|wc)\b/.test(seg);
 }
 
-/** context freshness: path -> { at, kind } of the last confirmed edit/write OR full-read result */
-const lastInContext = new Map<string, { at: number; kind: "edit" | "read" }>();
-/** edit/write toolCallId -> path, awaiting its tool_result */
-const pendingEdits = new Map<string, string>();
+/** edited line span, 1-based inclusive, post-application */
+interface LineSpan {
+	start: number;
+	end: number;
+}
+
+/** context freshness: path -> { at, kind, spans? } of the last confirmed edit/write OR full-read result */
+const lastInContext = new Map<string, { at: number; kind: "edit" | "read"; spans?: LineSpan[] }>();
+/** edit/write toolCallId -> { path, spans? }, awaiting its tool_result */
+const pendingEdits = new Map<string, { path: string; spans?: LineSpan[] }>();
 /** read toolCallId -> { path, windowed }, awaiting its tool_result */
 const pendingReads = new Map<string, { path: string; windowed: boolean }>();
 let seq = 0;
@@ -103,11 +112,15 @@ function findClosestFragment(
 	return undefined;
 }
 
-/** Validates an edit call's anchors; returns a block (with corrective context) or undefined if ok */
+/**
+ * Validates an edit call's anchors; returns a block (with corrective context)
+ * or the call's post-application edited line spans (exact-match anchors only)
+ * if ok.
+ */
 async function validateEditAnchors(input: {
 	path?: unknown;
 	edits?: unknown;
-}): Promise<{ block: true; reason: string } | undefined> {
+}): Promise<{ block: true; reason: string } | { spans?: LineSpan[] } | undefined> {
 	const edits = input.edits;
 	if (!Array.isArray(edits)) return; // let the tool's own validation respond
 
@@ -122,6 +135,11 @@ async function validateEditAnchors(input: {
 	const fuzzyContent = normalizeForFuzzyMatch(content);
 	// verified exact-match spans, for the intra-call overlap check
 	const spans: { i: number; start: number; end: number }[] = [];
+	// post-application spans of this call's edits, for the windowed re-read check
+	let delta = 0; // cumulative line shift from earlier edits in this call
+	const edited: LineSpan[] = [];
+	// ponytail: fuzzy-matched anchors contribute no span (index only exists in
+	// normalized space) — windowed re-read checks fall back to allow for them
 
 	for (let i = 0; i < edits.length; i++) {
 		const oldText = toLF(String((edits[i] as EditEntry)?.oldText ?? ""));
@@ -177,10 +195,17 @@ async function validateEditAnchors(input: {
 				}
 			}
 			spans.push({ i, start, end });
+
+			// post-application span: earlier edits in this call shift later lines
+			const newLines = String((edits[i] as EditEntry)?.newText ?? "").split("\n").length;
+			const eStart = lineOf(content, start) + delta;
+			const eEnd = eStart + newLines - 1;
+			delta += newLines - oldText.split("\n").length;
+			edited.push({ start: eStart, end: eEnd });
 		}
 	}
 
-	return; // all anchors verified: let the edit proceed
+	return { spans: edited.length ? edited : undefined }; // all anchors verified: let the edit proceed
 }
 
 export default function (pi: ExtensionAPI) {
@@ -190,19 +215,21 @@ export default function (pi: ExtensionAPI) {
 		// edit: anchor pre-validation first (existence, uniqueness, overlap);
 		// only a call that passes is tracked for read-freshness below
 		if (isToolCallEventType("edit", event)) {
-			const blocked = await validateEditAnchors(event.input);
-			if (blocked) return blocked;
-			pendingEdits.set(event.toolCallId, normPath(event.input.path));
+			const checked = await validateEditAnchors(event.input);
+			if (checked && "block" in checked) return checked;
+			pendingEdits.set(event.toolCallId, { path: normPath(event.input.path), spans: checked?.spans });
 			return;
 		}
 
 		// R1 (2026-09-23): no full re-read of a file whose edit result (09-23) or
-		// last full read (09-27) is already in context
+		// last full read (09-27) is already in context; no windowed re-read (09-27)
+		// covering the just-edited lines — the edit result echoes the applied text
 		if (isToolCallEventType("read", event)) {
 			const path = normPath(event.input.path);
 			const prior = lastInContext.get(path);
 			const windowed = typeof event.input.offset === "number" || typeof event.input.limit === "number";
-			if (prior !== undefined && seq - prior.at <= REREAD_WINDOW && !windowed) {
+			if (prior !== undefined && seq - prior.at <= REREAD_WINDOW) {
+				if (!windowed) {
 				return {
 					block: true,
 					reason:
@@ -213,13 +240,29 @@ export default function (pi: ExtensionAPI) {
 							: `Token Economy (Re-read): '${path}' was fully read in the last few turns — its content is already in ` +
 								`context. Don't re-read the whole file; if you need another region, use a windowed read (offset/limit) ` +
 								`at the anchor; if it may have changed externally, grep it instead.`,
-				};
+					};
+				}
+				// windowed: block only when it covers a just-edited line span
+				const winStart = typeof event.input.offset === "number" ? event.input.offset : 1;
+				const winEnd = typeof event.input.limit === "number" ? winStart + event.input.limit - 1 : Infinity;
+				const hit = prior.kind === "edit" ? prior.spans?.find((s) => winStart <= s.end && s.start <= winEnd) : undefined;
+				if (hit) {
+					return {
+						block: true,
+						reason:
+							`Token Economy (Re-read): '${path}' was edited in the last few turns and this window (lines ${winStart}–${
+								winEnd === Infinity ? "EOF" : winEnd
+							}) covers the edited lines (${hit.start}–${hit.end}) — the applied text is already in ` +
+								`context from the edit result. Shift the window beyond the edited region; if you must verify, grep the file instead.`,
+					};
+				}
 			}
 			pendingReads.set(event.toolCallId, { path, windowed });
 		}
 
 		if (isToolCallEventType("write", event)) {
-			pendingEdits.set(event.toolCallId, normPath(event.input.path));
+			// whole file content is in context after a write — every window overlaps it
+			pendingEdits.set(event.toolCallId, { path: normPath(event.input.path), spans: [{ start: 1, end: Infinity }] });
 		}
 
 		if (!isToolCallEventType("bash", event)) return;
@@ -318,15 +361,15 @@ export default function (pi: ExtensionAPI) {
 			if (!event.isError && read.path && !read.windowed) lastInContext.set(read.path, { at: seq, kind: "read" });
 			return;
 		}
-		const path = pendingEdits.get(event.toolCallId);
-		if (path === undefined) return;
+		const entry = pendingEdits.get(event.toolCallId);
+		if (entry === undefined) return;
 		pendingEdits.delete(event.toolCallId);
-		if (!path) return; // malformed pathless call — nothing to track
+		if (!entry.path) return; // malformed pathless call — nothing to track
 		if (event.isError) {
 			// failed edit: content may have drifted — a re-read is legitimate
-			lastInContext.delete(path);
+			lastInContext.delete(entry.path);
 		} else {
-			lastInContext.set(path, { at: seq, kind: "edit" });
+			lastInContext.set(entry.path, { at: seq, kind: "edit", spans: entry.spans });
 		}
 	});
 }

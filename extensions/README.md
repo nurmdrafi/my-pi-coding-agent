@@ -28,14 +28,14 @@ Single `tool_call` interceptor; one handler, deterministic order (edit → read 
 | Rule | Scope | Blocks |
 |---|---|---|
 | `Anchor Guard:` | edit | `oldText` not found (exact + fuzzy normalization), non-unique anchor (reports line numbers), intra-call overlap of exact-matched anchors |
-| R1 | read | full re-read of a file whose edit result is ≤ 6 tool calls old; windowed reads (`offset`/`limit`) pass |
+| R1 | read | full re-read of a file whose edit result or last full read is ≤ 6 tool calls old; windowed reads pass unless the window covers a just-edited line span (post-application spans, exact-match anchors only; after `write`, every window) |
 | R2 | bash | `cat` / `sed -n` for viewing with no pipe consumer — `sed -n` batching 2+ regions (`;` or two `-e`) is allowed |
 | R5 | bash | `git log` without `--oneline` / `-n <N>` / pipe cap |
 | R6 | bash | `rg -o` without pipe cap (quoted patterns stripped first so a pattern containing `-o` can't false-fire) |
 | R7 | bash | recursive walks: `ls -R`-family flags, `find -exec`/`-execdir` (redirected `ls -R > f` exempt; `find -executable` doesn't false-fire) |
 | Runner cap | bash | uncapped `npm`/`vitest`/`jest`/`playwright`/`tsc` runners (suggests the filter pipe) |
 
-State (per session): `pendingEdits` (toolCallId → path, awaiting result) and `lastInContext` (path → call seq) drive R1 freshness; a failed edit drops freshness — content may have drifted, so a re-read is legitimate. Fuzzy matching mirrors edit-diff.js `normalizeForFuzzyMatch` (NFKC, trailing whitespace, smart quotes/dashes/spaces) so the guard and the tool agree on what "matches". Anchor validation runs before freshness registration, so a blocked edit never enters the map.
+State (per session): `pendingEdits` (toolCallId → {path, edited spans}), `pendingReads`, and `lastInContext` (path → {at, kind, spans?}) drive R1 freshness; a failed edit drops freshness — content may have drifted, so a re-read is legitimate. Fuzzy matching mirrors edit-diff.js `normalizeForFuzzyMatch` (NFKC, trailing whitespace, smart quotes/dashes/spaces) so the guard and the tool agree on what "matches". Anchor validation runs before freshness registration, so a blocked edit never enters the map.
 
 ## `error-telemetry.ts` — what gets captured
 
