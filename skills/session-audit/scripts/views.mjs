@@ -198,6 +198,44 @@ export function renderViews(workdir) {
   }
   say();
 
+  // The two stats the 2026-10-05 report listed as unobtainable: which files
+  // the re-read habit hits (rules.mjs records the path at digest time), and
+  // which tool emits the BIG outputs. Both calibrate the R1 coverage gate.
+  say(`## Dup read targets (top 10 by waste)`);
+  {
+    const byPath = {};
+    for (const f of findings) {
+      if (f.rule !== 'DUP_TOOL_CALL' || !f.evidenceStats?.path) continue;
+      const d = (byPath[f.evidenceStats.path] ??= { dups: 0, w: 0, usd: 0, sess: new Set() });
+      d.dups += Math.max(1, (f.evidenceStats.count ?? 2) - 1);
+      d.w += f.estWasteTokens ?? 0;
+      d.usd += dollars(f.estWasteTokens ?? 0, f.sessionId);
+      d.sess.add(f.sessionId);
+    }
+    const rows = Object.entries(byPath).sort((a, b) => b[1].w - a[1].w).slice(0, 10);
+    if (!rows.length) say(`(no read dups)`);
+    for (const [p, d] of rows) {
+      const shown = p.length > 52 ? '…' + p.slice(-51) : p;
+      say(`${pad(shown, 52)} dups ${lpad(d.dups, 4)}  ${lpad(K(d.w), 7)}  ${lpad(usd(d.usd), 8)}  ${d.sess.size}s`);
+    }
+  }
+  say();
+  say(`## BIG_TOOL_OUTPUT by tool`);
+  {
+    const byTool = {};
+    for (const f of findings) {
+      if (f.rule !== 'BIG_TOOL_OUTPUT') continue;
+      const d = (byTool[f.evidenceStats?.tool ?? '?'] ??= { n: 0, w: 0, usd: 0 });
+      d.n++; d.w += f.estWasteTokens ?? 0; d.usd += dollars(f.estWasteTokens ?? 0, f.sessionId);
+    }
+    const rows = Object.entries(byTool).sort((a, b) => b[1].w - a[1].w);
+    if (!rows.length) say(`(none)`);
+    for (const [t, d] of rows) {
+      say(`${pad(t, 14)} findings ${lpad(d.n, 4)}  ${lpad(K(d.w), 7)}  ${usd(d.usd)}`);
+    }
+  }
+  say();
+
   say(`## Peak context & compactions`);
   const pk = [['<50K', 0, 50e3], ['50-150K', 50e3, 150e3], ['150-250K', 150e3, 250e3], ['250-350K', 250e3, 350e3], ['>350K', 350e3, Infinity]];
   say(pk.map(([l, lo, hi]) => `${l}:${sessions.filter((s) => (s.peakContext ?? 0) >= lo && (s.peakContext ?? 0) < hi).length}`).join('  '));

@@ -18,7 +18,7 @@ Edits take effect on the next session start (or via `/reload-runtime` if adopted
 
 | Extension | Role | Hooks |
 |---|---|---|
-| `permission-gate.ts` | Blocks rule-violating tool calls before execution, with corrective rule text | `tool_call`, `tool_result` |
+| `permission-gate.ts` | Blocks rule-violating tool calls before execution, with corrective rule text | `tool_call`, `tool_result`, `session_compact` |
 | `error-telemetry.ts` | Captures runtime errors to daily machine-local JSONL; `/errors [n]` reviews the tail | `tool_result`, `tool_execution_end`, `after_provider_response`, `session_compact_failed` |
 | `session-learnings.ts` | Tier-1 self-learning collector: one summary line per signal-bearing settled run → `learnings/pending.md` | `agent_start`, `turn_end`, `tool_execution_start`, `tool_result`, `tool_execution_end`, `after_provider_response`, `message_end`, `agent_settled` |
 
@@ -29,7 +29,7 @@ Single `tool_call` interceptor; one handler, deterministic order (edit → read 
 | Rule | Scope | Blocks |
 |---|---|---|
 | `Anchor Guard:` | edit | `oldText` not found (exact + fuzzy normalization), non-unique anchor (reports line numbers), intra-call overlap of exact-matched anchors |
-| R1 | read | full re-read of a file whose edit result or last full read is ≤ 6 tool calls old; windowed reads pass unless the window covers a just-edited line span (post-application spans, exact-match anchors only; after `write`, every window) |
+| R1 | read | any re-read whose requested window is fully covered by the session's in-context span union — read results (actual returned lines from result truncation stats; an untruncated whole-file read certifies 1–EOF), edit-result spans (exact-match anchors), whole file after `write` and for images; partial overlap passes; resets on `session_compact`, a bash command naming the file's basename, a failed edit |
 | R2 | bash | `cat` / `sed -n` for viewing with no pipe consumer — `sed -n` batching 2+ regions (`;` or two `-e`) is allowed |
 | R5 | bash | `git log` without `--oneline` / `-n <N>` / pipe cap |
 | R6 | bash | `rg -o` without pipe cap (quoted patterns stripped first so a pattern containing `-o` can't false-fire) |
@@ -38,7 +38,7 @@ Single `tool_call` interceptor; one handler, deterministic order (edit → read 
 | R9 | bash | `git commit -m <msg>` header not matching commitlint conventional pattern `type(scope?): subject` (types: feat/fix/docs/style/refactor/perf/test/build/ci/chore/revert; also header ≤ 100 chars, subject not capitalized, no trailing `.`); header rules only — body `-m` flags, `-F`, heredoc skipped; checked before R8 so a bad message never reaches hooks |
 | Runner cap | bash | uncapped `npm`/`vitest`/`jest`/`playwright`/`tsc` runners (suggests the filter pipe) |
 
-State (per session): `pendingEdits` (toolCallId → {path, edited spans}), `pendingReads`, and `lastInContext` (path → {at, kind, spans?}) drive R1 freshness; a failed edit drops freshness — content may have drifted, so a re-read is legitimate. Fuzzy matching mirrors edit-diff.js `normalizeForFuzzyMatch` (NFKC, trailing whitespace, smart quotes/dashes/spaces) so the guard and the tool agree on what "matches". Anchor validation runs before freshness registration, so a blocked edit never enters the map.
+State (per extension instance): `coverage` (path → merged span union + last kind), `pendingEdits`, `pendingReads` drive R1; a failed edit drops coverage — content may have drifted, so a re-read is legitimate; `session_compact` clears everything. ponytail: no hydration on session resume — the map starts empty, erring toward allowing. Fuzzy matching mirrors edit-diff.js `normalizeForFuzzyMatch` (NFKC, trailing whitespace, smart quotes/dashes/spaces) so the guard and the tool agree on what "matches". Anchor validation runs before coverage registration, so a blocked edit never enters the map.
 
 ## `error-telemetry.ts` — what gets captured
 
@@ -78,6 +78,7 @@ Tier 1 of the measure → learn → guard loop (learn-claude-code s09 pattern, c
 ## Verifying changes
 
 - Strict typecheck against the installed package's types (`npx tsc --noEmit --strict` with a `paths` mapping to the global `@earendil-works/pi-coding-agent/dist/index.d.ts` — the global path is machine-specific).
+- `permission-gate` fixture test: `node tests/permission-gate.test.mjs` — 13 black-box cases through a stubbed ExtensionAPI (exit 0 = pass; preflight symlinks the global package into the gitignored root `node_modules`).
 - `node skills/harness-engineer/scripts/mdcmdcheck.mjs` must exit 0 (validates every command/path this README declares).
 - Restart pi to load changes; watch the first few tool calls — a misfiring rule shows up immediately as a block.
 

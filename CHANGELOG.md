@@ -7,6 +7,30 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.5] - 10-08-2026
+
+### Changed
+
+- **permission-gate: R10 construct-shape rg searches → ast-grep** — the 2026-10-05 audit found ast-grep discipline at 145/177 sessions rg-only (13 calls ever; nothing rejects it — gate, binary, PATH all clean): the model never *selects* ast-grep despite AGENTS.md prose carrying the instruction every turn. R10 blocks rg calls that initiate a construct-shape search (`ident\(` call sites, `=>` arrows, `<Uppercase` JSX) when scoped to code (`-g`/`-t`/code paths) or unscoped in a TS/JS-project cwd; the reason carries the exact rewrite (`ast-grep run -p 'fetchList($$$)'`), the bodyless-fragment pitfall, and the deterministic escape (re-scope to non-code globs, or non-first-party dirs — node_modules/dist/build/.next/coverage — passes untouched). Pipe filters (`git log | rg 'fix\('`) don't trip; grep-family uncovered. Escalation criterion (agreed): registered `code_search` tool only if trips exceed ~5/week in the TS project at the 2-week audit review, or escape-abuse beats compliance.
+- Measured: 12-case harness against the live extension — calibration commands trip with rewrite reasons, all escapes (md glob, non-code path, node_modules, pipe filter) pass, R2 regression intact; `tsc --noEmit --strict` clean.
+
+## [1.16.4] - 10-05-2026
+
+### Changed
+
+- **permission-gate: R1 recency window → session-lifetime span-union coverage** — the 2026-10-05 audit found read dup 258× / 3,089K across 95 sessions slipping past R1 through three structural gaps: windowed reads never registered in `lastInContext`, windowed-after-full was always allowed, and `REREAD_WINDOW = 6` expired late-session re-reads (the audit's "offset/limit evades the match" theory was close but the real leaks were these). R1 now tracks, per absolute path, the union of in-context line spans and blocks only reads whose requested window is **fully** covered — partial overlap passes (it brings new lines). Certificates: read results certified by their actual returned lines (`details.truncation.outputLines`; an untruncated whole-file read certifies 1–EOF), edit-result spans, whole file after `write`, images whole-file. Resets: `session_compact`, bash naming the file's basename, failed edit. Block reason names the covered span and the escapes (windowed read outside it, rg to verify). State moved inside the extension factory (per-instance, was module-level).
+- ponytail: coverage is not hydrated on session resume — the map starts empty, erring toward allowing. Revisit only if the next audit's dup-read-targets table shows post-resume dups mattering.
+- Measured: `node tests/permission-gate.test.mjs` 13/13 PASS (identical window, windowed-inside-full, full-after-full, post-edit span, image, relative-vs-absolute key all blocked; continuation, truncated-tail, partial-overlap, post-compaction, post-bash, no-details fallback all pass); `tsc --noEmit --strict` clean; `mdcmdcheck` exit 0; live post-reload smoke test blocked an identical re-read with the new reason text. Acceptance metric (next directory audit): DUP_TOOL_CALL 3,207K → under 1,200K.
+
+### Fixed
+
+- **permission-gate: fallback line count over-certified by one line** — live `tool_result` events carry no `details.truncation`, so the text-fallback path runs in production; it stripped the read tool's trailing `[N more lines in file…]` note but not the blank `\n\n` separator line before it, certifying one line past every windowed read's real content (live smoke test showed `1–11` for two 5-line windows). Now strips the note (both variants) plus the separator; fixture case added. Also noted: gate checks fire at `tool_call` time, so two identical reads inside ONE assistant turn cannot block each other — sequential turns block correctly.
+
+### Changed
+
+- **session-audit: the two stats the 10-05 report could not get** — `rules.mjs` DUP_TOOL_CALL read findings now carry `evidenceStats.path` (recorded at digest time — no per-session fetches, no budget change); `views` prints "Dup read targets (top 10 by waste)" and "BIG_TOOL_OUTPUT by tool". SKILL.md Phase 1 list synced. First render on a 60-session digest already localizes the habit: `/tmp/issues.txt` 6 dups / 518K / $0.73, `/tmp/prepush.diff` 320K — wholesale re-reads of big temp files, not source files.
+- Measured: `audit.mjs run --max 60` + `views` renders both sections; empty digests degrade to `(no read dups)` / `(none)`.
+
 ## [1.16.3] - 10-05-2026
 
 ### Changed

@@ -23,7 +23,7 @@
 - Unfamiliar code: symbol outline first — `rg -n "^(export )?(async )?(function|class|interface|type)" <dir> | head -80`.
 
 **Reading**
-- `read` only, windowed (`offset`/`limit`) at the anchor; a file read/edited this session is already in context.
+- `read` only, windowed (`offset`/`limit`) at the anchor; lines read/edited this session are already in context — re-read only uncovered regions.
 - Minified/dist: prefer `rg -o` / `| cut -c1-200` — `head -N` bounds lines, not bytes.
 - Never full-read >100 lines to find one block.
 
@@ -36,7 +36,7 @@
 - `npm install` → `--no-fund --no-audit | tail -5`. `git` reads: cap `diff`/`show` (`head -c 4000`, never tens-of-KB caps).
 - Commands work on macOS and Linux: stick to BSD∩GNU flags (`head -c`, `tail -N`, `sed -n 'A,Bp'`); no `sed -i` (macOS needs `-i ''` — prefer the `edit` tool), no `stat -c/-f`, no `grep -P`.
 
-**Enforced by permission-gate** (extension blocks the call, reason carries the fix): `cat`/`sed -n` viewing, re-reads of in-context files, `oldText` anchor validity, `rg -o`/`git log` caps, recursive walks, runner output caps, `git commit`/`push` tails, commit-message format.
+**Enforced by permission-gate** (extension blocks the call, reason carries the fix): `cat`/`sed -n` viewing, re-reads fully covered by earlier reads/edits/writes this session (resets on compaction), `oldText` anchor validity, `rg -o`/`git log` caps, recursive walks, runner output caps, `git commit`/`push` tails, commit-message format.
 
 **Turns** (each round-trip re-sends and re-processes the whole prefix)
 - Batch independent commands (`a && b`) **and independent tool calls into one turn** — most calling turns were measured single-call.

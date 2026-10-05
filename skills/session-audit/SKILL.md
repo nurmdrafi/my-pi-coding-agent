@@ -57,7 +57,7 @@ node <skill-dir>/scripts/audit.mjs views
 node <skill-dir>/scripts/audit.mjs views --project <name>   # per-project slice: sessions, finding detail, per-date trend
 ```
 
-One bounded block: totals (tokens **and** dollars), findings-by-rule with a sessions-affected count, cache hit-ratio distribution, projects and worst sessions by waste (full session ids, with the `fetch` command to inspect one), idle-gap cost curve, tools by bytes, peak-context and compactions, per-date trend, skill usage.
+One bounded block: totals (tokens **and** dollars), findings-by-rule with a sessions-affected count, cache hit-ratio distribution, projects and worst sessions by waste (full session ids, with the `fetch` command to inspect one), idle-gap cost curve, tools by bytes, dup-read targets, BIG_TOOL_OUTPUT by tool, peak-context and compactions, per-date trend, skill usage.
 
 Do **not** read `overview.json` / `l1_findings.json` wholesale (>100KB), and do not hand-roll node one-liners for anything `views` already prints — every query and its output lands in your transcript, which is the audit's real self-cost.
 

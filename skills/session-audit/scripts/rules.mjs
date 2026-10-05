@@ -128,7 +128,7 @@ export function dupToolCall(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIERS
 
   const findings = [];
   const claimedIds = new Set();
-  for (const group of groups.values()) {
+  for (const [key, group] of groups.entries()) {
     if (group.length < 2) continue;
     let waste = 0, bytes = 0;
     for (const c of group.slice(1)) {
@@ -138,9 +138,12 @@ export function dupToolCall(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIERS
       bytes += r.bytes;
       waste += toTokens(r.bytes, t) * persistenceWeight(r.timestamp, turns, price);
     }
+    // read groups carry their target path — recorded at digest time so views
+    // can aggregate dup-read targets without per-session fetches (2026-10-05 gap)
+    const path = key.split('\u0000')[2] ?? '';
     findings.push(finding('DUP_TOOL_CALL', group.length > 2 ? 'high' : 'medium', session.sessionId,
       group.map((c) => c.id),
-      { tool: group[0].name, count: group.length, repeatBytes: bytes }, waste));
+      { tool: group[0].name, count: group.length, repeatBytes: bytes, ...(group[0].name === 'read' && path ? { path } : {}) }, waste));
   }
   return { findings, claimedIds };
 }
