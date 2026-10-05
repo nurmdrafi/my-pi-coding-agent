@@ -4,23 +4,30 @@
  *   - edit calls: oldText anchor pre-validation — existence (exact + fuzzy),
  *     uniqueness with line numbers, intra-call overlap — with actual file
  *     context on a miss, so the model fixes its anchor in one retry
- *   - read calls: no full re-read of a file whose edit result or last full
- *     read is already in context, and no windowed re-read covering the
- *     just-edited lines (R1; read-after-read + windowed-overlap 2026-09-27)
+ *   - read calls: no re-read whose requested window is fully covered by
+ *     this session's in-context spans — read results (their actual returned
+ *     lines), edit results, writes, images (R1; span-union coverage model
+ *     2026-10-05, replacing the 6-call recency window)
  *   - bash calls: reading/output economy — R2 cat/standalone-sed viewing,
  *     R5 git log caps, R6 rg -o caps, R7 recursive walks, verbose runner caps,
- *     R9 commitlint conventional-commit message validation on git commit -m
+ *     R9 commitlint conventional-commit message validation on git commit -m,
+ *     R10 construct-shape rg searches rewritten to ast-grep
  * Sources: 2026-09-16 audit (cat-for-viewing 86, uncapped runners, git log),
  * 2026-09-23 audit (read-after-edit re-read loops 316K/wk, uncapped rg -o
  * 119K/wk), 2026-09-24 (anchor overlap pre-check, R7, sed -n batching fix,
  * anchor-guard merged in — both were tool_call interceptors), 2026-09-27
  * audit (R8 git-hook output caps, read-after-read dups) + 2026-09-27
  * agent-project audit (post-edit windowed re-reads over the edited anchor:
- * sessions 01a0d347 / 01a0d1f6 / 01a0d33a).
+ * sessions 01a0d347 / 01a0d1f6 / 01a0d33a), 2026-10-05 audit (read dup
+ * 258× / 3,089K across 95 sessions — windowed reads never registered,
+ * REREAD_WINDOW=6 expired late-session dups → coverage model), 2026-10-08
+ * R10 (ast-grep discipline: 145/177 sessions rg-only, 13 calls ever —
+ * calibration session 01a10654: bare 'rg -n foo\(' call-site hunts).
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { existsSync } from "fs";
 import { readFile } from "fs/promises";
 import { resolve } from "path";
 
@@ -42,18 +49,61 @@ interface LineSpan {
 	end: number;
 }
 
-/** context freshness: path -> { at, kind, spans? } of the last confirmed edit/write OR full-read result */
-const lastInContext = new Map<string, { at: number; kind: "edit" | "read"; spans?: LineSpan[] }>();
-/** edit/write toolCallId -> { path, spans? }, awaiting its tool_result */
-const pendingEdits = new Map<string, { path: string; spans?: LineSpan[] }>();
-/** read toolCallId -> { path, windowed }, awaiting its tool_result */
-const pendingReads = new Map<string, { path: string; windowed: boolean }>();
-let seq = 0;
-/** a full re-read within this many tool calls of a confirmed edit/read is redundant (~3 turns) */
-const REREAD_WINDOW = 6;
+type CoverKind = "read" | "edit" | "write";
 
+/** absolute map key — the same file reached by relative and absolute paths tracks once */
 function normPath(p: unknown): string {
-	return String(p ?? "").replace(/\/+$/, "");
+	const s = String(p ?? "").replace(/\/+$/, "");
+	return s ? resolve(s) : "";
+}
+
+/** add a certified span to a path's union (sorted, overlap/adjacency-merged) */
+function certify(
+	coverage: Map<string, { spans: LineSpan[]; kind: CoverKind }>,
+	key: string,
+	span: LineSpan,
+	kind: CoverKind,
+): void {
+	const spans = [...(coverage.get(key)?.spans ?? []), span].sort((a, b) => a.start - b.start);
+	const merged: LineSpan[] = [];
+	for (const s of spans) {
+		const last = merged[merged.length - 1];
+		if (last && s.start <= last.end + 1) last.end = last.end > s.end ? last.end : s.end;
+		else merged.push({ ...s });
+	}
+	coverage.set(key, { spans: merged, kind });
+}
+
+/** true when [win.start, win.end] lies entirely inside the span union */
+function coversAll(spans: LineSpan[], win: LineSpan): boolean {
+	let pos = win.start;
+	for (const s of spans) {
+		if (s.end < pos) continue;
+		if (s.start > pos) return false;
+		if (s.end === Infinity || (pos = s.end + 1) > win.end) return true;
+	}
+	return false;
+}
+
+/** fallback line count from text blocks when details.truncation is absent */
+function countTextLines(content: unknown[]): { lines: number; truncated: boolean } {
+	const text = content
+		.filter((b) => (b as { type?: unknown })?.type === "text")
+		.map((b) => String((b as { text?: unknown })?.text ?? ""))
+		.join("\n");
+	if (!text) return { lines: 0, truncated: false };
+	const lines = text.split("\n");
+	// strip the read tool's trailing truncation note ("[N more lines in file…]"
+	// or "[Showing lines A-B of N…]") and the blank separator line before it —
+	// the note is separated by "\n\n", so without this every windowed read
+	// would over-certify one line past its real content
+	const last = lines[lines.length - 1] ?? "";
+	if (/^\[\d+ more lines? in file\./.test(last) || /^\[Showing lines /.test(last)) {
+		lines.pop();
+		if (lines[lines.length - 1] === "") lines.pop();
+		return { lines: lines.length, truncated: true };
+	}
+	return { lines: lines.length, truncated: false };
 }
 
 // ---- edit-anchor validation ----
@@ -249,70 +299,141 @@ function validateCommitMessages(seg: string): string | undefined {
 	return;
 }
 
-export default function (pi: ExtensionAPI) {
-	pi.on("tool_call", async (event) => {
-		seq++;
+// ---- R10: construct-shape rg searches → ast-grep ----
 
-		// edit: anchor pre-validation first (existence, uniqueness, overlap);
-		// only a call that passes is tracked for read-freshness below
+/** cached per process — unscoped construct-shape searches trip R10 only in TS/JS projects */
+let tsProjectCwd: boolean | undefined;
+function isTsProjectCwd(): boolean {
+	if (tsProjectCwd === undefined) {
+		tsProjectCwd = ["tsconfig.json", "package.json"].some((m) => existsSync(resolve(process.cwd(), m)));
+	}
+	return tsProjectCwd;
+}
+
+const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte)$/i;
+
+/** classify an rg command's scoping: explicit code targets, explicit non-code (the escape), or bare */
+function rgScope(head: string): "code" | "non-code" | "unscoped" {
+	if (/node_modules|\b(dist|build|coverage)\/|\.next\b/.test(head)) return "non-code"; // not first-party
+	const globs = [...head.matchAll(/(?:-g|--glob)(?:=|\s+)('[^']*'|"[^"]*"|\S+)/g)].map((m) =>
+		m[1].replace(/^['"]|['"]$/g, ""),
+	);
+	const types = [...head.matchAll(/(?:^|\s)-t\s+(\w+)/g)].map((m) => m[1]);
+	// extensioned path args ('rg pat src/app/x.ts'); quoted patterns can't match (quote not in class)
+	const paths = [...head.matchAll(/\s([\w./@$+-]+\.[a-zA-Z]{2,4})(?=\s|$)/g)].map((m) => m[1]);
+	const scoped = [...globs, ...types, ...paths];
+	if (scoped.some((s) => CODE_EXT.test(s) || /^(ts|tsx|js|jsx|typescript|javascript)$/i.test(s))) return "code";
+	if (scoped.length) return "non-code";
+	return "unscoped";
+}
+
+/**
+ * R10 (2026-10-08): construct-shape searches via rg — the model never selects
+ * ast-grep (audit 2026-10-05: 145/177 sessions rg-only; calibration: bare
+ * `rg -n 'foo\('` call-site hunts). Returns a block reason carrying the exact
+ * ast-grep rewrite so the retry succeeds first time. Deterministic escape: rg
+ * scoped to non-code files or non-first-party dirs passes untouched (a cd'd
+ * target can false-fire; the -g escape makes that recoverable).
+ */
+function constructShapeNudge(seg: string): string | undefined {
+	if (!/^rg\b/.test(seg)) return; // rg initiates the search — pipe filters don't trip
+	const head = seg.split("|", 1)[0];
+	const ident = /(\w+)\\\(/.exec(head)?.[1];
+	const shape =
+		ident !== undefined || /\\\(/.test(head)
+			? "call site"
+			: /=>/.test(head)
+				? "arrow fn"
+				: /<[A-Z]\w/.test(head)
+					? "JSX"
+					: undefined;
+	if (!shape) return;
+	const scope = rgScope(head);
+	if (scope === "non-code") return; // escape: explicitly not first-party code
+	if (scope === "unscoped" && !isTsProjectCwd()) return; // bare search outside a TS/JS project
+	const rewrite =
+		shape === "call site"
+			? `ast-grep run -p '${ident ?? "foo"}($$$)'`
+			: shape === "arrow fn"
+				? `ast-grep run -p '($$$) => $$$'`
+				: `ast-grep run -p '<Button $$$>$$$</Button>'`;
+	return (
+		`Token Economy (Searching): construct-shape ${shape} search via rg — AGENTS.md: ast-grep first for construct shape ` +
+		`in first-party TS/TSX/JS (audit 2026-10-05: 145/177 sessions rg-only). Rewrite: ${rewrite} — patterns must be COMPLETE valid ` +
+		`code; bodyless fragments ('function $F($$$)') silently match nothing — use 'function $F($$$) { $$$ }' (typed returns need ': $RET'). ` +
+		`rg stays right for keywords/minified and definitions (symbol outline); cap either. If this search genuinely is not ` +
+		`construct-shaped (prose/config/strings), re-scope rg to those files (e.g. -g '*.md') or non-first-party dirs and it passes.`
+	);
+}
+
+export default function (pi: ExtensionAPI) {
+	/**
+	 * In-context coverage (2026-10-05 audit): per absolute path, the union of
+	 * line spans whose content this session has already put in context — read
+	 * results (their actual returned lines), edit results (applied text),
+	 * writes and images (whole file). A read is blocked only when its requested
+	 * window is FULLY covered; partial overlap passes (it brings new lines).
+	 * Resets: session_compact (the summary replaced the content), a bash
+	 * command naming the file's basename (may have changed it externally), a
+	 * failed edit (context may have drifted).
+	 *
+	 * ponytail: not hydrated on session resume — the map starts empty and the
+	 * failure mode errs toward allowing. Revisit only if audits show
+	 * post-resume dup reads mattering.
+	 */
+	const coverage = new Map<string, { spans: LineSpan[]; kind: CoverKind }>();
+	/** edit/write toolCallId -> { path, spans?, kind }, awaiting its tool_result */
+	const pendingEdits = new Map<string, { path: string; spans?: LineSpan[]; kind: "edit" | "write" }>();
+	/** read toolCallId -> { path, win }, awaiting its tool_result */
+	const pendingReads = new Map<string, { path: string; win: LineSpan }>();
+
+	// edit: anchor pre-validation first (existence, uniqueness, overlap);
+	// only a call that passes is tracked for read-freshness below
+	pi.on("tool_call", async (event) => {
 		if (isToolCallEventType("edit", event)) {
 			const checked = await validateEditAnchors(event.input);
 			if (checked && "block" in checked) return checked;
-			pendingEdits.set(event.toolCallId, { path: normPath(event.input.path), spans: checked?.spans });
+			pendingEdits.set(event.toolCallId, { path: normPath(event.input.path), spans: checked?.spans, kind: "edit" });
 			return;
 		}
 
-		// R1 (2026-09-23): no full re-read of a file whose edit result (09-23) or
-		// last full read (09-27) is already in context; no windowed re-read (09-27)
-		// covering the just-edited lines — the edit result echoes the applied text
+		// R1: block a read whose requested window is fully covered by this
+		// session's in-context spans (2026-10-05 coverage model)
 		if (isToolCallEventType("read", event)) {
-			const path = normPath(event.input.path);
-			const prior = lastInContext.get(path);
-			const windowed = typeof event.input.offset === "number" || typeof event.input.limit === "number";
-			if (prior !== undefined && seq - prior.at <= REREAD_WINDOW) {
-				if (!windowed) {
+			const display = String(event.input.path ?? "");
+			const path = normPath(display);
+			const start = Math.max(1, typeof event.input.offset === "number" ? event.input.offset : 1);
+			const win: LineSpan = {
+				start,
+				end: typeof event.input.limit === "number" ? start + event.input.limit - 1 : Infinity,
+			};
+			const prior = coverage.get(path);
+			if (path && prior && coversAll(prior.spans, win)) {
+				const lo = prior.spans[0].start;
+				const hi = prior.spans[prior.spans.length - 1].end;
 				return {
 					block: true,
 					reason:
-						prior.kind === "edit"
-							? `Token Economy (Re-read): '${path}' was edited in the last few turns — the new content is already in ` +
-								`context from the edit result. Don't re-read after a successful edit. If you need a different region, ` +
-								`use a windowed read (offset/limit); if the file changed externally, grep it instead.`
-							: `Token Economy (Re-read): '${path}' was fully read in the last few turns — its content is already in ` +
-								`context. Don't re-read the whole file; if you need another region, use a windowed read (offset/limit) ` +
-								`at the anchor; if it may have changed externally, grep it instead.`,
-					};
-				}
-				// windowed: block only when it covers a just-edited line span
-				const winStart = typeof event.input.offset === "number" ? event.input.offset : 1;
-				const winEnd = typeof event.input.limit === "number" ? winStart + event.input.limit - 1 : Infinity;
-				const hit = prior.kind === "edit" ? prior.spans?.find((s) => winStart <= s.end && s.start <= winEnd) : undefined;
-				if (hit) {
-					return {
-						block: true,
-						reason:
-							`Token Economy (Re-read): '${path}' was edited in the last few turns and this window (lines ${winStart}–${
-								winEnd === Infinity ? "EOF" : winEnd
-							}) covers the edited lines (${hit.start}–${hit.end}) — the applied text is already in ` +
-								`context from the edit result. Shift the window beyond the edited region; if you must verify, grep the file instead.`,
-					};
-				}
+						`Token Economy (Re-read): ${lo === hi ? `line ${lo}` : `lines ${lo}–${hi === Infinity ? "EOF" : hi}`} of '${display}' are already in context ` +
+						`from an earlier ${prior.kind === "edit" ? "edit result" : prior.kind} this session. If you need another region, use a windowed read ` +
+						`(offset/limit) outside the covered span; to verify external changes, rg the file instead of re-reading it.`,
+				};
 			}
-			pendingReads.set(event.toolCallId, { path, windowed });
+			pendingReads.set(event.toolCallId, { path, win });
 		}
 
 		if (isToolCallEventType("write", event)) {
 			// whole file content is in context after a write — every window overlaps it
-			pendingEdits.set(event.toolCallId, { path: normPath(event.input.path), spans: [{ start: 1, end: Infinity }] });
+			pendingEdits.set(event.toolCallId, { path: normPath(event.input.path), spans: [{ start: 1, end: Infinity }], kind: "write" });
 		}
 
 		if (!isToolCallEventType("bash", event)) return;
 		const cmd = event.input.command;
 
-		// a bash command naming an edited file may have changed it externally -> drop freshness
-		for (const path of lastInContext.keys()) {
+		// a bash command naming a covered file may have changed it externally -> drop coverage
+		for (const path of coverage.keys()) {
 			const base = path.split("/").pop() as string;
-			if (base && cmd.includes(base)) lastInContext.delete(path);
+			if (base && cmd.includes(base)) coverage.delete(path);
 		}
 
 		// split into segments; each checked independently
@@ -385,6 +506,11 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			// R10 (2026-10-08): construct-shape rg searches — the model never selects
+			// ast-grep (145/177 sessions rg-only); block with the exact rewrite
+			const nudge = constructShapeNudge(seg);
+			if (nudge) return { block: true, reason: nudge };
+
 			// Output cap: verbose build/test runners need a filter pipe
 			const verbose =
 				(/^(npm (run )?(test|build|typecheck|lint)|npm test)\b/.test(seg) ||
@@ -407,8 +533,31 @@ export default function (pi: ExtensionAPI) {
 		const read = pendingReads.get(event.toolCallId);
 		if (read !== undefined) {
 			pendingReads.delete(event.toolCallId);
-			// only a successful full read certifies the content is in context
-			if (!event.isError && read.path && !read.windowed) lastInContext.set(read.path, { at: seq, kind: "read" });
+			if (event.isError || !read.path) return;
+			const content: unknown[] = event.content ?? [];
+			// image result: whole file in context — no continuation windows exist
+			if (content.some((b) => (b as { type?: unknown })?.type === "image")) {
+				coverage.set(read.path, { spans: [{ start: 1, end: Infinity }], kind: "read" });
+				return;
+			}
+			// certify the ACTUAL returned lines — requested offset/limit lie at
+			// EOF edges and on 2000-line/50KB truncation
+			const trunc = (event as { details?: { truncation?: { outputLines?: unknown; truncated?: unknown } } }).details
+				?.truncation;
+			const counted = countTextLines(content);
+			const lines = typeof trunc?.outputLines === "number" ? trunc.outputLines : counted.lines;
+			const truncated = trunc ? trunc.truncated === true : counted.truncated;
+			if (lines > 0) {
+				// an untruncated whole-file request certifies everything — nothing
+				// exists past EOF, so any later window is already in context
+				const wholeFile = read.win.start === 1 && read.win.end === Infinity && !truncated;
+				certify(
+					coverage,
+					read.path,
+					wholeFile ? { start: 1, end: Infinity } : { start: read.win.start, end: read.win.start + lines - 1 },
+					"read",
+				);
+			}
 			return;
 		}
 		const entry = pendingEdits.get(event.toolCallId);
@@ -416,10 +565,19 @@ export default function (pi: ExtensionAPI) {
 		pendingEdits.delete(event.toolCallId);
 		if (!entry.path) return; // malformed pathless call — nothing to track
 		if (event.isError) {
-			// failed edit: content may have drifted — a re-read is legitimate
-			lastInContext.delete(entry.path);
-		} else {
-			lastInContext.set(entry.path, { at: seq, kind: "edit", spans: entry.spans });
+			// failed edit/write: content may have drifted — a re-read is legitimate
+			coverage.delete(entry.path);
+		} else if (entry.spans) {
+			// fuzzy-matched anchors carry no spans — nothing to certify (errs allow)
+			for (const s of entry.spans) certify(coverage, entry.path, s, entry.kind);
 		}
+	});
+
+	pi.on("session_compact", async () => {
+		// the compaction summary replaced earlier read/edit content — nothing
+		// is in context anymore, so every re-read is legitimate again
+		coverage.clear();
+		pendingReads.clear();
+		pendingEdits.clear();
 	});
 }
