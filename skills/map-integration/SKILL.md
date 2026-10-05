@@ -1,6 +1,6 @@
 ---
 name: map-integration
-description: "ANY map work: maplibre-gl/mapbox-gl (and react-map-gl-family wrappers), deck.gl overlays, turf geometry, draw polygons/polylines, camera flyTo/fitBounds, geolocation, MQTT real-time plotting, GPX routes, snap-to-road (OSRM), boundary layers, map bugs (style-load, marker drift). Detects stack from package.json; reuses existing idioms."
+description: "ANY map work, Barikoi stack included: react-bkoi-gl / bkoi-gl (Barikoi's maplibre wrappers), maplibre-gl/mapbox-gl and react-map-gl-family wrappers, deck.gl overlays, turf geometry, draw polygons/polylines, camera flyTo/fitBounds, geolocation, MQTT real-time plotting, GPX routes, snap-to-road (OSRM), boundary layers, Barikoi map styles and barikoi.xyz APIs, map bugs (style-load, marker drift). Detects stack from package.json; reuses existing idioms."
 disable-model-invocation: true
 ---
 
@@ -8,19 +8,22 @@ disable-model-invocation: true
 
 ## 1. Detect the stack first — never assume
 
-Check the project's `package.json`, bundler aliases, and existing map components before writing anything:
+Check the project's `package.json`, bundler aliases, and existing map components before writing anything. Stack families found across this workspace:
 
-- `react-map-gl`-family wrappers (react-map-gl, or vendor wrappers over maplibre-gl) — same API surface
-- `maplibre-gl` — open base; some projects pin `mapbox-gl@1.13.3` or alias `mapbox-gl → maplibre-gl` in bundler config
-- `@deck.gl/*` (overlays), `@turf/turf` (geometry), `@mapbox/mapbox-gl-draw` (editing), `mqtt` / `socket.io-client` (real-time), polyline utilities
+- `react-bkoi-gl` (current gen — Barikoi's React wrapper): react-map-gl-style API (`Map`, `useMap`, `useControl`, `Source`/`Layer`) plus `DrawControl` (draw built in — no separate draw package), `MinimapControl`/`Minimap`, `GlobeControl`, `TerrainControl`, `LogoControl`, `CanvasSource`. The engine (`maplibre-gl@6`) ships as its own dependency — import everything from `react-bkoi-gl`, never `maplibre-gl` directly; engine utils are re-exported. CSS: `import "react-bkoi-gl/styles"`.
+- `bkoi-gl` (vanilla JS — Barikoi's build of MapLibre v6): bundles the engine + a self-contained worker (no maplibre install, no worker hosting); `bkoi-gl/worker` only for strict-CSP apps. CSS: `bkoi-gl/style.css` (CDN: `cdn.barikoi.com/bkoi-gl-js/dist/bkoi-gl.css`). For React apps prefer `react-bkoi-gl`.
+- Legacy: `react-map-gl` + `maplibre-gl` / `mapbox-gl` (some pin `mapbox-gl@1.13.3` or alias `mapbox-gl → maplibre-gl` in bundler config). Same react-map-gl API surface.
+- `@deck.gl/*` (overlays), `@turf/turf` (geometry), `@mapbox/mapbox-gl-draw` (editing), `mqtt` / `socket.io-client` (real-time), `geo-polyline-tools` (route polyline utils).
+
+Sibling dashboards (optimus/dropx/dhaka/jti/laboni/akg/cnl/harmony…) are forks of one template — before writing new map code, grep the nearest sibling for the existing idiom.
 
 Do not let `mapbox-gl` drift to v3 via transitive deps — v3 demands a Mapbox token and breaks custom/self-hosted styles.
 
 ## 2. Developing a map wrapper library itself
 
-- Engine majors (e.g. maplibre v5→v6) break as **silent render failures** (worker resolution), not type errors — consult the engine's migration guide, then run the README-matrix e2e first for the fastest contract-breakage signal.
+- Engine majors (e.g. maplibre v5→v6) break as **silent render failures** (worker resolution), not type errors — consult the engine's migration guide, then run the README-matrix e2e first for the fastest contract-breakage signal. (bkoi-gl 4.x and react-bkoi-gl 3.x are already on MapLibre v6 — the worker break is why bkoi-gl now bundles a self-contained worker.)
 - Consumers never import the engine directly (transitive deps don't resolve under pnpm strict layout or yarn PnP): re-export engine utils (`setWorkerUrl`, `getWorkerUrl`, `getVersion`, `GPUInitializationError`) from the wrapper.
-- Package surface: `exports` = `.` (import/require + types), `./styles` (css), `./worker` (if shipped); peer deps `react`/`react-dom` across all supported React majors.
+- Package surface: `exports` = `.` (import/require + types), `./styles` or `./style.css` (css), `./worker` (if shipped); peer deps `react`/`react-dom` across all supported React majors. Both current packages match this.
 - Framework suite: real repro apps (Vite, Next.js in both bundler modes, CRA…) each installing the **packed tarball, never link**; headless runs assert actual rendering (engine `load` + `idle`, zero uncaught errors). See the sdk-development skill for the full library pipeline (test pyramid, pack smoke, docs-as-contract).
 - Wrapper bug guards (fixed once — keep the pattern): strip wrapper-only props (`position`, `style`) before constructing engine controls — a leaked wrapper prop makes engine validation silently reject every toggle. `<Marker>` with a popup-only child keeps the default pin.
 
@@ -28,6 +31,12 @@ Do not let `mapbox-gl` drift to v3 via transitive deps — v3 demands a Mapbox t
 
 - `react-map-gl`-family API: `<Map>`, `useMap()`, `useControl()`, `MapRef`, `Source`/`Layer`.
 - Auth/config via env vars: map style token, routing API key (separate keys for separate services). Check the project's `.env*` for the naming convention in use; never introduce a provider token the project doesn't already use.
+
+### Barikoi styles and keys
+
+- Style URL pattern: `https://map.barikoi.com/styles/{name}/style.json?key=$BARIKOI_API_KEY` — the key rides as a `?key=` query param. Styles in use: `osm-liberty` (default), `osm_barikoi_v1`, `planet_map`, `barikoi-light`, `barikoi-dark`, `barikoi-dark-mode`. Served by the self-hosted `tileserver-gl` (barikoi/tileserver-gl).
+- Style switching: `mapbox-gl-style-switcher` (`MapboxStyleSwitcherControl(styles, { defaultStyle: 'OSM Liberty' })`) mounted via `useControl`, usually wrapped in a `StyleControl` component; style list lives in `App.config` / `app.config` (`MAP.STYLES`).
+- Search/geocode/routing/geofence APIs: base `https://barikoi.xyz`, same key (endpoint spec: `barikoiapis/openapi/barikoi-api-spec.yaml`). Docs: docs.barikoi.com; keys: developer.barikoi.com.
 
 ## 4. deck.gl overlays (established pattern)
 
@@ -47,7 +56,9 @@ const DeckGLOverlay = (props: MapboxOverlayProps) => {
 ```
 
 - Paths: `PathLayer` with `PathStyleExtension({ dashed })`. Markers: `IconLayer` / `ScatterplotLayer`.
+- Performance rules: never `setState` inside `onHover`/view-state callbacks — they fire per frame and rerender the tree; throttle them (the dashboards use `useThrottle(popupData, 250)`). Recreating layer instances each render is fine (deck diffs props), but appending live data must not rebuild the whole buffer — append into a stable structure or emit one layer per chunk.
 - Existing layers to reuse before writing new ones (marker/trace/boundary layers) — search the repo for its layer components first.
+- Barikoi dashboards share one template: `components/Map/DeckGLMap.jsx` (Map shell, `MAP.STYLES[0]`, throttled tooltip) + `OverLayers.jsx` (the DeckGLOverlay above — `useControl` imported from `react-bkoi-gl`) + `Map/Layers/` composite layer classes (`TraceLayer`, `RouteLayer`…), all fed from a Redux slice. Before writing a new one, diff against a sibling dashboard (optimus/dropx/dhaka/jti/laboni) — they are forks of the same shape.
 
 ## 5. Known map bugs / pitfalls (fixed before — keep the guards)
 
@@ -84,6 +95,10 @@ Established pattern (search the repo for `mqtt.connect` and any batching util be
 - **Buffer + batch, never dispatch per message**: buffer into a ref, flush on batch size (~100 msgs) or timer (~100ms), with a memory cap on markers (LRU ~3000). If a batch-processor class already exists, reuse it. For latest-fix-per-entity feeds, key the buffer `Map<entityId, payload>` — structurally bounded by entity count, no array spread per message.
 - Track subscribed topics in a ref `Set` to avoid double-subscribe; `isConnectedRef` guard; cleanup with `client.end(true)` on unmount, plus a `cancelled` flag around any async-before-connect step so a client created mid-unmount is ended immediately.
 - Business-hours / off-hours suppression belongs in the data hook, not the map component.
+- If the repo has a `buildMqttConnection(topic)` util (e.g. `trace-mqtt-dashboard/src/utils/mqttUtils.ts`), route every connection through it — broker env, auth, and topic conventions are encoded there; don't hand-roll `mqtt.connect` next to it.
+- Build broker URL and client opts from one config source (protocol/host/port from env): mqtt.js spreads opts over the parsed URL, so a hardcoded `protocol: 'wss'` in opts silently overrides a `ws://` URL (breaks local dev); handle the empty-port case once, centrally.
+- Bound every live-feed buffer client-side: cap the events/markers array (drop oldest). An unbounded `[event, ...prev]` prepend with an O(n) copy per event grows forever on long-lived/wall-display pages.
+- Auth teardown must stop the batch processor in the same action (cancel timer, clear refs), not rely on unmount — a flush between store reset and unmount repopulates freshly cleared state with the old tenant's markers.
 - Typical backend pipeline: MQTT → queue (Redis/BullMQ) → DB + geofence store (e.g. Tile38). Live reads can hit the geofence store; historical via API endpoints.
 
 ## 8. GPX / route utilities (reuse, don't rewrite)
@@ -102,14 +117,28 @@ Optimized routes: call through a server-side API proxy, keeping the routing API 
 
 ## 10. Env vars
 
-Read the project's `.env*` for actual names — don't invent. Common shapes: map style token (`NEXT_PUBLIC_MAP_API_ACCESS_TOKEN` / `VITE_MAP_KEY`), MQTT broker host/port/protocol + auth username/password, routing API key (separate from map token).
+Read the project's `.env*` for actual names — don't invent. Common shapes: map style token (`NEXT_PUBLIC_MAP_API_ACCESS_TOKEN` / `VITE_MAP_API_ACCESS_TOKEN`), MQTT broker host/port/protocol + auth username/password, routing API key (separate from map token). Barikoi names in use: `BARIKOI_API_KEY` (dominant), `BARIKOI_STYLE_URL`, `BARIKOI_GL_TOKEN`, `BARIKOI_API` / `BARIKOI_API_ENDPOINT`, `NEXT_PUBLIC_MAP_BASE_URL`; legacy mapbox-era: `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN`.
+
+Browser-visible credentials are public by definition: the style key rides in the style URL, MQTT creds ride in the wss connection. Consequences: restrict keys by allowed origin in the developer dashboard, one key per app/service, and keep privileged keys (routing, geofence CRUD) server-side behind the app's proxy. Restrictive-CSP deployments need a real worker URL, not blob: — that is what the `./worker` exports are for (§1).
+
+## 11. CI for the dashboard family (solved once — keep the pattern)
+
+The shared Production/Staging/Review workflow family across the dashboards was hardened once (dropx-admin #26); do not reintroduce the fixed patterns:
+
+- Secrets reach steps via `with:` only, never workflow-level `env:` — workflow-level env exposes them to every step, including third-party webhook/release actions.
+- Third-party actions and reusable workflows are pinned to full commit SHAs (tag as comment), not mutable tags.
+- `permissions: contents: read` at workflow level; `contents: write` granted only to the release step that needs it.
+
+For anything beyond this shape, follow the github-actions skill (SHA pinning, least-privilege permissions, secret scoping, actionlint).
 
 ## Checklist before writing map code
 
-1. Does an equivalent Layer/hook/util already exist in this repo (or a sibling/fork repo)? Reuse first.
+1. Does an equivalent Layer/hook/util already exist in this repo (or a sibling/fork repo)? Reuse first — sibling dashboards are forks of the same template.
+2. Barikoi repos: import map code from `react-bkoi-gl`/`bkoi-gl` only (never `maplibre-gl` directly); style key goes in the `?key=` query param; check a sibling dashboard's DeckGLMap template before starting fresh.
 2. Coord order `[lng, lat]`. Validate before flyTo/bounds.
 3. Guard `queryRenderedFeatures` / any style-dependent call.
 4. Real-time: batch messages, LRU-cap markers, guard subscriptions, cleanup on unmount.
 5. Shared map state in a store slice — map components subscribe, don't own.
 6. Map wrapper library work: framework apps install the fresh packed tarball (never link); every README claim covered by an e2e case; engine majors = silent render failures — run the README matrix first.
 7. Draw/edit flows: idempotent polygon-sync upsert covering all three triggers (§5.5); guarded geometry loads with failure-path clearing (§5.6); resets touch every derived field; markers capture `dragend` and draw-clears propagate to parent state (§5.7–5.8).
+8. CI touched: secrets step-scoped, actions SHA-pinned, least-privilege permissions (§11).
