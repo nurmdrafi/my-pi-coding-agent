@@ -33,6 +33,16 @@ Apply whenever the "polish" touches data flow, not just styles:
   touched fields.
 - Lazy tab panes drop `setFieldsValue` made before mount (rc-tabs) —
   `forceRender: true` or prefill on tab activation.
+- AntD edit forms: `initialValues` bind only at Form mount — fetch-then-fill
+  needs a remount gate (loading spinner) or `form.setFieldsValue`; a
+  display-only `defaultValue` inside `Form.Item` leaves the store empty and
+  submits placeholder garbage (e.g. `moment(undefined)` formats as today).
+- List-row state keyed by index or a load-time snapshot goes stale the moment
+  a row is removed or the list re-orders: delete-by-index removes the wrong
+  row, default-switch keys land one row off, and a failed save + retry can
+  submit the stale snapshot (or an empty list). Read the id from the live
+  form row at action time, and rebuild list payloads from current form
+  values at submit — never a toggle-time snapshot.
 - Conditional columns/panels: verify the DEFAULT state of every span/collapse
   condition (a panel hidden at `span=0` unless a nav is expanded ships invisible).
 

@@ -23,19 +23,20 @@
 - Unfamiliar code: symbol outline first — `rg -n "^(export )?(async )?(function|class|interface|type)" <dir> | head -80`.
 
 **Reading**
-- `read` only, windowed (`offset`/`limit`) at the anchor. Never `cat`/`head`/`tail` a file path — inside pipes fine; `sed -n 'A,Bp'` only when batching 2+ regions in one call.
-- Minified/dist: `rg -o` or `| cut -c1-200` — `head -N` bounds lines, not bytes.
-- Never full-read >100 lines to find one block; a file already read/edited this session is in context. Iterative re-reads are the top measured waste: after an edit, a ≤60-line window at the anchor is enough.
+- `read` only, windowed (`offset`/`limit`) at the anchor; a file read/edited this session is already in context.
+- Minified/dist: prefer `rg -o` / `| cut -c1-200` — `head -N` bounds lines, not bytes.
+- Never full-read >100 lines to find one block.
 
 **Editing**
-- Edit `oldText` anchors must be bytes actually seen in a read result this session. If the anchor needs lines beyond a read-window edge (above `offset` or past `offset+limit`), widen the read — never infer the missing lines. Fuzzy matching tolerates quotes/trailing whitespace, not text that doesn't exist.
-- Never read task-unrelated files; no `ls -R`, `find -exec`, full `git log`.
+- `oldText` anchors: bytes actually seen in a read this session — never inferred past a read-window edge; widen the read instead.
+- Never read task-unrelated files.
 
 **Command output**
-- Cap verbose output before it lands in context (`| tail -40`; `head -c 4000` for long lines).
-- npm/build/typecheck/test: `| rg 'error TS|FAIL|Error' | sort -u | head -40`; `npm install` → `--no-fund --no-audit | tail -5`. One per turn; never re-run a result already in context.
-- `git` reads: `diff` / `show` / `log --oneline | head -c 4000` (never tens-of-KB caps); commit/push: append `2>&1 | tail -20` (hooks re-run lint/test/build — tens of KB).
+- Cap verbose output before it lands in context (`| tail -40`; `head -c 4000` for long lines); never re-run a command whose result is already in context.
+- `npm install` → `--no-fund --no-audit | tail -5`. `git` reads: cap `diff`/`show` (`head -c 4000`, never tens-of-KB caps).
 - Commands work on macOS and Linux: stick to BSD∩GNU flags (`head -c`, `tail -N`, `sed -n 'A,Bp'`); no `sed -i` (macOS needs `-i ''` — prefer the `edit` tool), no `stat -c/-f`, no `grep -P`.
+
+**Enforced by permission-gate** (extension blocks the call, reason carries the fix): `cat`/`sed -n` viewing, re-reads of in-context files, `oldText` anchor validity, `rg -o`/`git log` caps, recursive walks, runner output caps, `git commit`/`push` tails, commit-message format.
 
 **Turns** (each round-trip re-sends and re-processes the whole prefix)
 - Batch independent commands (`a && b`) **and independent tool calls into one turn** — most calling turns were measured single-call.

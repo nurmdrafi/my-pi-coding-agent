@@ -317,3 +317,49 @@ Decision: the health-score "skill count > 15: −10" rule is miscalibrated
 against measured 100% usage — keep the set; revisit only when a skill hits
 0 across a full audit window. Source: learn-claude-code repo analysis
 session (data-gated pruning recommendation closed with evidence).
+
+## 2026-10-05 — added wayfinder (COUNT 18 → 19)
+
+Installed `skills/wayfinder` from mattpocock/skills (aihero.dev/skills-wayfinder
+landing page is JS-rendered; source of truth is the GitHub repo). Plans efforts
+too large for one agent session as a `wayfinder:map` issue + decision-ticket
+children on the repo's tracker; manual invocation only
+(`disable-model-invocation: true`, desc 197 chars — zero auto-trigger cost).
+Known gaps, deliberate: depends on sibling skills (grilling, domain-modeling,
+research, prototype) and `/setup-matt-pocock-skills` tracker config, neither
+installed — it falls back to a local-markdown tracker without them; revisit if
+those deps are wanted. Upstream `agents/openai.yaml` not copied (OpenAI-only
+interface metadata). Validator: PASS.
+
+## 2026-10-05 — added wayfinder dependency skills (COUNT 19 → 23)
+
+Installed `grilling`, `research`, `prototype`, `domain-modeling` from
+mattpocock/skills — the sibling skills wayfinder's body invokes. All four are
+auto-invocable (`Use when...` trigger descriptions; no
+`disable-model-invocation`), adding 720 chars of description to the permanent
+prefix (238+151+179+152). Upstream layout adapted to the local convention:
+domain-modeling's GLOSSARY-FORMAT.md / ADR-FORMAT.md and prototype's LOGIC.md /
+UI.md moved to `references/` with body links rewritten (validator layout rule:
+SKILL.md is the only loose top-level file); `agents/openai.yaml` not copied
+(OpenAI-only). Descriptions byte-stable upstream text. Validator: PASS ×4.
+Remaining known gap: `/setup-matt-pocock-skills` tracker config not installed
+— wayfinder falls back to local-markdown tracker.
+
+## 2026-10-05 — correction: true COUNT is 24, not 23
+
+The two entries above undercounted by one: `documentation-writer`
+(committed c64f214) was on disk but missing from the README table and the
+baseline "18", so wayfinder actually took the set 19 → 20 and the dependency
+batch 20 → 24. documentation-writer README row added; validator PASS.
+
+## 2026-10-05 — leading-word audit: 3 descriptions compressed (−68 chars)
+
+Audited all 24 descriptions for from-scratch explanations of concepts with
+established terms. Applied: auth (IdP, route guards), ponytail (speculative
+generality covers both "speculative abstractions" and "one-implementation
+interfaces" — Fowler's literal example), ponytail-review (alignment only,
+zero chars). Rejected: baseQuery (RTK-only, drops the fetch layer), epic for
+wayfinder (wrong semantics), Socratic (loses the instruction), red-team /
+steelman (wrong meaning). 16 descriptions already term-dense — left alone.
+Prefix is the retrieval index; compression that swaps a paraphrase for a term
+the model maps at full fidelity is free. Desc total 6,218 → 6,150.

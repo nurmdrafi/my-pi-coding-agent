@@ -28,10 +28,26 @@ Before writing any UI, determine whether you are **extending** an existing desig
   refetching (out-of-order responses must not repaint the old entity's data).
 - Bulk-edit forms: open empty or track touched fields — a pre-filled field
   makes every `values.x ?? o.x` fallback dead code.
+- AntD edit forms: `initialValues` bind only at Form mount — fetch-then-fill
+  needs a remount gate (loading spinner) or `form.setFieldsValue`; a
+  display-only `defaultValue` inside `Form.Item` leaves the store empty and
+  submits placeholder garbage (e.g. `moment(undefined)` formats as today).
 - Prefill into lazy tab panes (rc-tabs): `forceRender: true` or fill on
   activation, else the first `setFieldsValue` is silently dropped.
 - Conditional visibility: check the polarity and the DEFAULT state of every
   span/collapse condition before shipping.
+- Lazy routes + Suspense placement: put the boundary INSIDE the persistent
+  shell, around the content slot (`<Outlet />`), never above the layout. A
+  single top-level `<Suspense>` wrapping the whole route tree unmounts the
+  navbar/sidebar on every navigation, so the shell disappears and a full-height
+  spinner flashes in its place — that reads as a flicker, not a load, and it
+  also loses scroll position. Keep a shell-less fallback (login/403/404) and the
+  first load of the layout chunk at the outer boundary; every in-section
+  navigation is then handled by the inner one. Size the inner fallback to the
+  content area (e.g. `minHeight: 60vh`), not `100vh`, so the shell does not
+  jump. Check whether the codebase already has this scoped pattern before
+  adding one — a sibling layout with `<Suspense fallback={null}>` around local
+  panels is the precedent to copy.
 
 ## Stack Adaptation (part of the Pattern Audit)
 

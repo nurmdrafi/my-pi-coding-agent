@@ -67,6 +67,8 @@ const DeckGLOverlay = (props: MapboxOverlayProps) => {
 4. **Geolocation** — use a shared validation helper for device position (auto-locate and current-location button share it); never trust raw `position.coords`.
 5. **Draw/edit polygon sync (MapboxDraw)** — the sync must be an idempotent upsert (`_syncEditPolygon`) triggered by ALL of: draw instance appearing, `drawObj` changing, edit-mode enable transition. Never a bare one-shot flag (kills later drawObj updates → stale polygon on next zone edit), never presence-check-only (re-adds after user deletes), never on-every-update (stacks `draw.update` listeners — remove-then-add or its own one-shot).
 6. **Geometry load for the selected entity** — staleness guard (cancelled flag / compare requested id) AND a `.catch` clearing the previous entity's geometry: a late OR failed load must never leave entity A's polygon savable against entity B. Reset paths (clear polygon, hierarchy change) clear EVERYTHING derived: drawObj, geoJsonData, polygonData, centerPoint, loadedId.
+7. **Draggable marker with no `dragend` capture** — the drag visually succeeds but the parent state still holds the pre-drag coordinates, so Save writes the old location. Attach `marker.on('dragend', () => setState(marker.getLngLat()))` at EVERY creation site (click-placement and initial-data placement), or set `draggable: false`.
+8. **Engine clear without state clear** — `draw.delete`/trash and clear-draw handlers that only call `draw.deleteAll()` leave the deleted shape in parent state: the next submit silently re-saves it. Call the parent setter (`setPolygon({})`) in the same handler, and compute WKT/geometry at submit time from current state — never cache it in a set-once variable (a `&& !cached` guard freezes the first shape forever).
 
 ## 6. Camera idioms
 
@@ -79,8 +81,8 @@ const DeckGLOverlay = (props: MapboxOverlayProps) => {
 Established pattern (search the repo for `mqtt.connect` and any batching util before writing new):
 
 - Connect with `mqtt.connect(brokerUri, { username, password })` from env vars (broker host/port/protocol — wss for browsers).
-- **Buffer + batch, never dispatch per message**: buffer into a ref, flush on batch size (~100 msgs) or timer (~100ms), with a memory cap on markers (LRU ~3000). If a batch-processor class already exists, reuse it.
-- Track subscribed topics in a ref `Set` to avoid double-subscribe; `isConnectedRef` guard; cleanup with `client.end(true)` on unmount.
+- **Buffer + batch, never dispatch per message**: buffer into a ref, flush on batch size (~100 msgs) or timer (~100ms), with a memory cap on markers (LRU ~3000). If a batch-processor class already exists, reuse it. For latest-fix-per-entity feeds, key the buffer `Map<entityId, payload>` — structurally bounded by entity count, no array spread per message.
+- Track subscribed topics in a ref `Set` to avoid double-subscribe; `isConnectedRef` guard; cleanup with `client.end(true)` on unmount, plus a `cancelled` flag around any async-before-connect step so a client created mid-unmount is ended immediately.
 - Business-hours / off-hours suppression belongs in the data hook, not the map component.
 - Typical backend pipeline: MQTT → queue (Redis/BullMQ) → DB + geofence store (e.g. Tile38). Live reads can hit the geofence store; historical via API endpoints.
 
@@ -110,4 +112,4 @@ Read the project's `.env*` for actual names — don't invent. Common shapes: map
 4. Real-time: batch messages, LRU-cap markers, guard subscriptions, cleanup on unmount.
 5. Shared map state in a store slice — map components subscribe, don't own.
 6. Map wrapper library work: framework apps install the fresh packed tarball (never link); every README claim covered by an e2e case; engine majors = silent render failures — run the README matrix first.
-7. Draw/edit flows: idempotent polygon-sync upsert covering all three triggers (§5.5); guarded geometry loads with failure-path clearing (§5.6); resets touch every derived field.
+7. Draw/edit flows: idempotent polygon-sync upsert covering all three triggers (§5.5); guarded geometry loads with failure-path clearing (§5.6); resets touch every derived field; markers capture `dragend` and draw-clears propagate to parent state (§5.7–5.8).

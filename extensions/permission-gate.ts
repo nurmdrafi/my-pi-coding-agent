@@ -8,7 +8,8 @@
  *     read is already in context, and no windowed re-read covering the
  *     just-edited lines (R1; read-after-read + windowed-overlap 2026-09-27)
  *   - bash calls: reading/output economy — R2 cat/standalone-sed viewing,
- *     R5 git log caps, R6 rg -o caps, R7 recursive walks, verbose runner caps
+ *     R5 git log caps, R6 rg -o caps, R7 recursive walks, verbose runner caps,
+ *     R9 commitlint conventional-commit message validation on git commit -m
  * Sources: 2026-09-16 audit (cat-for-viewing 86, uncapped runners, git log),
  * 2026-09-23 audit (read-after-edit re-read loops 316K/wk, uncapped rg -o
  * 119K/wk), 2026-09-24 (anchor overlap pre-check, R7, sed -n batching fix,
@@ -208,6 +209,46 @@ async function validateEditAnchors(input: {
 	return { spans: edited.length ? edited : undefined }; // all anchors verified: let the edit proceed
 }
 
+// ---- R9: commitlint (conventional) validation ----
+
+const COMMIT_TYPES = "feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert";
+const CONVENTIONAL_HEADER = new RegExp(`^(${COMMIT_TYPES})(\\([\\w\\-.]+\\))?!?: .+`);
+
+/**
+ * Validates every -m message of a 'git commit' segment against the commitlint
+ * conventional pattern (type(scope?): subject, header <= 100 chars, subject
+ * not capitalized / not ending in '.'). Returns a block reason or undefined.
+ */
+function validateCommitMessages(seg: string): string | undefined {
+	const flags = [...seg.matchAll(/-m\s+(?:"((?:\\.|[^"])*)"|'((?:\\.|[^'])*)')/g)];
+	if (flags.length === 0) return; // heredoc / -F / editor message: not inspectable
+	for (let i = 0; i < flags.length; i++) {
+		const msg = (flags[i][1] ?? flags[i][2] ?? "").replace(/\\(["'\\n])/g, "$1");
+		if (!msg) continue;
+		if (i > 0) continue; // body paragraphs: header rules only (i === 0)
+		if (!CONVENTIONAL_HEADER.test(msg)) {
+			return (
+				`Commitlint: message ${JSON.stringify(msg)} does not match the conventional-commit pattern ` +
+				`'type(scope?): subject' (types: ${COMMIT_TYPES.split("|").join(", ")}). ` +
+				`E.g. 'feat(auth): add otp login', 'fix: cap git log output'. Rewrite the -m message.`
+			);
+		}
+		if (msg.length > 100) {
+			return `Commitlint: header is ${msg.length} chars — commitlint header-max-length is 100. Shorten the subject.`;
+		}
+		const subject = msg.replace(/^\S+\s*/, ""); // strip type/scope for subject rules
+		{
+			if (/^[A-Z]/.test(subject)) {
+				return `Commitlint: subject-rule — subject must not start with a capital letter ('${subject.slice(0, 30)}…'). Lowercase it.`;
+			}
+			if (/[.]$/.test(msg)) {
+				return `Commitlint: subject-full-stop — header must not end with '.'.`;
+			}
+		}
+	}
+	return;
+}
+
 export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event) => {
 		seq++;
@@ -311,6 +352,13 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			// R9: commit message must follow the commitlint conventional pattern
+			// (checked before the R8 hook-cap rule so a bad message never reaches git)
+			if (/^git commit\b/.test(seg)) {
+				const lint = validateCommitMessages(seg);
+				if (lint) return { block: true, reason: lint };
+			}
+
 			// R8 (2026-09-27): commit/push re-run repo hooks (lint/test/build) whose
 			// output floods context (44-48K/call measured). Heredoc messages split
 			// across segments put the cap pipe on a later line — a cap anywhere in
@@ -325,8 +373,10 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// R7 (2026-09-24): recursive directory walks pollute context (no ls -R, find -exec)
-			const lsRecursive = /\bls\b[^|]*\s(--recursive|-[a-zA-Z]*R[a-zA-Z]*)\b/.test(seg) && !/>/.test(seg);
-			if (lsRecursive || /\bfind\b[^|]*\s-exec(dir)?\b/.test(seg)) {
+			// (regexes tested against quote-stripped `bare` like R6 — a search pattern
+			// containing "ls -R"/"find -exec" inside quotes is not a walk; false-fired 10-05)
+			const lsRecursive = /\bls\b[^|]*\s(--recursive|-[a-zA-Z]*R[a-zA-Z]*)\b/.test(bare) && !/>/.test(seg);
+			if (lsRecursive || /\bfind\b[^|]*\s-exec(dir)?\b/.test(bare)) {
 				return {
 					block: true,
 					reason:

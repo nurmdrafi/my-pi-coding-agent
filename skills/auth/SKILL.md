@@ -1,6 +1,6 @@
 ---
 name: auth
-description: "Implements or migrates to NextAuth v4 credentials auth for Next.js App Router apps whose identity provider is an external REST backend issuing bearer tokens: authorize() with server-side backend calls, session-token plumbing for RTK Query/fetch layers, proxy/middleware route protection, 401 retry and sign-out ladder, OTP registration and password-reset flows, social-login token exchange, deterministic post-login redirects. Use for 'nextauth', 'auth migration', 'login not redirecting', 'stuck on login page', 'refresh fixes login', 'protect routes', 'middleware auth', 'session token', 'signIn credentials', '401 handling', 'otp login', 'social login', 'new auth integration'. NOT for OAuth-first setups, Auth.js v5, Firebase auth, or non-Next.js apps."
+description: "Implements or migrates to NextAuth v4 credentials auth for Next.js App Router apps against an external REST IdP issuing bearer tokens: authorize() with server-side backend calls, session-token plumbing for RTK Query/fetch layers, middleware route guards, 401 retry and sign-out ladder, OTP registration and password-reset flows, social-login token exchange, deterministic post-login redirects. Use for 'nextauth', 'auth migration', 'login not redirecting', 'stuck on login page', 'refresh fixes login', 'protect routes', 'middleware auth', 'session token', 'signIn credentials', '401 handling', 'otp login', 'social login', 'new auth integration'. NOT for OAuth-first setups, Auth.js v5, Firebase auth, or non-Next.js apps."
 ---
 
 # auth

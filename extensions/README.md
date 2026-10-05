@@ -34,6 +34,8 @@ Single `tool_call` interceptor; one handler, deterministic order (edit → read 
 | R5 | bash | `git log` without `--oneline` / `-n <N>` / pipe cap |
 | R6 | bash | `rg -o` without pipe cap (quoted patterns stripped first so a pattern containing `-o` can't false-fire) |
 | R7 | bash | recursive walks: `ls -R`-family flags, `find -exec`/`-execdir` (redirected `ls -R > f` exempt; `find -executable` doesn't false-fire) |
+| R8 | bash | `git commit`/`git push` without `--no-verify`, a pipe cap, or `2>&1 \| tail -20` — hooks (lint/test/build) flood context; a cap anywhere in the full command satisfies the check (heredoc messages) |
+| R9 | bash | `git commit -m <msg>` header not matching commitlint conventional pattern `type(scope?): subject` (types: feat/fix/docs/style/refactor/perf/test/build/ci/chore/revert; also header ≤ 100 chars, subject not capitalized, no trailing `.`); header rules only — body `-m` flags, `-F`, heredoc skipped; checked before R8 so a bad message never reaches hooks |
 | Runner cap | bash | uncapped `npm`/`vitest`/`jest`/`playwright`/`tsc` runners (suggests the filter pipe) |
 
 State (per session): `pendingEdits` (toolCallId → {path, edited spans}), `pendingReads`, and `lastInContext` (path → {at, kind, spans?}) drive R1 freshness; a failed edit drops freshness — content may have drifted, so a re-read is legitimate. Fuzzy matching mirrors edit-diff.js `normalizeForFuzzyMatch` (NFKC, trailing whitespace, smart quotes/dashes/spaces) so the guard and the tool agree on what "matches". Anchor validation runs before freshness registration, so a blocked edit never enters the map.

@@ -3,13 +3,13 @@
 [![pi coding agent](https://img.shields.io/badge/pi-coding_agent-8A2BE2)](https://github.com/earendil-works/pi-coding-agent)
 [![Node](https://img.shields.io/badge/node_%E2%89%A522_%C2%B7_nvmrc_24-339933?logo=nodedotjs&logoColor=white)](#portability-contract)
 [![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555)](#portability-contract)
-[![skills](https://img.shields.io/badge/skills-18-2563eb)](#skills)
+[![skills](https://img.shields.io/badge/skills-24-2563eb)](#skills)
 [![always-on floor](https://img.shields.io/badge/always--on_floor_%7E1.5K_tok-f97316)](#always-on-token-budget-measure-this)
 
 Personal [pi coding agent](https://github.com/earendil-works/pi-coding-agent) harness — a
 single portable `~/.pi/agent/` directory, synced via this git repo between machines.
 
-**What you get:** a lean always-on behavioral core (AGENTS.md), 18 progressive-disclosure
+**What you get:** a lean always-on behavioral core (AGENTS.md), 24 progressive-disclosure
 skills, and an audit methodology that keeps the permanent token floor ~1.5K tokens
 (measured 2026-09-23: AGENTS.md 5,396 c + 2 model-visible descriptions 585 c ÷ 4).
 No env vars, no absolute paths — clone anywhere on macOS/Linux.
@@ -32,7 +32,7 @@ Requires Node ≥ 22 (`.nvmrc` pins 24, the current LTS). Full details below.
 Map of this pi harness. Re-read at the start of any harness-engineering session.
 Update when structure, skill set, or always-on budget changes.
 
-Last updated: 2026-09-27
+Last updated: 2026-10-05
 
 ## Portable unit
 
@@ -47,7 +47,7 @@ No env vars; default path only.
 ├── models.json               # custom model defs (glm-5.3-flash)
 ├── models-store.json         # catalog cache (machine-local, regen)
 │
-├── skills/                   # 18 skills; each: SKILL.md + scripts/ references/ assets/
+├── skills/                   # 24 skills; each: SKILL.md + scripts/ references/ assets/
 ├── extensions/               # always-on TS extensions (guards, error-telemetry, self-learning collector)
 ├── README.md                 # this file (incl. portability contract)
 ├── CHANGELOG.md              # harness change log, latest-first (newest on top)
@@ -61,7 +61,7 @@ No env vars; default path only.
 
 ## Skills
 
-Auto-invocable (the model may load them on match): **ponytail**, **tavily-search**.
+Auto-invocable (the model may load them on match): **ponytail**, **tavily-search**, plus the wayfinder set's auto skills — **grilling**, **research**, **prototype**, **domain-modeling**.
 Everything else is manual — invoke with `/skill:<name>`.
 
 | Skill | Purpose | Invocation |
@@ -84,6 +84,12 @@ Everything else is manual — invoke with `/skill:<name>`.
 | skill-manager | Create/modify SKILL.md + mandatory validator gate | `/skill:skill-manager` |
 | systematic-debugging | Phased root-cause debugging before proposing any fix | `/skill:systematic-debugging` |
 | tavily-extract | URL → clean markdown via Tavily CLI (`tvly extract`) | `/skill:tavily-extract` |
+| documentation-writer | Diátaxis-based tech writer: SDK docs, READMEs, CONTRIBUTING, docs audits | `/skill:documentation-writer` |
+| domain-modeling | Build/sharpen a project's domain model — GLOSSARY.md terms, ADRs (upstream: mattpocock/skills) | auto |
+| grilling | Relentless one-question-at-a-time stress-testing of a plan/decision (upstream: mattpocock/skills) | auto |
+| prototype | Throwaway prototype (HTML state-model walkthrough / UI variations) to answer a design question | auto |
+| research | Delegate reading legwork to a background agent against high-trust sources; findings as Markdown | auto |
+| wayfinder | Chart a too-big effort as a map of decision tickets on the issue tracker; resolve one per session | `/skill:wayfinder` |
 
 ### Skill layout (convention — validator-enforced)
 
@@ -109,7 +115,8 @@ provider HTTP ≥ 400, compaction failures — into machine-local, gitignored
 `logs/errors-YYYY-MM-DD.jsonl` — review live with `/errors [n]` or batch
 with `skills/harness-engineer/scripts/error_audit.py --live`. Guards:
 `permission-gate.ts` — one `tool_call` interceptor: edit-anchor
-pre-validation plus reading/output economy rules. `session-learnings.ts`
+pre-validation, reading/output economy rules, and commitlint
+conventional-commit validation on `git commit -m` headers (R9). `session-learnings.ts`
 closes the self-learning loop: every settled run with signal (tool errors,
 guard blocks, provider ≥400, heavy tool use, cache instability) appends one
 deterministic line to machine-local `learnings/pending.md`; the periodic

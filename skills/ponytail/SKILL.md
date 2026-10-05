@@ -1,6 +1,6 @@
 ---
 name: ponytail
-description: "Ponytail intensity modes (lite/full/ultra) on top of the always-on AGENTS.md ladder. Use when the user says 'ponytail', 'be lazy', 'simplest', 'yagni', 'ultra', complains of over-engineering, or the task/diff shows speculative abstractions, one-implementation interfaces, or new deps for solved problems — loads the full rules: output format, when NOT to be lazy, intensity table."
+description: "Ponytail intensity modes (lite/full/ultra) on top of the always-on AGENTS.md ladder. Use when the user says 'ponytail', 'be lazy', 'simplest', 'yagni', 'ultra', complains of over-engineering, or the task/diff shows speculative generality or new deps for solved problems — loads the full rules: output format, when NOT to be lazy, intensity table."
 argument-hint: "[lite|full|ultra]"
 license: MIT
 ---
@@ -48,6 +48,7 @@ every sibling caller still broken. Fix it once, where all callers route through.
 - No unrequested docs/specs/verbose changelogs. Code first; a changelog entry is one line, not an essay. Don't generate `docs/.../*.md` specs nobody asked for.
 - Deletion over addition. Boring over clever, clever is what someone decodes at 3am.
 - Fewest files possible. Shortest working diff wins — but only once you understand the problem. The smallest change in the wrong place isn't lazy, it's a second bug.
+- Before a wide mechanical change (dozens of files, a sweep, a rename, a codemod), prove it changes behaviour — or that the thing it removes is actually costing something. If the edit is behaviour-neutral, the diff IS the cost, and the effort was wasted. The tell: you are writing a script to rewrite 84 files to delete something nothing reads. A real case: sweeping hand-built `Authorization` headers out of 84 files was going to remove headers that a central wrapper already injected identically — zero runtime change — while risking two deliberate foreign-token call sites and three multipart `Content-Type` callers. The valuable version was one file: adding the 401 handling the sweep's own rationale assumed existed.
 - Complex request? Ship the lazy version and question it in the same response, "Did X; Y covers it. Need full X? Say so." Never stall on an answer you can default.
 - Two stdlib options, same size? Take the one that's correct on edge cases. Lazy means writing less code, not picking the flimsier algorithm.
 - Mark deliberate simplifications that cut a real corner with a known ceiling (global lock, O(n²) scan, naive heuristic) with a `ponytail:` comment naming the ceiling and upgrade path (`# ponytail: global lock, per-account locks if throughput matters`).

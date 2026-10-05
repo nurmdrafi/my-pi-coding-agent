@@ -7,6 +7,43 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.3] - 10-05-2026
+
+### Changed
+
+- **AGENTS.md: guard-enforced mechanics trimmed to norms** — Token Economy rules that `permission-gate` already blocks with corrective text are no longer restated in the prefix: cat/sed viewing + batching exception (R2), re-read bans + ≤60-line-window detail (R1), oldText fuzzy-match spec (Anchor Guard), recursive walks + uncapped `git log` (R7/R5), runner cap recipes (the guard reason carries them), commit/push tail + hooks rationale (R8), `log --oneline` cap. Unenforced rules kept verbatim (npm install tail, git diff/show caps, general rg caps, no-re-run, cross-platform flags, safety, judgment), plus one breadcrumb naming what the gate enforces. Basis: `learnings/pending.md` — blocks in ~30 of 45 signal-runs with the rules present; the gate is the working mechanism, the text was not preventing.
+- Measured: AGENTS.md 5,738 → 5,400 B (−338 ≈ −85 tok/session); prefix changed → fresh session advised. `audit_toolcall_rules.py` unchanged (audits session JSONLs, not AGENTS.md text). Revert trigger: any block family spiking in pending.md over the next week → restore that rule.
+- **Tier 2 review: queue drained, no new promotions** — consumed all 48 pending.md runs (09-29..10-05) + 172 error-log entries (09-24..10-05). Top signal: R2 sed-viewing blocks 56× (+ cat 17×) — plausibly aggravated by the old AGENTS.md rule text naming `sed -n`; the 1.16.3 trim removes the mention, so watch the post-trim rate before adding anything. Anchor Guard 13×, re-read 7× (4× CHANGELOG.md post-edit — guard working as designed), runner caps 8×, git log 4×, rg -o 4×; zero provider/compaction errors, zero cache-unstable runs. npm-install/diff-show/general-rg gaps show no pain in logs → stay rules, no new guards.
+- Measured: pending.md 55 → 7 lines (48 consumed); 172 log entries aggregated across 6 files; no code changed. Standing practice (user-directed 10-05): a Tier 2 review that has aggregated and recorded the signal clears `logs/` and `learnings/` — raw data dies after its `Measured:` line exists.
+
+### Fixed
+
+- **permission-gate: R7 false positive on quoted patterns** — R7 (recursive walks) tested raw segments, so a quoted search pattern containing `ls -R`/`find -exec` (hit live: `rg -n "…|ls -R|…"`) was blocked as a walk. Now tests the quote-stripped `bare` segment like R6, for both regexes.
+- Measured: 6-case matcher test 6/6 PASS (falsely-blocked rg patterns pass; `ls -R`, `ls -laR`, `find -exec` still blocked). Live gate picks the fix up at next session start.
+
+## [1.16.2] - 10-05-2026
+
+### Added
+
+- **permission-gate: R9 commitlint enforcement** — `git commit -m <msg>` calls are validated against the commitlint conventional pattern (`type(scope?): subject`; types feat/fix/docs/style/refactor/perf/test/build/ci/chore/revert, header ≤ 100 chars, subject not capitalized, no trailing `.`) before the commit runs. Header rules only (body `-m` flags and `-F`/heredoc messages skipped). Checked ahead of the R8 hook-cap rule so a bad message never reaches git hooks. Measured: 9-case unit test of the matcher (9/9 PASS after body-paragraph fix); +55 lines in `extensions/permission-gate.ts`; AGENTS.md and skill descriptions untouched (prefix byte-stable except extension code).
+
+## [1.16.1] - 10-05-2026
+
+### Changed
+
+- **Skill descriptions — leading-word compression** (missing-established-term audit): `auth` "whose identity provider is an external REST backend" → "against an external REST IdP"; "proxy/middleware route protection" → "middleware route guards". `ponytail` "speculative abstractions, one-implementation interfaces" → "speculative generality" (Fowler's term; single-implementation abstraction is his literal example — one term covers both). `ponytail-review` "speculative abstraction" → "speculative generality" (vocabulary alignment, zero chars). Rejected with reasons: `baseQuery` (covers only RTK Query, not the fetch layer), `wayfinder` → "epic" (imports build-slice semantics the skill distinguishes itself from), `brainstorming` → "Socratic" (loses the operational instruction), `grilling` → "red-team/steelman" (wrong meaning). 16 other descriptions already term-dense.
+- Measured: desc total 6,218 → 6,150 chars (−68, ~17 tok/session); validator PASS ×3; AGENTS.md untouched (5,738 B); prefix changed → fresh session advised.
+
+## [1.16.0] - 10-05-2026
+
+### Added
+
+- **`skills/wayfinder`** — new skill (COUNT 18 → 19) from mattpocock/skills: chart an effort too big for one session as a `wayfinder:map` issue + decision-ticket children on the repo's issue tracker; one ticket resolved per session until the route to the destination is clear. Manual invocation only (`disable-model-invocation: true`). Deliberately missing deps: sibling skills (grilling, domain-modeling, research, prototype) and tracker setup not installed — local-markdown tracker fallback covers it.
+- Measured: skills 19 dirs, wayfinder desc 197 chars (auto-trigger cost 0 — manual only); validator PASS (exit 0); skills-audit.md 319 → 332 lines (append-only); README.md 284 → 285 lines (badge 18→19, intro, tree, table row, Last updated).
+
+- **`skills/wayfinder` deps: grilling, research, prototype, domain-modeling** — the four sibling skills wayfinder's body invokes, from the same repo; all auto-invocable. With wayfinder and the pre-existing-but-undocumented `documentation-writer` (committed in c64f214 without a README row), COUNT 18 → 24. Upstream layout adapted to the local convention: domain-modeling's GLOSSARY-FORMAT.md / ADR-FORMAT.md and prototype's LOGIC.md / UI.md moved to `references/` with body links rewritten; `agents/openai.yaml` not copied (OpenAI-only). Remaining gap: tracker setup (`/setup-matt-pocock-skills`) still absent — wayfinder falls back to local-markdown tracker.
+- Measured: skills 24 dirs, desc total 6,218 chars across all frontmatters; validator PASS ×6 (incl. documentation-writer); skills-audit.md 332 → 347 lines (append-only); README.md 285 → 290 lines (badge →24, intro, tree, auto-invocable line, 5 table rows incl. documentation-writer).
+
 ## [1.15.2] - 09-27-2026
 
 ### Changed
