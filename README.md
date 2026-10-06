@@ -3,24 +3,25 @@
 [![pi coding agent](https://img.shields.io/badge/pi-coding_agent-8A2BE2)](https://github.com/earendil-works/pi-coding-agent)
 [![Node](https://img.shields.io/badge/node_%E2%89%A522_%C2%B7_nvmrc_24-339933?logo=nodedotjs&logoColor=white)](#portability-contract)
 [![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555)](#portability-contract)
-[![skills](https://img.shields.io/badge/skills-24-2563eb)](#skills)
-[![always-on floor](https://img.shields.io/badge/always--on_floor_%7E1.5K_tok-f97316)](#always-on-token-budget-measure-this)
+[![skills](https://img.shields.io/badge/skills-25-2563eb)](#skills)
+[![always-on floor](https://img.shields.io/badge/always--on_floor_%7E2.5K_tok-f97316)](#always-on-token-budget-measure-this)
 
 Personal [pi coding agent](https://github.com/earendil-works/pi-coding-agent) harness — a
 single portable `~/.pi/agent/` directory, synced via this git repo between machines.
 
-**What you get:** a lean always-on behavioral core (AGENTS.md), 24 progressive-disclosure
-skills, and an audit methodology that keeps the permanent token floor ~1.5K tokens
-(measured 2026-09-23: AGENTS.md 5,396 c + 2 model-visible descriptions 585 c ÷ 4).
+**What you get:** a lean always-on behavioral core (AGENTS.md), 25 progressive-disclosure
+skills, and an audit methodology that keeps the permanent token floor ~2.5K tokens
+(1.5K core — AGENTS.md 5,396 c + 2 model-visible descriptions 585 c ÷ 4, measured
+2026-09-23 — plus ~1K subagents tool defs, accepted 2026-10-06).
 No env vars, no absolute paths — clone anywhere on macOS/Linux.
 
 ## Quick start (new machine)
 
 ```sh
 git clone <repo> ~/.pi/agent
-cp office:~/.pi/agent/auth.json ~/.pi/agent/   # or /login per provider (secrets never in git)
+scp office:~/.pi/agent/auth.json ~/.pi/agent/   # or /login per provider (secrets never in git)
 mv ~/.agents/skills ~/.agents/skills.disabled.$(date +%Y%m%d-%H%M%S) 2>/dev/null  # stop legacy dir leaking
-pi   # first run regenerates bin/, npm/, models-store.json
+pi   # first run regenerates bin/, npm/, git/, models-store.json
 ```
 
 Requires Node ≥ 22 (`.nvmrc` pins 24, the current LTS). Full details below.
@@ -47,7 +48,7 @@ No env vars; default path only.
 ├── models.json               # custom model defs (glm-5.3-flash)
 ├── models-store.json         # catalog cache (machine-local, regen)
 │
-├── skills/                   # 24 skills; each: SKILL.md + scripts/ references/ assets/
+├── skills/                   # 25 skills; each: SKILL.md + scripts/ references/ assets/
 ├── extensions/               # always-on TS extensions (permission-gate)
 ├── agents/                   # global subagent defs (scout/researcher/worker/reviewer) — override pkg-bundled
 ├── README.md                 # this file (incl. portability contract)
@@ -133,6 +134,30 @@ project > global > package): no `model` pin — sub-agents inherit the
 harness default model from `settings.json` (a spawn-time `model` param still
 overrides), and `researcher` is retooled to the `tvly` CLI.
 
+## Subagents
+
+Tools: `subagent` (spawn, async — returns immediately), `subagent_message`
+(steer running / resume finished, addressed by name — names persist after finish),
+`subagents_list`, plus `/subagent <agent> <task>`. Results are steered back into
+the parent session automatically when a sub-agent finishes. Sub-agents may call
+`ask_question` to park and wait for the orchestrator's reply.
+Requires pi inside tmux (`tmux new -A -s pi`); outside tmux spawns fail with a
+setup hint.
+
+| Agent | Tools | Role |
+|---|---|---|
+| scout | read, grep, find, ls | read-only recon |
+| researcher | read, bash | web research via `tvly` CLI |
+| worker | read, write, edit, bash (+ may spawn scout, researcher) | general implementer |
+| reviewer | read, bash, grep, find, ls (auto-loads `pre-push-review` skill) | pre-commit diff review; never commits/pushes |
+
+Global `agents/` defs override package-bundled; discovery project > global >
+package; no `model` pin — inherit harness default. Spawn-time `model`/`cwd`
+params override the agent's defaults; nested spawning restricted per
+`subagent_agents`.
+Full details: `git/github.com/amosblomqvist/pi-interactive-subagents/README.md`
+(machine-local clone).
+
 ## Layers (what loads when)
 
 | Layer | What | When in context | Stability rule |
@@ -194,7 +219,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
   ```sh
   cd ~/.pi/agent && git pull
   ```
-  Then start a fresh `pi` session (first run auto-installs bin/, npm/, models-store.json).
+  Then start a fresh `pi` session (first run auto-installs bin/, npm/, git/, models-store.json).
 - **auth.json (secrets):** copy manually **once per machine** — it is never in git:
   ```sh
   scp office:~/.pi/agent/auth.json ~/.pi/agent/auth.json
@@ -209,7 +234,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | Path | Purpose |
 |---|---|
 | `AGENTS.md` | Always-on behavioral core + efficiency ladder |
-| `settings.json` | Provider/model/theme/thinking (no secrets; `packages` empty) |
+| `settings.json` | Provider/model/theme/thinking (no secrets; `packages`: subagents pkg, commit-pinned) |
 | `models.json` | Custom model definitions (currently: `glm-5.3-flash`) |
 | `agents/` | Global subagent definitions (scout/researcher/worker/reviewer) |
 | `skills/` | All skills (real files, auto-trigger + `/skill:name`) |

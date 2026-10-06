@@ -7,6 +7,12 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.9] - 10-06-2026
+
+### Changed
+
+- **README subagent-mode docs completed (docs-only)**. Main `README.md`: new `## Subagents` section (tools, auto-steer results, `ask_question`, tmux requirement, 4-agent table, override/nesting rules, package README pointer); stale facts fixed — skills count 24 → 25 (badge + tree + intro prose), `settings.json` row no longer claims `packages` empty, always-on floor restated ~1.5K → ~2.5K tok (1.5K core + ~1K subagents tool defs, both measurement dates kept), quick-start `cp office:…` → `scp` (was not runnable), first-run regen lists now include `git/`. `extensions/README.md`: extensions-vs-package boundary note (subagents = commit-pinned pi package under `git/`, tool defs DO enter the prefix — unlike extensions). Done via two parallel worker subagents, verified in parent.
+
 ## [1.16.8] - 10-06-2026
 
 ### Added

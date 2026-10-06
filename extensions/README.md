@@ -16,6 +16,8 @@ Edits take effect on the next session start (or via `/reload-runtime` if adopted
 
 ## Extensions
 
+> **Extensions vs packages:** the interactive-subagents tooling (`subagent` / `subagent_message` / `subagents_list` + `/subagent`) is NOT an extension here — it's a pi package (`pi install git:...`) declared in `settings.json` → `packages`, cloned machine-local under `~/.pi/agent/git/`, commit-pinned. Unlike extensions, its tool definitions DO add to the model-visible prefix (~+1K tok, accepted). See the main `README.md` "Subagents" section and the package README under `git/github.com/amosblomqvist/pi-interactive-subagents/`.
+
 | Extension | Role | Hooks |
 |---|---|---|
 | `permission-gate.ts` | Blocks rule-violating tool calls before execution, with corrective rule text | `tool_call`, `tool_result`, `session_compact` |
