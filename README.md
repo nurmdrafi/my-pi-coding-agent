@@ -12,7 +12,7 @@ single portable `~/.pi/agent/` directory, synced via this git repo between machi
 **What you get:** a lean always-on behavioral core (AGENTS.md), 25 progressive-disclosure
 skills, and an audit methodology that keeps the permanent token floor ~2.5K tokens
 (1.5K core — AGENTS.md 5,396 c + 2 model-visible descriptions 585 c ÷ 4, measured
-2026-09-23 — plus ~1K subagents tool defs, accepted 2026-10-06).
+2026-09-23; subagents tool defs removed 2026-10-06, see [1.16.10]).
 No env vars, no absolute paths — clone anywhere on macOS/Linux.
 
 ## Quick start (new machine)
@@ -119,30 +119,29 @@ conventional-commit validation on `git commit -m` headers (R9). Raw events
 audit toolkit derives every signal from there. Full docs:
 `extensions/README.md`.
 
-Plus one **pi package, always-on** (declared in `settings.json`, commit-
-pinned, clone machine-local under `git/`):
-`pi-interactive-subagents` (amosblomqvist tmux-only fork). Adds `subagent` /
-`subagent_message` / `subagents_list` tools + `/subagent` command —
-**+1,048 tok first-turn context (accepted cost, 2026-10-06 decision: token
-cost immaterial vs. value of context-isolated delegation — e.g. reviewer
-agents checking pre-push diffs in their own pane without bloating the main
-session)**. Async subagents in tmux panes, results steered back into the
-parent session. Spawning requires pi inside tmux (`tmux new -A -s pi`);
-outside tmux the tools exist but spawns fail with a setup hint.
-Agent definitions in `agents/` override the package's bundled ones (discovery:
-project > global > package): no `model` pin — sub-agents inherit the
-harness default model from `settings.json` (a spawn-time `model` param still
-overrides), and `researcher` is retooled to the `tvly` CLI.
+No pi packages by default — `settings.json` → `packages` is empty
+([1.16.10]: subagents opt-in via install, not always-mounted).
 
 ## Subagents
 
-Tools: `subagent` (spawn, async — returns immediately), `subagent_message`
-(steer running / resume finished, addressed by name — names persist after finish),
-`subagents_list`, plus `/subagent <agent> <task>`. Results are steered back into
-the parent session automatically when a sub-agent finishes. Sub-agents may call
-`ask_question` to park and wait for the orchestrator's reply.
-Requires pi inside tmux (`tmux new -A -s pi`); outside tmux spawns fail with a
-setup hint.
+**Not installed by default.** The `pi-interactive-subagents` package
+(`subagent` / `subagent_message` / `subagents_list` + `/subagent` command,
+~1K tok/session tool defs) was removed [1.16.10] — subagents are opt-in per
+need, not always-mounted. To enable for a stretch of work:
+
+```bash
+pi install git:github.com/amosblomqvist/pi-interactive-subagents@c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7
+# then /reload (or restart pi); requires pi inside tmux (tmux new -A -s pi)
+```
+
+`pi remove git:github.com/amosblomqvist/pi-interactive-subagents` when done.
+Spawning requires pi inside tmux (`tmux new -A -s pi`); outside tmux spawns
+fail with a setup hint.
+
+Agent definitions in `agents/` (scout, researcher, worker, reviewer) stay —
+they're plain definitions, inert without the package; they'd override any
+package-bundled defs when it is installed (discovery: project > global >
+package).
 
 | Agent | Tools | Role |
 |---|---|---|
@@ -151,19 +150,16 @@ setup hint.
 | worker | read, write, edit, bash (+ may spawn scout, researcher) | general implementer |
 | reviewer | read, bash, grep, find, ls (auto-loads `pre-push-review` skill) | pre-commit diff review; never commits/pushes |
 
-Global `agents/` defs override package-bundled; discovery project > global >
-package; no `model` pin — inherit harness default. Spawn-time `model`/`cwd`
+No `model` pin — sub-agents inherit the harness default from `settings.json`;
+spawn-time `model` param still overrides.
+
 params override the agent's defaults; nested spawning restricted per
 `subagent_agents`.
-Full details: `git/github.com/amosblomqvist/pi-interactive-subagents/README.md`
-(machine-local clone).
-
 ## Layers (what loads when)
 
 | Layer | What | When in context | Stability rule |
 |-------|------|-----------------|----------------|
 | System + tools | pi built-in | every turn | pi-managed |
-| Package tool defs | subagents pkg (3 tools, accepted +1,048 tok) | every turn | pkg commit-pinned |
 | **AGENTS.md** | global behavioral rules | every turn | **must stay byte-stable** |
 | Skill descriptions | frontmatter only | every turn | **must stay byte-stable** |
 | Skill bodies | SKILL.md full text | on match or `/skill:name` | load on demand |
@@ -182,7 +178,7 @@ wc -c ~/.pi/agent/AGENTS.md
 |-----------|--------|-------|
 | AGENTS.md | as small as possible (behavioral core only) | no stack essays, no skill lists |
 | Skill descriptions | short; delete dead skills | largest descriptions cost every session |
-| **Total always-on** | prefer ≤ ~2K tok | bodies/refs stay out until needed; tool-def +1,048 tok accepted (subagents pkg) |
+| **Total always-on** | prefer ≤ ~2K tok | bodies/refs stay out until needed; no package tool defs (subagents pkg removed [1.16.10]) |
 
 Thinking default: `off` (token economy). Bump per-task with `--thinking high` if needed.
 
@@ -234,7 +230,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | Path | Purpose |
 |---|---|
 | `AGENTS.md` | Always-on behavioral core + efficiency ladder |
-| `settings.json` | Provider/model/theme/thinking (no secrets; `packages`: subagents pkg, commit-pinned) |
+| `settings.json` | Provider/model/theme/thinking (no secrets; `packages`: empty — subagents pkg removed [1.16.10]) |
 | `models.json` | Custom model definitions (currently: `glm-5.3-flash`) |
 | `agents/` | Global subagent definitions (scout/researcher/worker/reviewer) |
 | `skills/` | All skills (real files, auto-trigger + `/skill:name`) |
@@ -250,7 +246,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | `auth.json` | Secrets — copy once per machine via `scp`; never in git. |
 | `bin/` | Platform binaries, auto-downloaded per arch (arm64/x86_64; machine-local). Currently `fd`. |
 | `npm/` | pi-managed `pi install npm:<pkg>` store. |
-| `git/` | pi-managed `pi install git:<repo>` clones (subagents pkg, always-on). `pi update --extensions` re-clones from the pinned SHA. |
+| `git/` | pi-managed `pi install git:<repo>` clones (currently empty; re-created on next `pi install git:…`). |
 | `skills/**/node_modules/` | Per-skill deps (e.g. `browser-tools`: puppeteer-core, jsdom, `@mozilla/readability`, turndown). Regenerable — `npm install` in the skill dir on first use. |
 | `models-store.json` | Built-in provider model catalog (regenerable cache). |
 | `sessions/` | Session history, keyed by absolute project paths → inherently per-machine. |

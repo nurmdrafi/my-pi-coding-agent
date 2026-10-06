@@ -7,6 +7,12 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.10] - 10-06-2026
+
+### Changed
+
+- **Subagents off by default — `pi-interactive-subagents` package removed**. Reverses the always-on adoption of [1.16.8]: `pi remove` from `settings.json` → `packages` (now empty), clone under `git/` gone via `pi update --extensions`. Zero per-session cost (~1K tok tool defs + the model's spawn-on-own-initiative possibility both eliminated); when delegation is wanted: `pi install git:github.com/amosblomqvist/pi-interactive-subagents@c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7` (pin from [1.16.8]), then `/reload`; remove again when done. Behavioral guard added to `AGENTS.md`: never spawn subagents unless the user explicitly requests one in the current session. Interim `subagent-mode.ts` blocking extension (built this session, `/subagent-mode` toggle) was deleted — uninstall supersedes it, no duplicates. `agents/` overrides (scout/researcher/worker/reviewer) stay — plain definitions, inert without the package. Main `README.md` and `extensions/README.md` updated accordingly.
+
 ## [1.16.9] - 10-06-2026
 
 ### Changed

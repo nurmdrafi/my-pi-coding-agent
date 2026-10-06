@@ -16,7 +16,7 @@ Edits take effect on the next session start (or via `/reload-runtime` if adopted
 
 ## Extensions
 
-> **Extensions vs packages:** the interactive-subagents tooling (`subagent` / `subagent_message` / `subagents_list` + `/subagent`) is NOT an extension here — it's a pi package (`pi install git:...`) declared in `settings.json` → `packages`, cloned machine-local under `~/.pi/agent/git/`, commit-pinned. Unlike extensions, its tool definitions DO add to the model-visible prefix (~+1K tok, accepted). See the main `README.md` "Subagents" section and the package README under `git/github.com/amosblomqvist/pi-interactive-subagents/`.
+> **Extensions vs packages:** pi packages (`pi install git:…`) are declared in `settings.json` → `packages` and cloned machine-local under `~/.pi/agent/git/`. Unlike extensions, their tool definitions DO add to the model-visible prefix. Currently no packages are installed — the `pi-interactive-subagents` package was removed [1.16.10] (subagents are opt-in via `pi install` when needed; see the main `README.md` "Subagents" section).
 
 | Extension | Role | Hooks |
 |---|---|---|
