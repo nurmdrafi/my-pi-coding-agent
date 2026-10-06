@@ -1,0 +1,123 @@
+diff --git a/pi-extension/subagents/tmux.ts b/pi-extension/subagents/tmux.ts
+index c18e240..62d6367 100644
+--- a/pi-extension/subagents/tmux.ts
++++ b/pi-extension/subagents/tmux.ts
+@@ -6,9 +6,12 @@
+  * it, and poll for exit. Keeping the tmux calls isolated here means index.ts
+  * stays testable without a multiplexer running.
+  *
+- * Panes are identified by tmux pane ids (e.g. `%12`). Splits always target
+- * the parent pi's pane (`$TMUX_PANE`) so they follow the agent rather than
+- * the user's focus.
++ * Panes are identified by tmux pane ids (e.g. `%12`). When the parent pi
++ * runs inside tmux, splits target the parent pi's pane (`$TMUX_PANE`) so they
++ * follow the agent. When the parent runs outside tmux, panes are created in a
++ * dedicated detached session (`pi-agents`) that is created on demand — the
++ * user can watch with `tmux attach -t pi-agents` and the parent terminal is
++ * never required to be inside tmux.
+  */
+ import { execFile, execFileSync } from "node:child_process";
+ import { promisify } from "node:util";
+@@ -40,11 +43,21 @@ function hasCommand(command: string): boolean {
+ }
+ 
+ /**
+- * True when running inside tmux with the tmux binary on PATH.
+- * `TMUX` is set by tmux in every process it spawns (shell or pane).
++ * Dedicated detached tmux session used when the parent pi runs OUTSIDE tmux.
++ * Created on demand; watch with `tmux attach -t pi-agents`.
++ */
++const AGENTS_TMUX_SESSION = "pi-agents";
++
++/** Cached base pane id of the dedicated agents session (outside-tmux mode). */
++let agentsSessionBasePane: string | null = null;
++
++/**
++ * True when the tmux binary is available. The parent pi does NOT need to be
++ * running inside tmux — when it isn't, panes go to a dedicated detached
++ * session created on demand (see ensureAgentsSessionPane).
+  */
+ export function isTmuxAvailable(): boolean {
+-  return !!process.env.TMUX && hasCommand("tmux");
++  return hasCommand("tmux");
+ }
+ 
+ export function isMuxAvailable(): boolean {
+@@ -52,7 +65,7 @@ export function isMuxAvailable(): boolean {
+ }
+ 
+ export function muxSetupHint(): string {
+-  return "Start pi inside tmux (`tmux new -A -s pi 'pi'`).";
++  return "Install tmux (brew install tmux / sudo apt install tmux). Subagents run in a detached session; watch with `tmux attach -t pi-agents`.";
+ }
+ 
+ function requireTmux(): void {
+@@ -61,6 +74,47 @@ function requireTmux(): void {
+   }
+ }
+ 
++/**
++ * Ensure the dedicated agents session exists and return a pane id inside it
++ * that new subagent panes can be split from. Detached by default so it never
++ * steals the user's terminal; `tmux attach -t pi-agents` shows it on demand.
++ */
++function ensureAgentsSessionPane(): string {
++  if (agentsSessionBasePane) return agentsSessionBasePane;
++  let exists = false;
++  try {
++    execFileSync("tmux", ["has-session", "-t", AGENTS_TMUX_SESSION], {
++      stdio: "ignore",
++    });
++    exists = true;
++  } catch {}
++  if (!exists) {
++    execFileSync(
++      "tmux",
++      ["new-session", "-d", "-s", AGENTS_TMUX_SESSION, "-x", "200", "-y", "50"],
++      { encoding: "utf8" },
++    );
++  }
++  const pane = execFileSync(
++    "tmux",
++    ["list-panes", "-t", AGENTS_TMUX_SESSION, "-F", "#{pane_id}", "-f", "#M"],
++    { encoding: "utf8" },
++  ).trim();
++  if (!pane.startsWith("%")) {
++    throw new Error(`Unexpected tmux list-panes output: ${pane}`);
++  }
++  agentsSessionBasePane = pane;
++  return pane;
++}
++
++/**
++ * The pane new subagent panes are split from: the parent pi's pane when pi
++ * runs inside tmux, otherwise a pane in the dedicated agents session.
++ */
++function splitOriginPane(): string {
++  return process.env.TMUX_PANE ?? ensureAgentsSessionPane();
++}
++
+ // ── Shell helpers ──
+ 
+ export function shellEscape(s: string): string {
+@@ -87,8 +141,9 @@ let rebalanceTimer: ReturnType<typeof setTimeout> | null = null;
+  * and non-fatal: a cosmetic resize must never break spawning or watching.
+  */
+ function rebalanceSurfaces(hintPane?: string): void {
+-  // Prefer the parent pi pane (stable; survives a closing subagent pane).
+-  const target = process.env.TMUX_PANE ?? hintPane;
++  // Prefer the parent pi pane (stable; survives a closing subagent pane);
++  // outside tmux, balance the dedicated agents session's window instead.
++  const target = process.env.TMUX_PANE ?? agentsSessionBasePane ?? hintPane;
+   if (!target) return;
+   if (rebalanceTimer) clearTimeout(rebalanceTimer);
+   rebalanceTimer = setTimeout(() => {
+@@ -115,7 +170,7 @@ function rebalanceSurfaces(hintPane?: string): void {
+  */
+ export function createSurface(name: string): string {
+   void name; // tmux panes are not named; the pi process inside shows its own title.
+-  return createSurfaceSplit(name, "right", process.env.TMUX_PANE);
++  return createSurfaceSplit(name, "right", splitOriginPane());
+ }
+ 
+ /**

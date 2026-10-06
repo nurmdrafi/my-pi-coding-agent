@@ -119,24 +119,38 @@ conventional-commit validation on `git commit -m` headers (R9). Raw events
 audit toolkit derives every signal from there. Full docs:
 `extensions/README.md`.
 
-No pi packages by default — `settings.json` → `packages` is empty
-([1.16.10]: subagents opt-in via install, not always-mounted).
+One pi package installed [1.16.11]: the subagents package, commit-pinned
+[1.16.8] and patched locally (`patches/` — see Subagents below).
 
 ## Subagents
 
-**Not installed by default.** The `pi-interactive-subagents` package
-(`subagent` / `subagent_message` / `subagents_list` + `/subagent` command,
-~1K tok/session tool defs) was removed [1.16.10] — subagents are opt-in per
-need, not always-mounted. To enable for a stretch of work:
+**Opt-in, currently installed** [1.16.11]. The `pi-interactive-subagents`
+package (`subagent` / `subagent_message` / `subagents_list` + `/subagent`
+command, ~1K tok/session tool defs), pinned to a commit [1.16.8] and patched
+locally for agents-only tmux. To enable after a fresh clone or
+`pi update --extensions` (which re-clones and wipes the patch):
 
 ```bash
 pi install git:github.com/amosblomqvist/pi-interactive-subagents@c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7
-# then /reload (or restart pi); requires pi inside tmux (tmux new -A -s pi)
+# then /reload (or restart pi)
+```
+
+Then re-apply the local patch (the clone under `git/` is wiped by
+`pi update --extensions`, so this repeats after every re-clone):
+
+```bash
+cd ~/.pi/agent/git/github.com/amosblomqvist/pi-interactive-subagents && \
+  git apply ~/.pi/agent/patches/pi-interactive-subagents-detached-tmux.patch
 ```
 
 `pi remove git:github.com/amosblomqvist/pi-interactive-subagents` when done.
-Spawning requires pi inside tmux (`tmux new -A -s pi`); outside tmux spawns
-fail with a setup hint.
+
+**tmux is agents-only** (patched [local change] — upstream requires pi inside
+tmux): the main terminal runs pi plain, outside tmux. When a subagent spawns
+and pi is not inside tmux, panes are created in a dedicated detached session
+`pi-agents` — attach with `tmux attach -t pi-agents` to watch, detach with
+`Ctrl+b d`. If pi already runs inside tmux, splits appear beside the parent
+pane as before. tmux the binary is still required either way.
 
 Agent definitions in `agents/` (scout, researcher, worker, reviewer) stay —
 they're plain definitions, inert without the package; they'd override any
@@ -273,9 +287,13 @@ After `git clone <repo> ~/.pi/agent` on a new machine:
 2. **Neutralize `~/.agents/skills`** — pi *always* auto-scans this legacy dir; if it
    holds stale skills they leak into context (token cost). Rename it:
    `mv ~/.agents/skills ~/.agents/skills.disabled.$(date +%Y%m%d-%H%M%S)` (reversible).
-3. **tmux** (subagents spawn in tmux panes): `brew install tmux` (macOS) /
-   `sudo apt install tmux` (Linux). Start pi inside it:
-   `tmux new -A -s pi`, then `pi`.
+3. **tmux** (subagents spawn in tmux panes — agents only, never the main
+   terminal): `brew install tmux` (macOS) / `sudo apt install tmux` (Linux).
+   Run pi in a plain terminal; when subagents spawn outside tmux they create
+   a detached session — watch with `tmux attach -t pi-agents`. Never use
+   `tmux new -A -s pi` for the main terminal: the fixed session name is
+   shared across projects, so opening pi in another project reattaches the
+   first project's session.
 
 `bin/`, `npm/`, `git/`, `models-store.json` need no setup — pi regenerates
 them (packages via `pi update --extensions`, which re-clones the pinned SHA).
