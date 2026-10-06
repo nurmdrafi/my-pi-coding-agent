@@ -4,7 +4,7 @@ description: Ship session work — scoped review (code files only), concise conv
 
 Ship this session's work. Commit message concise, never bloated. The commit+push output costs ≤500 tokens.
 
-**Context first — no re-reads.** The session already contains every edit and command result. Do not run `git diff`, `git status --stat`, or `git log` to reconstruct changes. The only allowed re-read: `git status --porcelain` (paths only, no content) if genuinely uncertain which paths changed after compaction or a very long session.
+**Context first — no re-reads.** The session already contains every edit and command result. Do not run `git diff`, `git status`, or `git log` to reconstruct changes. The only allowed re-read: `git status --porcelain` (paths only, no content) if genuinely uncertain which paths changed after compaction or a very long session.
 
 **Review gate — code files only.** pre-push-review is disabled by default; this command is the only thing that enables it. If this session touched code files (functionality or business logic: source, scripts, tests, workflows), run pre-push-review scoped to exactly those files and fix what it flags. Docs (`.md`), assets, and data files carry no logic — never review them. Docs-only session → skip the gate entirely.
 

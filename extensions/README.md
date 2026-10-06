@@ -16,7 +16,7 @@ Edits take effect on the next session start (or via `/reload-runtime` if adopted
 
 ## Extensions
 
-> **Extensions vs packages:** pi packages (`pi install git:…`) are declared in `settings.json` → `packages` and cloned machine-local under `~/.pi/agent/git/`. Unlike extensions, their tool definitions DO add to the model-visible prefix. Currently no packages are installed — the `pi-interactive-subagents` package was removed [1.16.10] (subagents are opt-in via `pi install` when needed; see the main `README.md` "Subagents" section).
+> **Extensions vs packages:** pi packages (`pi install git:…`) are declared in `settings.json` → `packages` and cloned machine-local under `~/.pi/agent/git/`. Unlike extensions, their tool definitions DO add to the model-visible prefix. Currently one: `pi-interactive-subagents` (pinned commit + local detached-tmux patch — `pi update --extensions` re-clones and wipes the patch, re-apply it; see the main `README.md` "Subagents" section).
 
 | Extension | Role | Hooks |
 |---|---|---|
@@ -24,22 +24,24 @@ Edits take effect on the next session start (or via `/reload-runtime` if adopted
 
 ## `permission-gate.ts` — rule catalog
 
-Single `tool_call` interceptor; one handler, deterministic order (edit → read → write → bash). Every block carries a rule-family prefix (`Anchor Guard:`, `Token Economy (…)`) so transcripts and logs stay greppable and the model gets precise corrective text.
+Single `tool_call` interceptor; one handler, deterministic order (edit → read → write → bash). Every block carries a rule-family prefix (`Anchor Guard:`, `Token Economy (…)`) so transcripts and logs stay greppable and the model gets precise corrective text. Block reasons are capped ≈200 chars — pointer + fix, no prose (2026-10-06 diet: session audit showed 90% one-shot recovery needs the pointer, not the words, and every block text rides the prefix ~2.6× for the rest of the session). Anchor Guard keeps a trimmed ≤8-line file snippet on anchor-miss — Aider-style "did you mean" context.
 
 | Rule | Scope | Blocks |
 |---|---|---|
 | `Anchor Guard:` | edit | `oldText` not found (exact + fuzzy normalization), non-unique anchor (reports line numbers), intra-call overlap of exact-matched anchors |
 | R1 | read | any re-read whose requested window is fully covered by the session's in-context span union — read results (actual returned lines from result truncation stats; an untruncated whole-file read certifies 1–EOF), edit-result spans (exact-match anchors), whole file after `write` and for images; partial overlap passes; freshness = mtime+size snapshot per certified path — an external on-disk change invalidates coverage (stat, not command-text guessing); also resets on `session_compact`, a failed edit |
-| R2 | bash | `cat` / `sed -n` for viewing with no pipe consumer — `sed -n` batching 2+ regions (`;` or two `-e`) is allowed |
+| R2 | bash | `cat` / `sed -n` for viewing with no pipe consumer — `sed -n` batching 2+ regions (`;` or two `-e`) is allowed; segments split only at **unquoted** `\n && ; ||` (quote-aware since 2026-10-06: `sed -n '1p;5p'` no longer truncates to `'1p` and false-fires) |
 | R5 | bash | `git log` without `--oneline` / `-n <N>` / pipe cap |
 | R6 | bash | `rg -o` without pipe cap (quoted patterns stripped first so a pattern containing `-o` can't false-fire) |
 | R7 | bash | recursive walks: `ls -R`-family flags, `find -exec`/`-execdir` (redirected `ls -R > f` exempt; `find -executable` doesn't false-fire) |
 | R8 | bash | `git commit`/`git push` without `--no-verify`, a pipe cap, or `2>&1 \| tail -20` — hooks (lint/test/build) flood context; a cap anywhere in the full command satisfies the check (heredoc messages) |
 | R9 | bash | `git commit -m <msg>` header not matching commitlint conventional pattern `type(scope?): subject` (types: feat/fix/docs/style/refactor/perf/test/build/ci/chore/revert; also header ≤ 100 chars, subject not capitalized, no trailing `.`); header rules only — body `-m` flags, `-F`, heredoc skipped; checked before R8 so a bad message never reaches hooks |
-| R10 | bash | identical re-run: same base command (command up to the first pipe/redirect, `2>&1` stripped) re-run ≤10 min after its last successful run with no intervening edit/write — its output is already in context; watchers (`watch`, `tail -f`, `sleep`, `--watch`) and retries of failed runs exempt; recorded on `tool_result`, cleared on `session_compact` |
+| R10 | bash | identical re-run: same base command (command up to the first **unquoted** pipe/redirect, `2>&1` stripped — quote-aware since 2026-10-06: a quoted `\|` inside a regex pattern no longer truncates the base and false-collides two different commands) re-run ≤10 min after its last successful run with no intervening edit/write — its output is already in context; watchers (`watch`, `tail -f`, `sleep`, `--watch`) and retries of failed runs exempt; recorded on `tool_result`, cleared on `session_compact` |
 | Runner cap | bash | uncapped `npm`/`vitest`/`jest`/`playwright`/`tsc` runners (suggests the filter pipe) |
 
 State (per extension instance): `coverage` (path → merged span union + last kind), `pendingEdits`, `pendingReads` drive R1; `pendingBash` / `lastBashRun` (base command → last-run record) plus a `mutationSeq` counter bumped by every successful edit/write drive R10 — a mutation makes verify re-runs legitimate. A failed edit drops coverage — content may have drifted, so a re-read is legitimate; `session_compact` clears everything. No hydration on session resume — the map starts empty, erring toward allowing. Fuzzy matching mirrors edit-diff.js `normalizeForFuzzyMatch` (NFKC, trailing whitespace, smart quotes/dashes/spaces) so the guard and the tool agree on what "matches". Anchor validation runs before coverage registration, so a blocked edit never enters the map.
+
+**Violation memory** (cross-session): every block increments a per-rule-family counter in `~/.pi/agent/logs/violation-memory.json` (`PGATE_MEMORY` overrides the path; delete the file to reset). On the first `before_agent_start` of a session, families with ≥5 all-time blocks (top 3) get a one-line lesson appended to the system prompt inside `<violation-memory>` tags — ~45 tok conditional cost, paid only when a family qualifies. The file holds counts only; lesson text lives in `FAMILY_LESSONS` in the extension source. Measured experiment, not a guaranteed fix: prompt rules alone never prevented first attempts — the `tests/block-recovery-audit.mjs` blocks/1k-calls trend is the judge.
 
 ## Conventions (pi)
 
@@ -52,7 +54,8 @@ State (per extension instance): `coverage` (path → merged span union + last ki
 ## Verifying changes
 
 - Strict typecheck against the installed package's types (`npx tsc --noEmit --strict` with a `paths` mapping to the global `@earendil-works/pi-coding-agent/dist/index.d.ts` — the global path is machine-specific).
-- `permission-gate` fixture test: `node tests/permission-gate.test.mjs` — 19 black-box cases through a stubbed ExtensionAPI (exit 0 = pass; preflight symlinks the global package into the gitignored root `node_modules`).
+- `permission-gate` fixture test: `node tests/permission-gate.test.mjs` — 43 black-box cases through a stubbed ExtensionAPI (exit 0 = pass; preflight symlinks the global package into the gitignored root `node_modules`).
+- `node tests/block-recovery-audit.mjs` — re-measures what the model does after blocks (families, message sizes, one-shot recovery) over logged sessions; exits 1 below 85% recovery on a ≥10-block sample. Run after every permission-gate change.
 - `node skills/harness-engineer/scripts/mdcmdcheck.mjs` must exit 0 (validates every command/path this README declares).
 - Restart pi to load changes; watch the first few tool calls — a misfiring rule shows up immediately as a block.
 
@@ -70,7 +73,6 @@ State (per extension instance): `coverage` (path → merged span union + last ki
 |---|---|---|
 | `commit-gate.ts` (adapt upstream `permission-gate.ts`) | [upstream](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions) | Encode AGENTS.md Safety: ask before commit/push/install/destructive — `ctx.ui.confirm` with UI, block headless |
 | new `portability-guard.ts` | no upstream twin — model on `permission-gate.ts` | Block `sed -i` (no `''`), `stat -c/-f`, `grep -P` (AGENTS.md cross-platform rule) |
-| `handoff.ts` | upstream | `/handoff` summaries for the fresh-session protocol (150K / 200-turn limits) |
 | `session-name.ts` | upstream | Named sessions improve `sessions/**/*.jsonl` audits |
 | `notify.ts` | upstream | OSC 777 turn-complete desktop notifications |
 | `reload-runtime.ts` | upstream | Hot-reload extensions after editing guards, without restarting |

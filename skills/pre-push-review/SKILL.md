@@ -1,7 +1,7 @@
 ---
 name: pre-push-review
 description: "Local correctness review of the diff about to be committed/pushed: async/stale-state races, incomplete resets, payload/contract mismatches, fix-induced guard regressions, permission gaps. Use for 'review my diff', 'pre-push check', before any non-trivial commit+push."
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 This body is in context once the skill loads — never re-read this file from disk in the same session.

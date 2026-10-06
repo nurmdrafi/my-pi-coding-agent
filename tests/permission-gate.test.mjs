@@ -14,7 +14,7 @@
  *
  * Run: node tests/permission-gate.test.mjs   (exit 0 = all pass)
  */
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -75,7 +75,7 @@ async function edit(pi, path, edits) {
 
 async function bash(pi, command) {
   const block = await pi.handlers.get('tool_call')({ type: 'tool_call', toolName: 'bash', toolCallId: `tc${++seqId}`, input: { command } });
-  return block ? { blocked: true } : { blocked: false };
+  return block ? { blocked: true, reason: block.reason } : { blocked: false };
 }
 
 /** R10: bash call + result replay — the re-run guard records on tool_result */
@@ -95,6 +95,13 @@ const tmp = mkdtempSync(join(tmpdir(), 'pgate-'));
 const fileA = join(tmp, 'a.ts');
 writeFileSync(fileA, 'a\nb\nc\n');
 const relA = relative(process.cwd(), fileA); // same file via the other key form (Q3)
+const skillFile = join(tmp, 'SKILL.md'); // 2026-10-06 feedback: R1 coverage must close same-session skill re-reads
+writeFileSync(skillFile, Array.from({ length: 30 }, (_, i) => `skill line ${i + 1}`).join('\n') + '\n');
+const fileB = join(tmp, 'dup.ts'); // duplicate line for the anchor-uniqueness case
+writeFileSync(fileB, 'x\nx\n');
+// violation-memory isolation: never touch the real ~/.pi/agent/logs telemetry
+process.env.PGATE_MEMORY = join(tmp, 'vmem.json');
+writeFileSync(process.env.PGATE_MEMORY, '{}');
 
 // ---- cases: [name, expectation, async fn -> {blocked}] ----
 
@@ -119,6 +126,64 @@ const cases = [
   ['re-run of a failed command passes', 'pass', async (pi) => bash(pi, 'gh run list --limit 3')],
   ['gh run watch re-run passes', 'pass', async (pi) => bash(pi, 'gh run watch 123 --exit-status')],
   ['bash re-run after compaction passes', 'pass', async (pi) => bash(pi, 'gh run list --limit 3')],
+  // ---- R10 quote-aware base (2026-10-06: a quoted '|' must not truncate the base) ----
+  ['quoted pattern pipes do not collide R10 bases', 'pass', async (pi) => bash(pi, "rg -o '(Alpha|Gamma)' data.log | head -5")],
+  ['identical quoted-pattern command still blocked', 'blocked', async (pi) => bash(pi, "rg -o '(Alpha|Beta)' data.log | head -5")],
+  // ---- skill re-read (2026-10-06 feedback item — R1 coverage closes it) ----
+  ['full SKILL.md re-read same session is blocked', 'blocked', async (pi) => read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 })],
+  ['SKILL.md re-read after compaction passes', 'pass', async (pi) => read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 })],
+  // ---- violation memory (before_agent_start injection — 2026-10-06) ----
+  ['violation memory: block persists family count', 'blocked', async (pi) => {
+    const r = await bash(pi, 'cat package.json');
+    const saved = JSON.parse(readFileSync(process.env.PGATE_MEMORY, 'utf8'));
+    if (saved['Token Economy (Reading)'] !== 1) {
+      console.log(`      expected count 1, file has ${JSON.stringify(saved)}`);
+      return { blocked: false };
+    }
+    return r;
+  }],
+  ['violation memory: before_agent_start injects top-3 lessons at threshold', 'pass', async (pi) => {
+    const ev = { type: 'before_agent_start', prompt: '', systemPrompt: '', systemPromptOptions: { appendSystemPrompt: '' } };
+    pi.handlers.get('before_agent_start')(ev);
+    const s = ev.systemPromptOptions.appendSystemPrompt;
+    const want = ['<violation-memory>', 'read tool', 'Never re-run', 'conventional']; // Reading 6, Re-run 7, Commitlint 9
+    const ok = want.every((w) => s.includes(w)) && !s.includes('rg -o'); // Extraction (5) is 4th — dropped by top-3
+    if (!ok) { console.log(`      injected: ${JSON.stringify(s)}`); return { blocked: true }; }
+    return { blocked: false };
+  }],
+  ['violation memory: injection happens once per session', 'pass', async (pi) => {
+    const ev = () => ({ type: 'before_agent_start', prompt: '', systemPrompt: '', systemPromptOptions: { appendSystemPrompt: '' } });
+    const a = ev();
+    pi.handlers.get('before_agent_start')(a);
+    pi.handlers.get('before_agent_start')(a);
+    const n = (a.systemPromptOptions.appendSystemPrompt.match(/<violation-memory>/g) ?? []).length;
+    return n === 1 ? { blocked: false } : { blocked: true };
+  }],
+  // ---- Anchor Guard (existence / uniqueness / overlap) ----
+  ['anchor not found is blocked', 'blocked', async (pi) => edit(pi, fileA, [{ oldText: 'zzz', newText: 'y' }])],
+  ['non-unique anchor is blocked with line numbers', 'blocked', async (pi) => edit(pi, fileB, [{ oldText: 'x', newText: 'y' }])],
+  ['intra-call overlapping anchors are blocked', 'blocked', async (pi) => edit(pi, fileA, [{ oldText: 'a\nb', newText: 'q' }, { oldText: 'b\nc', newText: 'r' }])],
+  // ---- R2 cat/sed viewing ----
+  ['standalone cat viewing is blocked', 'blocked', async (pi) => bash(pi, 'cat package.json')],
+  ['sed -n batching 2+ regions passes', 'pass', async (pi) => bash(pi, "sed -n '1p;5p' notes.md")],
+  // ---- R5 git log caps ----
+  ['uncapped git log is blocked', 'blocked', async (pi) => bash(pi, 'git log')],
+  ['git log --oneline -n passes', 'pass', async (pi) => bash(pi, 'git log --oneline -n 5')],
+  // ---- R6 rg -o caps ----
+  ['uncapped rg -o is blocked', 'blocked', async (pi) => bash(pi, "rg -o 'pattern' src/")],
+  ['capped rg -o passes', 'pass', async (pi) => bash(pi, "rg -o 'pattern' src/ | head -20")],
+  // ---- R7 recursive walks ----
+  ['ls -R is blocked', 'blocked', async (pi) => bash(pi, 'ls -R src')],
+  ['plain ls passes', 'pass', async (pi) => bash(pi, 'ls src')],
+  // ---- R8 git hook caps ----
+  ['uncapped git commit is blocked (hooks)', 'blocked', async (pi) => bash(pi, 'git commit -m "fix: cap output"')],
+  ['capped git commit passes', 'pass', async (pi) => bash(pi, 'git commit -m "fix: cap output" 2>&1 | tail -20')],
+  // ---- R9 commitlint ----
+  ['non-conventional commit message is blocked', 'blocked', async (pi) => bash(pi, 'git commit -m "Fix the thing"')],
+  ['conventional capped commit passes', 'pass', async (pi) => bash(pi, 'git commit -m "fix: cap git log output" 2>&1 | tail -20')],
+  // ---- runner caps ----
+  ['uncapped npm test is blocked', 'blocked', async (pi) => bash(pi, 'npm test')],
+  ['capped npm test passes', 'pass', async (pi) => bash(pi, 'npm test 2>&1 | tail -5')],
 ];
 
 // ---- runner: each case replays its preamble on a fresh gate, then the probe ----
@@ -174,14 +239,35 @@ const preambles = {
   're-run of a failed command passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3', { error: true }); return pi; },
   'gh run watch re-run passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run watch 123 --exit-status'); return pi; },
   'bash re-run after compaction passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3'); await compact(pi); return pi; },
+  'quoted pattern pipes do not collide R10 bases': async () => { const pi = freshGate(); await runBash(pi, "rg -o '(Alpha|Beta)' data.log | head -5"); return pi; },
+  'identical quoted-pattern command still blocked': async () => { const pi = freshGate(); await runBash(pi, "rg -o '(Alpha|Beta)' data.log | head -5"); return pi; },
+  'full SKILL.md re-read same session is blocked': async () => { const pi = freshGate(); await read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 }); return pi; },
+  'SKILL.md re-read after compaction passes': async () => { const pi = freshGate(); await read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 }); await compact(pi); return pi; },
+  'violation memory: block persists family count': async () => { writeFileSync(process.env.PGATE_MEMORY, '{}'); return freshGate(); },
+  'violation memory: before_agent_start injects top-3 lessons at threshold': async () => {
+    writeFileSync(process.env.PGATE_MEMORY, JSON.stringify({ 'Token Economy (Reading)': 6, 'Token Economy (Re-run)': 7, 'Token Economy (Extraction)': 5, Commitlint: 9 }));
+    return freshGate();
+  },
+  'violation memory: injection happens once per session': async () => {
+    writeFileSync(process.env.PGATE_MEMORY, JSON.stringify({ 'Token Economy (Reading)': 9 }));
+    return freshGate();
+  },
 };
 
 let failed = 0;
 for (const [name, expect, probe] of cases) {
-  const pi = await preambles[name]();
+  const pi = await (preambles[name] ?? (() => freshGate()))();
   const got = await probe(pi);
   const ok = (expect === 'blocked') === got.blocked;
   if (!ok) failed++;
+  if (got.blocked && got.reason) {
+    // 2026-10-06 diet: prose reasons <= 220c; Anchor Guard may carry a <= 800c snippet
+    const cap = got.reason.startsWith('Anchor Guard') ? 800 : 220;
+    if (got.reason.length > cap) {
+      failed++;
+      console.log(`FAIL  ${name}  (block reason ${got.reason.length}c exceeds ${cap}c diet cap)`);
+    }
+  }
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  (expected ${expect}, got ${got.blocked ? 'blocked' : 'pass'})`);
 }
 

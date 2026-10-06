@@ -1,5 +1,5 @@
 diff --git a/pi-extension/subagents/tmux.ts b/pi-extension/subagents/tmux.ts
-index c18e240..62d6367 100644
+index c18e240..b67093e 100644
 --- a/pi-extension/subagents/tmux.ts
 +++ b/pi-extension/subagents/tmux.ts
 @@ -6,9 +6,12 @@
@@ -52,7 +52,7 @@ index c18e240..62d6367 100644
  }
  
  function requireTmux(): void {
-@@ -61,6 +74,47 @@ function requireTmux(): void {
+@@ -61,6 +74,56 @@ function requireTmux(): void {
    }
  }
  
@@ -77,13 +77,22 @@ index c18e240..62d6367 100644
 +      { encoding: "utf8" },
 +    );
 +  }
-+  const pane = execFileSync(
++  // `-f` pane filtering needs tmux ≥3.2; list unfiltered and filter in-process so
++  // tmux 3.0 (distro apt) works too. `#{pane_marked}` exists since tmux 2.9.
++  const panes = execFileSync(
 +    "tmux",
-+    ["list-panes", "-t", AGENTS_TMUX_SESSION, "-F", "#{pane_id}", "-f", "#M"],
++    ["list-panes", "-t", AGENTS_TMUX_SESSION, "-F", "#{pane_id} #{pane_marked}"],
 +    { encoding: "utf8" },
-+  ).trim();
-+  if (!pane.startsWith("%")) {
-+    throw new Error(`Unexpected tmux list-panes output: ${pane}`);
++  ).trim().split("\n").filter(Boolean);
++  let pane = panes.find((l) => l.endsWith(" 1"))?.split(" ")[0];
++  if (!pane) {
++    // No marked pane yet (fresh session): mark the first pane so splits anchor to a
++    // stable base, mirroring the upstream marked-pane assumption.
++    pane = panes[0]?.split(" ")[0];
++    if (!pane?.startsWith("%")) {
++      throw new Error(`Unexpected tmux list-panes output: ${panes.join(" | ")}`);
++    }
++    execFileSync("tmux", ["select-pane", "-t", pane, "-m"], { stdio: "ignore" });
 +  }
 +  agentsSessionBasePane = pane;
 +  return pane;
@@ -100,7 +109,7 @@ index c18e240..62d6367 100644
  // ── Shell helpers ──
  
  export function shellEscape(s: string): string {
-@@ -87,8 +141,9 @@ let rebalanceTimer: ReturnType<typeof setTimeout> | null = null;
+@@ -87,8 +150,9 @@ let rebalanceTimer: ReturnType<typeof setTimeout> | null = null;
   * and non-fatal: a cosmetic resize must never break spawning or watching.
   */
  function rebalanceSurfaces(hintPane?: string): void {
@@ -112,7 +121,7 @@ index c18e240..62d6367 100644
    if (!target) return;
    if (rebalanceTimer) clearTimeout(rebalanceTimer);
    rebalanceTimer = setTimeout(() => {
-@@ -115,7 +170,7 @@ function rebalanceSurfaces(hintPane?: string): void {
+@@ -115,7 +179,7 @@ function rebalanceSurfaces(hintPane?: string): void {
   */
  export function createSurface(name: string): string {
    void name; // tmux panes are not named; the pi process inside shows its own title.

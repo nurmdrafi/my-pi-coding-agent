@@ -32,3 +32,5 @@ __pycache__/
 *.lock
 tavily/config.json
 tavily/session.json
+# Machine-local gate telemetry (violation-memory counts)
+logs/

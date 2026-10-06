@@ -3,6 +3,10 @@
 // v2: quote-aware segmenting, backslash-continuation joining, flag-check keyed on
 // bin+subcommand, interpreters exempt from flag checks, relative scripts checked
 // for existence against the md file's dir + repo root.
+// v2.1: var=$(…) substitution assignments no longer misparse the substituted command
+// as the head token (tag=$(gh api …) → "api"); sourced shell functions (nvm) allowed;
+// root git/ clones and CHANGELOG inline history skipped; /tmp absolute refs are
+// on-demand downloads — info-only.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -14,20 +18,22 @@ const SHELL_LANGS = new Set(['sh', 'bash', 'shell', 'console', 'zsh']);
 const BUILTINS = new Set(['echo','cd','printf','export','set','unset','source','alias','local','return','exit','read','test','[','eval','true','false','pwd','shift','command','type','wait','trap','umask','pushd','popd','dirs','hash','let','declare','readonly','getopts','shopt','ulimit','jobs','fg','bg','kill','times','break','continue','then','else','fi','do','done','if','while','for','until','case','esac','function','in','select','time','coproc','exec']);
 const INTERPRETERS = new Set(['node','npm','npx','python','python3','bash','sh','env','deno','bun']); // flags belong to scripts/subcommands we can't introspect
 const MAC_ONLY = new Set(['pbcopy','pbpaste','osascript','launchctl','security','codesign','mdfind','open','defaults','brew','say','caffeinate','networksetup','screencapture','textutil','pluid','xcodebuild','swift','sw_vers','softwareupdate','pmset','system_profiler','diskutil','hdiutil','installer','port']);
+const SOURCED = new Set(['nvm']); // shell functions from init scripts — never visible to command -v
+
 // bare script name → resolve against skills/*/scripts/ (sibling-skill references)
 const harnessScript = (tok) => readdirSync(join(ROOT, 'skills')).some(s => existsSync(join(ROOT, 'skills', s, 'scripts', tok)));
 
 const mds = [];
 (function walk(d) {
   for (const e of readdirSync(d)) {
-    if (e === 'node_modules' || e === '.git') continue;
+    if (e === 'node_modules' || e === '.git' || (d === ROOT && e === 'git')) continue; // git/ = external clones, not our docs
     const p = join(d, e);
     if (statSync(p).isDirectory()) walk(p);
     else if (e.endsWith('.md')) mds.push(p);
   }
 })(ROOT);
 
-const syntaxFail = [], binFail = [], macOnlyRefs = [], scriptMissing = [], flagFail = [];
+const syntaxFail = [], binFail = [], macOnlyRefs = [], scriptMissing = [], flagFail = [], onDemandRefs = [];
 const helpCache = new Map();
 const helpFlags = (key) => {
   if (helpCache.has(key)) return helpCache.get(key);
@@ -56,9 +62,31 @@ const segSplit = (line) => {
   }
   return segs;
 };
+// var=$(…) assignments: the env-prefix regex below is blind to '$(' and eats into the
+// substitution (tag=$(gh api …) → head token "api"). Strip a leading run of them with
+// quote/paren depth counting; unterminated (segment split inside $()) or pure
+// assignments check nothing. Returns null when the remainder is unanalyzable.
+const stripSubst = (t) => {
+  while (true) {
+    const m = /^[A-Za-z_][A-Za-z0-9_]*=\$\(/.exec(t);
+    if (!m) return t;
+    let depth = 0, q = null, closed = -1;
+    for (let i = m[0].length - 1; i < t.length; i++) {
+      const c = t[i];
+      if (q) { if (c === q) q = null; continue; }
+      if (c === "'" || c === '"') { q = c; continue; }
+      if (c === '(') depth++;
+      else if (c === ')' && --depth === 0) { closed = i; break; }
+    }
+    if (closed < 0) return null;
+    t = t.slice(closed + 1).replace(/^\s+/, '');
+  }
+};
 const headTok = (seg) => {
   let t = seg.trim().replace(/^[$#>]\s+/, '');
   if (!t || t.startsWith('#')) return null;
+  t = stripSubst(t) ?? '';
+  if (!t) return null;
   t = t.replace(/^([A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, '');
   t = t.replace(/^(sudo|command|nohup)\s+/, '');
   const tok = t.split(/\s+/)[0];
@@ -68,7 +96,8 @@ const headTok = (seg) => {
   return tok.replace(/[;'"]+$/,'');
 };
 const subCmd = (seg, tok) => {
-  const t = seg.trim().replace(/^[$#>]\s+/, '').replace(/^([A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, '');
+  let t = seg.trim().replace(/^[$#>]\s+/, '');
+  t = (stripSubst(t) ?? '').replace(/^([A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, '');
   const parts = t.split(/\s+/);
   if (parts[0] !== tok) return null;
   const s = parts[1] || '';
@@ -110,6 +139,8 @@ for (const md of mds) {
           if (!cands.some(c => existsSync(c)) && !harnessScript(tok)) scriptMissing.push(`${rel}  <<< ${line.slice(0,70)}`);
           continue;
         }
+        if (SOURCED.has(tok)) { binSeen.add(tok); continue; }
+        if (/^\/tmp\//.test(tok)) { onDemandRefs.push(`${rel}  <<< ${line.slice(0,70)}`); continue; } // downloaded on demand — absence is not a doc bug
         if (MAC_ONLY.has(tok)) { macOnlyRefs.push(`${rel}  <<< ${line.slice(0,70)}`); continue; }
         try { execFileSync('bash', ['-c', 'command -v "$1" >/dev/null 2>&1', '_', tok]); binSeen.add(tok); }
         catch { binFail.push(`${rel}  <<< ${line.slice(0,70)}`); continue; }
@@ -127,6 +158,10 @@ for (const md of mds) {
 const KNOWN = /^(rg|grep|egrep|fgrep|find|xargs|jq|sed|cut|sort|uniq|wc|head|tail|ast-grep|git|npm|npx|node|tvly|pi|fd|awk|tr|chmod|ls|cat|curl|sh|bash|command|skillcheck\.sh)\s/;
 const inlineRe = /`([^`\n]+)`/g;
 for (const md of mds) {
+  const relMd = md.slice(ROOT.length + 1);
+  // history, not declarations: CHANGELOG, HANDOFF files, generated handoff/ docs — quoting past
+  // commands in prose is their job; binaries may not exist on this machine
+  if (relMd === 'CHANGELOG.md' || /^HANDOFF-[^/]*\.md$/.test(relMd) || relMd.startsWith('handoff/')) continue;
   const text = readFileSync(md, 'utf8');
   let im;
   while ((im = inlineRe.exec(text)) !== null) {
@@ -136,6 +171,7 @@ for (const md of mds) {
     for (const seg of segSplit(line)) {
       const tok = headTok(seg);
       if (!tok) continue;
+      if (SOURCED.has(tok)) { binSeen.add(tok); continue; }
       try { execFileSync('bash', ['-c', 'command -v "$1" >/dev/null 2>&1', '_', tok]); binSeen.add(tok); }
       catch {
         if (harnessScript(tok)) { binSeen.add(tok); continue; }
@@ -165,6 +201,7 @@ console.log(`\nSYNTAX FAIL (${syntaxFail.length}):`); syntaxFail.forEach(x => co
 console.log(`\nBINARY NOT FOUND (${binFail.length}):`); binFail.forEach(x => console.log('  ' + x));
 console.log(`\nRELATIVE SCRIPT MISSING (${scriptMissing.length}):`); scriptMissing.forEach(x => console.log('  ' + x));
 console.log(`\nMAC-ONLY REFS (info, ${macOnlyRefs.length}):`); macOnlyRefs.forEach(x => console.log('  ' + x));
+console.log(`\nON-DEMAND /tmp REFS (info, ${onDemandRefs.length}):`); onDemandRefs.forEach(x => console.log('  ' + x));
 console.log(`\nFLAG NOT IN HELP (${flagFail.length}):`); flagFail.forEach(x => console.log('  ' + x));
 
 // macOnly is info-only; everything else fails the gate

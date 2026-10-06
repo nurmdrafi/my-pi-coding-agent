@@ -12,7 +12,7 @@
 
 A portable, git-synced configuration for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent) — one `~/.pi/agent/` directory that turns any macOS or Linux machine into a fully configured coding-agent workstation in minutes.
 
-**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 23 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~3.4K tokens permanent floor) so every session starts cheap.
+**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 23 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~1.7K tokens permanent floor) so every session starts cheap.
 
 - **One directory, one repo** — `git clone` is the entire install; git is the only sync mechanism.
 - **Zero environment variables, zero absolute paths** — everything works from the default `~/.pi/agent` location.
@@ -103,14 +103,14 @@ That's it — no env vars to export, no paths to fix.
 
 ## Skills
 
-4 of 23 skills are **auto-invocable** (the model loads them on match); the rest are manual — invoke with `/skill:<name>`. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
+2 of 23 skills are **auto-invocable** (the model loads them on match); the rest are manual — invoke with `/skill:<name>`. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
 
 | Skill | Purpose | Invocation |
 |---|---|---|
 | ponytail | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder + over-engineering review mode | auto |
-| web-search | Web search + URL extraction via Tavily CLI (`tvly search` / `tvly extract`) | auto |
+| web-search | Web search + URL extraction via Tavily CLI (`tvly search` / `tvly extract`) | `/skill:web-search` |
 | systematic-debugging | Phased root-cause debugging (incl. error-class loops) before proposing any fix | auto |
-| pre-push-review | CI-parity correctness review of the diff before commit/push | auto |
+| pre-push-review | CI-parity correctness review of the diff before commit/push | `/skill:pre-push-review` |
 | auth | NextAuth v4 credentials auth for Next.js App Router against an external REST IdP | `/skill:auth` |
 | brainstorming | Explore genuinely-unclear feature direction; one question at a time | `/skill:brainstorming` |
 | browser-tools | Live DOM via CDP `:9222` — Playwright/e2e only (deps: `npm install` at skill root) | `/skill:browser-tools` |
@@ -145,7 +145,7 @@ Layout is enforced by `node skills/skill-manager/scripts/validate-skill.mjs <ski
 
 ## Subagents
 
-Opt-in. The `pi-interactive-subagents` package (`subagent` / `subagent_message` / `subagents_list` + `/subagent` command, ~1K tok/session tool defs) is pinned to a commit and patched locally for agents-only tmux. After a fresh clone or `pi update --extensions` (which re-clones and wipes the patch):
+Opt-in. The `pi-interactive-subagents` package (`subagent` / `subagent_message` / `subagents_list` + `/subagent` command, ~1K tok/session tool defs) is pinned to a commit and patched locally for agents-only tmux + tmux ≥3.0 compat (upstream's pane filtering needs ≥3.2 — the patch lists unfiltered and filters in-process; works on macOS brew and distro apt builds alike). After a fresh clone or `pi update --extensions` (which re-clones and wipes the patch):
 
 ```sh
 pi install git:github.com/amosblomqvist/pi-interactive-subagents@c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7
@@ -156,6 +156,8 @@ cd ~/.pi/agent/git/github.com/amosblomqvist/pi-interactive-subagents && \
 Then `/reload` (or restart pi). Remove with `pi remove git:github.com/amosblomqvist/pi-interactive-subagents`.
 
 **tmux is agents-only** (local patch — upstream requires pi inside tmux). The main terminal runs pi plain. When a subagent spawns and pi is not inside tmux, panes appear in a detached session `pi-agents` — attach with `tmux attach -t pi-agents`, detach with `Ctrl+b d`. The tmux binary is required either way.
+
+Spawn-failure triage: `Subagents require tmux. Start pi inside tmux` = the **running session loaded unpatched upstream code** (patch was missing at load time, or the session predates the patch) — re-apply the patch (command above) and `/reload` or restart pi; the running process keeps its loaded code until then. `Install tmux (…)` = the binary is missing.
 
 Agent definitions in `agents/` are plain files — inert without the package; when installed, they override package-bundled defs (discovery: project > global > package).
 
@@ -170,12 +172,14 @@ No `model` pin — sub-agents inherit the harness default from `settings.json`; 
 
 ## Extensions
 
-Always-on TypeScript modules in `extensions/` — loaded by pi, never in the model prefix. Currently one: **`permission-gate.ts`**, a `tool_call` interceptor providing:
+Always-on TypeScript modules in `extensions/` — loaded by pi, never in the model prefix. Currently two: **`permission-gate.ts`**, a `tool_call` interceptor providing:
 
 - edit-anchor pre-validation (oldText must match a region actually read)
 - reading/output economy rules (no `cat` viewing, capped `rg`/`git` output)
 - identical re-run guard (R10)
 - commitlint conventional-commit validation on `git commit -m` headers (R9)
+
+**`handoff.ts`** adds `/handoff <goal>` — drafts a context-transfer prompt from the session (compaction-aware), saves it as a human-readable doc under `~/.pi/agent/handoff/<date>-<slug>.md`, then opens the new session with the draft.
 
 Raw events (tool errors, guard blocks) land in pi's native `sessions/**/*.jsonl` — the audit toolkit derives every signal from there. Full docs: [`extensions/README.md`](extensions/README.md).
 
@@ -199,7 +203,7 @@ What is in context, and when:
 
 ## Always-on token budget
 
-The permanent prefix costs ~3.4K tokens per session (AGENTS.md 5,826 chars ≈ 1.5K + all 23 skill descriptions, 7,867 chars ≈ 2.0K, at ~4 chars/token; subagents tool defs removed — see [CHANGELOG.md](CHANGELOG.md)). Bodies and references stay out of context until needed.
+The permanent prefix costs ~1.7K tokens per session (AGENTS.md 5,826 chars ≈ 1.5K + 2-entry auto-skill catalog ≈ 0.9K chars ≈ 0.25K, at ~4 chars/token; manual-skill descriptions stay out of the model-visible catalog; subagents tool defs removed — see [CHANGELOG.md](CHANGELOG.md)). Bodies and references stay out of context until needed.
 
 | Component | Target | Notes |
 |-----------|--------|-------|
