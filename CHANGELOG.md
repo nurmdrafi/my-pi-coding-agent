@@ -7,9 +7,13 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.18.0] - 10-06-2026
+## [1.19.0] - 10-06-2026
 
-Mistake-driven skill overhaul from the 2026-10-06 dropx-merchant remediation session (51 issues closed repo-wide, 39 agent-executed: 21 single closes + 1 batch loop of 18). Session-log evidence mapped each fix class onto skills so the same mistakes route to a skill next time.
+### Added
+
+- **`/update-changelog` prompt (`prompts/update-changelog.md`)** — new slash command: updates CHANGELOG.md from session context only (no git tools); existing file pattern wins, Keep a Changelog + SemVer fallbacks; bumps only past the committed version and keeps updating it until committed; minimal 8-line body, new section ≤500 tokens.
+
+## [1.18.0] - 10-06-2026
 
 ### Added
 
