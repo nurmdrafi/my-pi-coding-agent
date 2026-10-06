@@ -12,7 +12,9 @@
  *     2026-10-05, replacing the 6-call recency window)
  *   - bash calls: reading/output economy — R2 cat/standalone-sed viewing,
  *     R5 git log caps, R6 rg -o caps, R7 recursive walks, verbose runner caps,
- *     R9 commitlint conventional-commit message validation on git commit -m
+ *     R9 commitlint conventional-commit message validation on git commit -m,
+ *     R10 identical re-run guard (same base command, no edit/write since
+ *     its last run, within 10 min)
  * Sources: 2026-09-16 audit (cat-for-viewing 86, uncapped runners, git log),
  * 2026-09-23 audit (read-after-edit re-read loops 316K/wk, uncapped rg -o
  * 119K/wk), 2026-09-24 (anchor overlap pre-check, R7, sed -n batching fix,
@@ -21,7 +23,8 @@
  * agent-project audit (post-edit windowed re-reads over the edited anchor:
  * sessions 01a0d347 / 01a0d1f6 / 01a0d33a), 2026-10-05 audit (read dup
  * 258× / 3,089K across 95 sessions — windowed reads never registered,
- * REREAD_WINDOW=6 expired late-session dups → coverage model).
+ * REREAD_WINDOW=6 expired late-session dups → coverage model), 2026-10-06
+ * audit (gh run list double-poll 31 s apart, identical vitest re-runs → R10).
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
@@ -308,6 +311,9 @@ function validateCommitMessages(seg: string): string | undefined {
 	return;
 }
 
+/** R10: re-running an unchanged base command inside this window re-sends output already in context */
+const RERUN_WINDOW_MS = 10 * 60_000;
+
 export default function (pi: ExtensionAPI) {
 	/**
 	 * In-context coverage (2026-10-05 audit): per absolute path, the union of
@@ -315,9 +321,10 @@ export default function (pi: ExtensionAPI) {
 	 * results (their actual returned lines), edit results (applied text),
 	 * writes and images (whole file). A read is blocked only when its requested
 	 * window is FULLY covered; partial overlap passes (it brings new lines).
-	 * Resets: session_compact (the summary replaced the content), a bash
-	 * command naming the file's basename (may have changed it externally), a
-	 * failed edit (context may have drifted).
+	 * Resets: session_compact (the summary replaced the content), mtime+size
+	 * mismatch against the certified snapshot (external change — caught by
+	 * stat, not guessed from bash command text), a failed edit (context may
+	 * have drifted).
 	 *
 	 * Not hydrated on session resume — the map starts empty and the
 	 * failure mode errs toward allowing. Revisit only if audits show
@@ -328,6 +335,12 @@ export default function (pi: ExtensionAPI) {
 	const pendingEdits = new Map<string, { path: string; spans?: LineSpan[]; kind: "edit" | "write" }>();
 	/** read toolCallId -> { path, win }, awaiting its tool_result */
 	const pendingReads = new Map<string, { path: string; win: LineSpan }>();
+	/** R10: bash toolCallId -> normalized base command, awaiting its tool_result */
+	const pendingBash = new Map<string, string>();
+	/** R10: base command -> last-run record; re-runs are compared against it */
+	const lastBashRun = new Map<string, { ts: number; mut: number; failed: boolean }>();
+	/** R10: bumped on every successful edit/write — a mutation makes verify re-runs legitimate */
+	let mutationSeq = 0;
 
 	// edit: anchor pre-validation first (existence, uniqueness, overlap);
 	// only a call that passes is tracked for read-freshness below
@@ -464,6 +477,28 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 		}
+
+		// R10 (2026-10-06 audit): identical re-run guard — the same base command
+		// (command up to the first pipe/redirect, 2>&1 stripped) re-run with no
+		// intervening edit/write re-sends output already in context (gh run list
+		// double-polls 31 s apart, identical vitest re-runs). Watchers and retries
+		// of failed runs are exempt; the run is recorded on tool_result.
+		const base = cmd
+			.replace(/\s\d>&\d\s?/g, " ")
+			.split(/\||>>|>/)[0]
+			.trim();
+		const watcher = /(^|\s)(watch|sleep)\b/.test(base) || /(^|\s)tail\s+(-[a-zA-Z]*[fF])/.test(base) || /--watch\b/.test(base);
+		const prior = lastBashRun.get(base);
+		if (prior && !prior.failed && !watcher && prior.mut === mutationSeq && Date.now() - prior.ts < RERUN_WINDOW_MS) {
+			return {
+				block: true,
+				reason:
+					`Token Economy (Re-run): '${base.slice(0, 80)}' ran ${Math.round((Date.now() - prior.ts) / 1000)}s ago with no ` +
+					`edit/write since — its output is already in context. Waiting on CI → one 'gh run watch <id> --exit-status'; ` +
+					`disk changed externally → wait 10 min or vary the command.`,
+			};
+		}
+		pendingBash.set(event.toolCallId, base);
 		return;
 	});
 
@@ -500,6 +535,12 @@ export default function (pi: ExtensionAPI) {
 			}
 			return;
 		}
+		const bashBase = pendingBash.get(event.toolCallId);
+		if (bashBase !== undefined) {
+			pendingBash.delete(event.toolCallId);
+			lastBashRun.set(bashBase, { ts: Date.now(), mut: mutationSeq, failed: event.isError === true });
+			return;
+		}
 		const entry = pendingEdits.get(event.toolCallId);
 		if (entry === undefined) return;
 		pendingEdits.delete(event.toolCallId);
@@ -507,19 +548,25 @@ export default function (pi: ExtensionAPI) {
 		if (event.isError) {
 			// failed edit/write: content may have drifted — a re-read is legitimate
 			coverage.delete(entry.path);
-		} else if (entry.spans) {
+		} else {
+			// R10: a successful edit/write mutates the tree — verify re-runs become legitimate
+			mutationSeq++;
 			// fuzzy-matched anchors carry no spans — nothing to certify (errs allow);
 			// snapshot AFTER our own edit so mtime reflects the post-edit content
-			const snap = await snapshot(entry.path);
-			for (const s of entry.spans) certify(coverage, entry.path, s, entry.kind, snap);
+			if (entry.spans) {
+				const snap = await snapshot(entry.path);
+				for (const s of entry.spans) certify(coverage, entry.path, s, entry.kind, snap);
+			}
 		}
 	});
 
 	pi.on("session_compact", async () => {
 		// the compaction summary replaced earlier read/edit content — nothing
-		// is in context anymore, so every re-read is legitimate again
+		// is in context anymore, so every re-read and re-run is legitimate again
 		coverage.clear();
 		pendingReads.clear();
 		pendingEdits.clear();
+		pendingBash.clear();
+		lastBashRun.clear();
 	});
 }

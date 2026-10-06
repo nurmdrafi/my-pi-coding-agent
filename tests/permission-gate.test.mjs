@@ -14,7 +14,7 @@
  *
  * Run: node tests/permission-gate.test.mjs   (exit 0 = all pass)
  */
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -55,7 +55,7 @@ async function read(pi, path, opts = {}, result = {}) {
   if (block) return { blocked: true, reason: block.reason };
   const body = lineText(n);
   const tail = result.note ? `${body}\n\n[${result.note}]` : body;
-  pi.handlers.get('tool_result')({
+  await pi.handlers.get('tool_result')({
     type: 'tool_result', toolName: 'read', toolCallId, input,
     content: result.image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'x' } }] : textBlocks(tail),
     details: result.image || result.noDetails ? undefined : { truncation: { truncated: result.truncated ?? false, outputLines: n, totalLines: result.totalLines ?? n } },
@@ -69,13 +69,22 @@ async function edit(pi, path, edits) {
   const input = { path, edits };
   const block = await pi.handlers.get('tool_call')({ type: 'tool_call', toolName: 'edit', toolCallId, input });
   if (block) return { blocked: true, reason: block.reason };
-  pi.handlers.get('tool_result')({ type: 'tool_result', toolName: 'edit', toolCallId, input, content: textBlocks('ok'), isError: false });
+  await pi.handlers.get('tool_result')({ type: 'tool_result', toolName: 'edit', toolCallId, input, content: textBlocks('ok'), isError: false });
   return { blocked: false };
 }
 
 async function bash(pi, command) {
   const block = await pi.handlers.get('tool_call')({ type: 'tool_call', toolName: 'bash', toolCallId: `tc${++seqId}`, input: { command } });
   return block ? { blocked: true } : { blocked: false };
+}
+
+/** R10: bash call + result replay — the re-run guard records on tool_result */
+async function runBash(pi, command, { error = false } = {}) {
+  const toolCallId = `tc${++seqId}`;
+  const block = await pi.handlers.get('tool_call')({ type: 'tool_call', toolName: 'bash', toolCallId, input: { command } });
+  if (block) return { blocked: true, reason: block.reason };
+  await pi.handlers.get('tool_result')({ type: 'tool_result', toolName: 'bash', toolCallId, input: { command }, content: textBlocks('out'), isError: error });
+  return { blocked: false };
 }
 
 const compact = (pi) => pi.handlers.get('session_compact')({ type: 'session_compact' });
@@ -99,10 +108,17 @@ const cases = [
   ['full re-read after compaction passes', 'pass', async (pi) => { await compact(pi); return read(pi, fileA); }],
   ['window over just-edited span is blocked', 'blocked', async (pi) => read(pi, fileA, { offset: 2, limit: 1 }, { outputLines: 1 })],
   ['window outside just-edited span passes', 'pass', async (pi) => read(pi, fileA, { offset: 3, limit: 1 }, { outputLines: 1 })],
-  ['full re-read after bash names the file passes', 'pass', async (pi) => { await bash(pi, `git add ${fileA}`); return read(pi, fileA); }],
+  ['full re-read after external on-disk change passes', 'pass', async (pi) => read(pi, fileA)],
   ['any window after an image read is blocked', 'blocked', async (pi) => read(pi, fileA, { offset: 5, limit: 5 }, { outputLines: 5 })],
   ['relative-path re-read of an absolute-read file is blocked', 'blocked', async (pi) => read(pi, relA, { offset: 1, limit: 3 }, { outputLines: 3 })],
   ['no-details fallback certifies exactly the content lines', 'pass', async (pi) => read(pi, fileA, { offset: 6, limit: 1 }, { outputLines: 1, noDetails: true })],
+  // ---- R10: identical re-run guard ----
+  ['identical bash re-run (no edit since) is blocked', 'blocked', async (pi) => bash(pi, 'gh run list --limit 3')],
+  ['bash re-run after an intervening edit passes', 'pass', async (pi) => bash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15')],
+  ['re-run differing only in pipe cap is blocked', 'blocked', async (pi) => bash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -12')],
+  ['re-run of a failed command passes', 'pass', async (pi) => bash(pi, 'gh run list --limit 3')],
+  ['gh run watch re-run passes', 'pass', async (pi) => bash(pi, 'gh run watch 123 --exit-status')],
+  ['bash re-run after compaction passes', 'pass', async (pi) => bash(pi, 'gh run list --limit 3')],
 ];
 
 // ---- runner: each case replays its preamble on a fresh gate, then the probe ----
@@ -127,7 +143,15 @@ const preambles = {
     if (r.blocked) throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
     return pi;
   },
-  'full re-read after bash names the file passes': async () => { const pi = freshGate(); await read(pi, fileA, {}, { outputLines: 100, totalLines: 100 }); return pi; },
+  'full re-read after external on-disk change passes': async () => {
+    // stat model (2026-10-06): a bash command's TEXT no longer resets coverage — an
+    // actual on-disk change (mtime+size mismatch) does; appendFileSync stands in for
+    // any external writer (codegen, another terminal, sed -i)
+    const pi = freshGate();
+    await read(pi, fileA, {}, { outputLines: 100, totalLines: 100 });
+    appendFileSync(fileA, 'd\n');
+    return pi;
+  },
   'any window after an image read is blocked': async () => { const pi = freshGate(); await read(pi, fileA, {}, { image: true }); return pi; },
   'relative-path re-read of an absolute-read file is blocked': async () => { const pi = freshGate(); await read(pi, fileA, {}, { outputLines: 3, totalLines: 3 }); return pi; },
   // live tool_result events carry no details.truncation — the fallback must
@@ -137,6 +161,19 @@ const preambles = {
     await read(pi, fileA, { offset: 1, limit: 5 }, { outputLines: 5, noDetails: true, note: '1409 more lines in file. Use offset=6 to continue.' });
     return pi;
   },
+  // ---- R10 preambles ----
+  'identical bash re-run (no edit since) is blocked': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3'); return pi; },
+  'bash re-run after an intervening edit passes': async () => {
+    const pi = freshGate();
+    await runBash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15');
+    const r = await edit(pi, fileA, [{ oldText: 'b', newText: 'x' }]);
+    if (r.blocked) throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
+    return pi;
+  },
+  're-run differing only in pipe cap is blocked': async () => { const pi = freshGate(); await runBash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15'); return pi; },
+  're-run of a failed command passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3', { error: true }); return pi; },
+  'gh run watch re-run passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run watch 123 --exit-status'); return pi; },
+  'bash re-run after compaction passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3'); await compact(pi); return pi; },
 };
 
 let failed = 0;

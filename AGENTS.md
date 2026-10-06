@@ -21,6 +21,8 @@
 **Searching**
 - Text presence, configs/JSON/CSS/MD, dist/node_modules → `rg` (-l / -n / -q). Every printing `rg` gets a cap (`-m <n>`, `| head -N`, `-l`/`-q`/`-c`); `jq` for JSON fields.
 - Unfamiliar code: symbol outline first — `rg -n "^(export )?(async )?(function|class|interface|type)" <dir> | head -80`.
+- gh consults: `gh search issues "<text>"`/`gh issue list --json number,title` to browse; capped `gh issue view <n> --json … --jq …` for one-shot reads; dump per-issue files (`/tmp/issue-<n>.txt`) only for repeat consults, then `rg` — never concatenate issues into one file or page-scan it.
+- Generated dumps (prepush diffs, exports): one file per unit, `rg` per task; never re-read pages already in context.
 
 **Reading**
 - `read` only, windowed (`offset`/`limit`) at the anchor; lines read/edited this session are already in context — re-read only uncovered regions.
@@ -29,14 +31,16 @@
 
 **Editing**
 - `oldText` anchors: bytes actually seen in a read this session — never inferred past a read-window edge; widen the read instead.
+- Repeated-block files (tests, generated code): widen `oldText` with neighboring lines — a non-unique anchor is a failed turn.
 - Never read task-unrelated files.
 
 **Command output**
 - Cap verbose output before it lands in context (`| tail -40`; `head -c 4000` for long lines); never re-run a command whose result is already in context.
 - `npm install` → `--no-fund --no-audit | tail -5`. `git` reads: cap `diff`/`show` (`head -c 4000`, never tens-of-KB caps).
+- Re-run a verify command only after an edit that could affect it; watch a CI run once (`gh run watch --exit-status`), never re-poll `gh run list`.
 - Commands work on macOS and Linux: stick to portable BSD/GNU flags (`head -c`, `tail -N`, `sed -n 'A,Bp'`); no `sed -i` (macOS needs `-i ''` — prefer the `edit` tool), no `stat -c/-f`, no `grep -P`.
 
-**Enforced by permission-gate** (extension blocks the call, reason carries the fix): `cat`/`sed -n` viewing, re-reads fully covered by earlier reads/edits/writes this session (resets on compaction or on-disk change — mtime/size staleness), `oldText` anchor validity, `rg -o`/`git log` caps, recursive walks, runner output caps, `git commit`/`push` tails, commit-message format.
+**Enforced by permission-gate** (extension blocks the call, reason carries the fix): `cat`/`sed -n` viewing, re-reads fully covered by earlier reads/edits/writes this session (resets on compaction or on-disk change — mtime/size staleness), `oldText` anchor validity, `rg -o`/`git log` caps, recursive walks, runner output caps, identical command re-runs (≤10 min, no intervening edit/write), `git commit`/`push` tails, commit-message format.
 
 **Turns** (each round-trip re-sends and re-processes the whole prefix)
 - Batch independent commands (`a && b`) **and independent tool calls into one turn** — most calling turns were measured single-call.

@@ -3,6 +3,8 @@ name: pre-push-review
 description: "Local correctness review of the diff about to be committed/pushed: async/stale-state races, incomplete resets, payload/contract mismatches, fix-induced guard regressions, permission gaps. Run before commit+push."
 ---
 
+This body is in context once the skill loads — never re-read this file from disk in the same session.
+
 Review the diff that is about to be committed or pushed. Goal: catch locally
 what a reviewer or CI would flag after the push.
 
