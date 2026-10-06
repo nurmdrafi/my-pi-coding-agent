@@ -2,9 +2,8 @@
 auth.json
 
 # Local state / history
-sessions/
-logs/
-learnings/
+/sessions/
+/audit-reports/
 
 # Machine-local binaries & deps (pi regenerates)
 /bin/

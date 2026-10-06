@@ -48,15 +48,15 @@ No env vars; default path only.
 ├── models-store.json         # catalog cache (machine-local, regen)
 │
 ├── skills/                   # 24 skills; each: SKILL.md + scripts/ references/ assets/
-├── extensions/               # always-on TS extensions (guards, error-telemetry, self-learning collector)
+├── extensions/               # always-on TS extensions (permission-gate)
 ├── README.md                 # this file (incl. portability contract)
 ├── CHANGELOG.md              # harness change log, latest-first (newest on top)
-├── skills-audit.md           # append-only skill-set decisions
+├── audit-reports/            # dated audit reports ({harness,skills,sessions}/ + watermark) — machine-local
 ├── .nvmrc                    # pins 24
 └── .gitignore                # git is the sync; secrets/caches excluded
 
 # NOT BUNDLED (machine-local / auto-regen)
-# bin/  npm/  sessions/  skills/**/node_modules/  *.log
+# bin/  npm/  sessions/  audit-reports/  skills/**/node_modules/  *.log
 ```
 
 ## Skills
@@ -110,19 +110,11 @@ command/path declared in markdown resolves (also exits 1 on findings).
 ## Extensions
 
 Always-on TypeScript modules in `extensions/` (loaded by pi, never in the model
-prefix). `error-telemetry.ts` captures every LLM runtime error — tool failures,
-provider HTTP ≥ 400, compaction failures — into machine-local, gitignored
-`logs/errors-YYYY-MM-DD.jsonl` — review live with `/errors [n]` or batch
-with `skills/harness-engineer/scripts/error_audit.py --live`. Guards:
-`permission-gate.ts` — one `tool_call` interceptor: edit-anchor
-pre-validation, reading/output economy rules, and commitlint
-conventional-commit validation on `git commit -m` headers (R9). `session-learnings.ts`
-closes the self-learning loop: every settled run with signal (tool errors,
-guard blocks, provider ≥400, heavy tool use, cache instability) appends one
-deterministic line to machine-local `learnings/pending.md`; the periodic
-harness-engineer review (Audit mode step 0) drains the queue and promotes
-recurring items into rules/skills/guards — each with a `Measured:` CHANGELOG
-line, consumed lines deleted. Full per-extension docs:
+prefix) — currently one: `permission-gate.ts`, a `tool_call` interceptor with
+edit-anchor pre-validation, reading/output economy rules, and commitlint
+conventional-commit validation on `git commit -m` headers (R9). Raw events
+(tool errors, guard blocks) land in pi's native `sessions/**/*.jsonl` — the
+audit toolkit derives every signal from there. Full docs:
 `extensions/README.md`.
 
 ## Layers (what loads when)
@@ -203,8 +195,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | `settings.json` | Provider/model/theme/thinking (no secrets) |
 | `models.json` | Custom model definitions (currently: `glm-5.3-flash`) |
 | `skills/` | All skills (real files, auto-trigger + `/skill:name`) |
-| `extensions/` | Always-on extensions (`permission-gate`, `error-telemetry`, `session-learnings`) |
-| `skills-audit.md` | Skill audit + migration history (append-only) |
+| `extensions/` | Always-on extensions (`permission-gate`) |
 | `README.md` / `CHANGELOG.md` | This file + change log |
 | `.nvmrc` | Pins Node 24 (current LTS) for `nvm use` in the harness dir |
 | `.gitignore` | Secret/caches hygiene |
@@ -219,8 +210,7 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | `skills/**/node_modules/` | Per-skill deps (e.g. `browser-tools`: puppeteer-core, jsdom, `@mozilla/readability`, turndown). Regenerable — `npm install` in the skill dir on first use. |
 | `models-store.json` | Built-in provider model catalog (regenerable cache). |
 | `sessions/` | Session history, keyed by absolute project paths → inherently per-machine. |
-| `logs/` | Daily `errors-YYYY-MM-DD.jsonl` runtime-error logs from `error-telemetry.ts` (like sessions/). |
-| `learnings/` | Self-learning queue (`pending.md`) — machine-local candidate index; session JSONLs stay the source of truth. |
+| `audit-reports/` | Audit artifacts — `{harness,skills,sessions}/` dated reports, `.watermark.json` (no-re-audit, per-machine like `sessions/`), append-only `skills/skills-audit.md`. Reports name private projects; this repo is public. |
 | `*.log` | Debug logs. |
 
 ### Providers & API keys

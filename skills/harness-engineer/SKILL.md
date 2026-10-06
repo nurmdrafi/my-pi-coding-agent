@@ -37,15 +37,15 @@ Report BEFORE → AFTER for every field. No improvement claim without a number.
 ## Scope
 
 - `~/.pi/agent/` (and project `.pi/`): `AGENTS.md`, `settings.json`, `models.json`, skills, prompts
-- `README.md`, `CHANGELOG.md`, `skills-audit.md` — the living map; re-read before any change
+- `README.md`, `CHANGELOG.md`, `audit-reports/skills/skills-audit.md` — the living map; re-read before any change
 
 If `README.md` is missing, create a minimal version first.
 
 ## Audit mode
 
-One skill covers the full loop: inspect → audit/score → diagnose → change → measure → log. Audit-only mode: **do not modify any files** (except writing the report) unless the user asks.
+One skill covers the full loop: inspect → audit/score → diagnose → change → measure → log. Audit-only mode: **do not modify any files** (except the report, watermark advance, and the 30-day session prune) unless the user asks.
 
-0. **Drain the learnings queue first** — read `~/.pi/agent/learnings/pending.md` (written by `extensions/session-learnings.ts`, one line per signal-bearing settled run). Recurring items — same rule family, tool, project, or repeated `⚠cache` across lines — are pre-ranked candidates; promote via *Workflow* (every promotion needs a `Measured:` line), then delete the consumed lines. Absent/empty file: skip.
+0. **Watermark check** — read `~/.pi/agent/audit-reports/.watermark.json` (`auditedThrough`, ISO ts). Scope every session-derived scan strictly to session files whose ISO-prefixed filename timestamp is newer (parse it — filenames dash the time, `2026-10-05T07-52-21…`, and plain string compare mis-orders the same-hour case against the colon-format watermark); never re-audit covered sessions. No watermark yet: everything is unaudited.
 1. **Inventory** (chars/4 as token heuristic):
    - Context files: `AGENTS.md` (+ any always-loaded file) byte size → tokens.
    - Every skill: `description` field char count → tokens (extract frontmatter only, never load bodies).
@@ -61,8 +61,9 @@ One skill covers the full loop: inspect → audit/score → diagnose → change 
    - AGENTS.md ↔ skill rule duplication: −5 per overlap
    - vague/missing descriptions: −5 each; skills-dir pollution (node_modules, .zip, ._*): −5 each class
    - portability quick-check hits in functional files: −5 per class
-4. **Write `harness-audit-report.md`** — same structure as the 2026-08-28 report: executive summary, inventory table, top consumers, overlaps, score breakdown, comparison to previous report if present (delta per metric).
+4. **Write the report** into the matching `~/.pi/agent/audit-reports/{harness,skills,sessions}/` subdir as `<date>T<time>Z-<topic>.md` (every filename carries its date; header records machine provenance — `uname -srm` + `uname -n`, this repo runs from multiple machines/OSes) — same structure as the 2026-08-28 report: executive summary, inventory table, top consumers, overlaps, score breakdown, comparison to previous report if present (delta per metric).
 5. Report BEFORE → AFTER numbers; recommendations ranked by impact. Implement only on request, then log per *Workflow* step 5.
+6. **Close the audit** — advance `.watermark.json`'s `auditedThrough` to the newest session covered; prune: delete `~/.pi/agent/sessions/**/*.jsonl` not modified in 30 days, then remove emptied cwd-slug dirs.
 
 ## Workflow
 
@@ -81,10 +82,9 @@ Optional deep evidence (only when user asks for skill-usage or token audit):
   .jsonl (or dir; default: last 5 sessions) for AGENTS.md Token-Economy violations
   (grep-on-file, cat-for-viewing, re-runs, speculative previews, pollution) plus
   per-turn call batching stats.
-- Run `python3 scripts/error_audit.py [--live] [path]` (skill dir) — error mining:
+- Run `python3 scripts/error_audit.py [path]` (skill dir) — error mining:
   joins toolResult.isError back to the originating toolCall input; reports by
-  tool/kind/project + top failing command heads (default scans all sessions;
-  --live reads the error-telemetry extension's daily JSONL).
+  tool/kind/project + top failing command heads (default scans all sessions).
 - A/B prefix cost: `bash scripts/make_test_home.sh <skills-csv> [dest]` builds a temp
   HOME with those skills model-visible (real harness untouched), then
   `bash scripts/ab_prefix.sh "<prompt>" <dest> [model]` runs one prompt under both

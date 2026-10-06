@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Summarize tool errors across pi session transcripts (or the live error-telemetry logs).
+"""Summarize tool errors across pi session transcripts.
 
 Usage:
   python3 error_audit.py [path]   # .jsonl file OR directory (recursive)
                                  # default: ~/.pi/agent/sessions
-  python3 error_audit.py --live   # ~/.pi/agent/logs/errors-*.jsonl (extension log)
 
 Transcript format: tool results are `message` records with role "toolResult"
 and isError:true; the originating input is joined via toolCallId back to the
 assistant content item {"type":"toolCall","id":...,"arguments":{...}}.
-Live-log format: one JSON object per line (ts, cwd, tool, input, output).
 """
 
 import glob
@@ -37,17 +35,6 @@ def _kind(text):
     return lines[0].strip()[:40] if lines else "?"
 
 
-def _live_input(r):
-    """Extension stores input as a JSON string (possibly truncated)."""
-    raw = r.get("input")
-    if isinstance(raw, dict):
-        return raw
-    try:
-        return json.loads(raw) if raw else {}
-    except ValueError:
-        return {}
-
-
 def _first_cmd(inp):
     if not isinstance(inp, dict):
         return ""
@@ -59,18 +46,6 @@ def _head_cmd(inp):
     """Rank key: leading token of the command ('wc', 'npm', ...) or tool name."""
     c = _first_cmd(inp)
     return c.split()[0] if c else ""
-
-
-def iter_live(paths):
-    for p in paths:
-        proj = "<live>"
-        with open(p, encoding="utf-8") as f:
-            for line in f:
-                try:
-                    r = json.loads(line)
-                except ValueError:
-                    continue
-                yield r.get("ts", ""), proj, r.get("tool") or r.get("kind", "?"), _live_input(r), str(r.get("output", ""))
 
 
 def iter_sessions(paths):
@@ -105,21 +80,12 @@ def iter_sessions(paths):
 
 
 def main():
-    live = "--live" in sys.argv
-    args = [a for a in sys.argv[1:] if a != "--live"]
-    if live:
-        paths = sorted(glob.glob(os.path.expanduser("~/.pi/agent/logs/errors-*.jsonl")))
-        if not paths:
-            print("no live error-telemetry files (~/.pi/agent/logs/)")
-            return 0
-        errors = list(iter_live(paths))
+    root = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/.pi/agent/sessions")
+    if os.path.isdir(root):
+        paths = sorted(glob.glob(os.path.join(root, "**", "*.jsonl"), recursive=True))
     else:
-        root = args[0] if args else os.path.expanduser("~/.pi/agent/sessions")
-        if os.path.isdir(root):
-            paths = sorted(glob.glob(os.path.join(root, "**", "*.jsonl"), recursive=True))
-        else:
-            paths = [root]
-        errors = list(iter_sessions(paths))
+        paths = [root]
+    errors = list(iter_sessions(paths))
 
     if not errors:
         print("no tool errors found")

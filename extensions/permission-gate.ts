@@ -20,7 +20,7 @@
  * agent-project audit (post-edit windowed re-reads over the edited anchor:
  * sessions 01a0d347 / 01a0d1f6 / 01a0d33a), 2026-10-05 audit (read dup
  * 258× / 3,089K across 95 sessions — windowed reads never registered,
- * REREAD_WINDOW=6 expired late-session dups → coverage model), 2026-10-08
+ * REREAD_WINDOW=6 expired late-session dups → coverage model), 2026-10-05
  * R10 (ast-grep discipline: 145/177 sessions rg-only, 13 calls ever —
  * calibration session 01a10654: bare 'rg -n foo\(' call-site hunts).
  */
