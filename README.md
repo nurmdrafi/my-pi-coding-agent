@@ -32,7 +32,7 @@ Requires Node ≥ 22 (`.nvmrc` pins 24, the current LTS). Full details below.
 Map of this pi harness. Re-read at the start of any harness-engineering session.
 Update when structure, skill set, or always-on budget changes.
 
-Last updated: 2026-10-05
+Last updated: 2026-10-06
 
 ## Portable unit
 
@@ -49,6 +49,7 @@ No env vars; default path only.
 │
 ├── skills/                   # 24 skills; each: SKILL.md + scripts/ references/ assets/
 ├── extensions/               # always-on TS extensions (permission-gate)
+├── agents/                   # global subagent defs (scout/researcher/worker/reviewer) — override pkg-bundled
 ├── README.md                 # this file (incl. portability contract)
 ├── CHANGELOG.md              # harness change log, latest-first (newest on top)
 ├── audit-reports/            # dated audit reports ({harness,skills,sessions}/ + watermark) — machine-local
@@ -56,7 +57,7 @@ No env vars; default path only.
 └── .gitignore                # git is the sync; secrets/caches excluded
 
 # NOT BUNDLED (machine-local / auto-regen)
-# bin/  npm/  sessions/  audit-reports/  skills/**/node_modules/  *.log
+# bin/  npm/  git/  sessions/  audit-reports/  skills/**/node_modules/  *.log
 ```
 
 ## Skills
@@ -117,11 +118,27 @@ conventional-commit validation on `git commit -m` headers (R9). Raw events
 audit toolkit derives every signal from there. Full docs:
 `extensions/README.md`.
 
+Plus one **pi package, always-on** (declared in `settings.json`, commit-
+pinned, clone machine-local under `git/`):
+`pi-interactive-subagents` (amosblomqvist tmux-only fork). Adds `subagent` /
+`subagent_message` / `subagents_list` tools + `/subagent` command —
+**+1,048 tok first-turn context (accepted cost, 2026-10-06 decision: token
+cost immaterial vs. value of context-isolated delegation — e.g. reviewer
+agents checking pre-push diffs in their own pane without bloating the main
+session)**. Async subagents in tmux panes, results steered back into the
+parent session. Spawning requires pi inside tmux (`tmux new -A -s pi`);
+outside tmux the tools exist but spawns fail with a setup hint.
+Agent definitions in `agents/` override the package's bundled ones (discovery:
+project > global > package): no `model` pin — sub-agents inherit the
+harness default model from `settings.json` (a spawn-time `model` param still
+overrides), and `researcher` is retooled to the `tvly` CLI.
+
 ## Layers (what loads when)
 
 | Layer | What | When in context | Stability rule |
 |-------|------|-----------------|----------------|
 | System + tools | pi built-in | every turn | pi-managed |
+| Package tool defs | subagents pkg (3 tools, accepted +1,048 tok) | every turn | pkg commit-pinned |
 | **AGENTS.md** | global behavioral rules | every turn | **must stay byte-stable** |
 | Skill descriptions | frontmatter only | every turn | **must stay byte-stable** |
 | Skill bodies | SKILL.md full text | on match or `/skill:name` | load on demand |
@@ -140,7 +157,7 @@ wc -c ~/.pi/agent/AGENTS.md
 |-----------|--------|-------|
 | AGENTS.md | as small as possible (behavioral core only) | no stack essays, no skill lists |
 | Skill descriptions | short; delete dead skills | largest descriptions cost every session |
-| **Total always-on** | prefer ≤ ~2K tok | bodies/refs stay out until needed |
+| **Total always-on** | prefer ≤ ~2K tok | bodies/refs stay out until needed; tool-def +1,048 tok accepted (subagents pkg) |
 
 Thinking default: `off` (token economy). Bump per-task with `--thinking high` if needed.
 
@@ -192,8 +209,9 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 | Path | Purpose |
 |---|---|
 | `AGENTS.md` | Always-on behavioral core + efficiency ladder |
-| `settings.json` | Provider/model/theme/thinking (no secrets) |
+| `settings.json` | Provider/model/theme/thinking (no secrets; `packages` empty) |
 | `models.json` | Custom model definitions (currently: `glm-5.3-flash`) |
+| `agents/` | Global subagent definitions (scout/researcher/worker/reviewer) |
 | `skills/` | All skills (real files, auto-trigger + `/skill:name`) |
 | `extensions/` | Always-on extensions (`permission-gate`) |
 | `README.md` / `CHANGELOG.md` | This file + change log |
@@ -206,7 +224,8 @@ replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
 |---|---|
 | `auth.json` | Secrets — copy once per machine via `scp`; never in git. |
 | `bin/` | Platform binaries, auto-downloaded per arch (arm64/x86_64; machine-local). Currently `fd`. |
-| `npm/` | pi-managed package installs via `pi install npm:<pkg>` → `settings.json` `packages` (currently none declared). |
+| `npm/` | pi-managed `pi install npm:<pkg>` store. |
+| `git/` | pi-managed `pi install git:<repo>` clones (subagents pkg, always-on). `pi update --extensions` re-clones from the pinned SHA. |
 | `skills/**/node_modules/` | Per-skill deps (e.g. `browser-tools`: puppeteer-core, jsdom, `@mozilla/readability`, turndown). Regenerable — `npm install` in the skill dir on first use. |
 | `models-store.json` | Built-in provider model catalog (regenerable cache). |
 | `sessions/` | Session history, keyed by absolute project paths → inherently per-machine. |
@@ -233,8 +252,12 @@ After `git clone <repo> ~/.pi/agent` on a new machine:
 2. **Neutralize `~/.agents/skills`** — pi *always* auto-scans this legacy dir; if it
    holds stale skills they leak into context (token cost). Rename it:
    `mv ~/.agents/skills ~/.agents/skills.disabled.$(date +%Y%m%d-%H%M%S)` (reversible).
+3. **tmux** (subagents spawn in tmux panes): `brew install tmux` (macOS) /
+   `sudo apt install tmux` (Linux). Start pi inside it:
+   `tmux new -A -s pi`, then `pi`.
 
-`bin/`, `npm/`, `models-store.json` need no setup — pi regenerates them on first run.
+`bin/`, `npm/`, `git/`, `models-store.json` need no setup — pi regenerates
+them (packages via `pi update --extensions`, which re-clones the pinned SHA).
 
 ### Portability rules enforced here
 

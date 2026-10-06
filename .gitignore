@@ -8,6 +8,8 @@ auth.json
 # Machine-local binaries & deps (pi regenerates)
 /bin/
 npm/
+git/
+tmp/
 **/node_modules/
 
 # Logs
