@@ -6,7 +6,9 @@
  *     context on a miss, so the model fixes its anchor in one retry
  *   - read calls: no re-read whose requested window is fully covered by
  *     this session's in-context spans — read results (their actual returned
- *     lines), edit results, writes, images (R1; span-union coverage model
+ *     lines), edit results, writes, images (R1; span-union coverage model,
+ *     invalidated by mtime+size stat mismatch — external changes are caught
+ *     by stat, not by guessing from bash command text; 2026-10-06)
  *     2026-10-05, replacing the 6-call recency window)
  *   - bash calls: reading/output economy — R2 cat/standalone-sed viewing,
  *     R5 git log caps, R6 rg -o caps, R7 recursive walks, verbose runner caps,
@@ -24,7 +26,7 @@
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import { resolve } from "path";
 
 interface EditEntry {
@@ -53,12 +55,23 @@ function normPath(p: unknown): string {
 	return s ? resolve(s) : "";
 }
 
+/** snapshot {mtimeMs,size} for freshness (ChatCLI/Crush-style staleness — 2026-10-06) */
+async function snapshot(key: string): Promise<{ mtimeMs: number; size: number } | undefined> {
+	try {
+		const s = await stat(key);
+		return { mtimeMs: s.mtimeMs, size: s.size };
+	} catch {
+		return undefined;
+	}
+}
+
 /** add a certified span to a path's union (sorted, overlap/adjacency-merged) */
 function certify(
-	coverage: Map<string, { spans: LineSpan[]; kind: CoverKind }>,
+	coverage: Map<string, { spans: LineSpan[]; kind: CoverKind; stat?: { mtimeMs: number; size: number } }>,
 	key: string,
 	span: LineSpan,
 	kind: CoverKind,
+	statSnap?: { mtimeMs: number; size: number },
 ): void {
 	const spans = [...(coverage.get(key)?.spans ?? []), span].sort((a, b) => a.start - b.start);
 	const merged: LineSpan[] = [];
@@ -67,7 +80,7 @@ function certify(
 		if (last && s.start <= last.end + 1) last.end = last.end > s.end ? last.end : s.end;
 		else merged.push({ ...s });
 	}
-	coverage.set(key, { spans: merged, kind });
+	coverage.set(key, { spans: merged, kind, stat: statSnap ?? coverage.get(key)?.stat });
 }
 
 /** true when [win.start, win.end] lies entirely inside the span union */
@@ -310,7 +323,7 @@ export default function (pi: ExtensionAPI) {
 	 * failure mode errs toward allowing. Revisit only if audits show
 	 * post-resume dup reads mattering.
 	 */
-	const coverage = new Map<string, { spans: LineSpan[]; kind: CoverKind }>();
+	const coverage = new Map<string, { spans: LineSpan[]; kind: CoverKind; stat?: { mtimeMs: number; size: number } }>();
 	/** edit/write toolCallId -> { path, spans?, kind }, awaiting its tool_result */
 	const pendingEdits = new Map<string, { path: string; spans?: LineSpan[]; kind: "edit" | "write" }>();
 	/** read toolCallId -> { path, win }, awaiting its tool_result */
@@ -338,15 +351,22 @@ export default function (pi: ExtensionAPI) {
 			};
 			const prior = coverage.get(path);
 			if (path && prior && coversAll(prior.spans, win)) {
-				const lo = prior.spans[0].start;
-				const hi = prior.spans[prior.spans.length - 1].end;
-				return {
-					block: true,
-					reason:
-						`Token Economy (Re-read): ${lo === hi ? `line ${lo}` : `lines ${lo}–${hi === Infinity ? "EOF" : hi}`} of '${display}' are already in context ` +
-						`from an earlier ${prior.kind === "edit" ? "edit result" : prior.kind} this session. If you need another region, use a windowed read ` +
-						`(offset/limit) outside the covered span; to verify external changes, rg the file instead of re-reading it.`,
-				};
+				// freshness: only block while mtime+size still match the certified snapshot —
+				// any external change (bash, IDE, git) shows up in stat without guessing
+				// from command text; missing baseline or stat failure allows the re-read
+				const now = path ? await snapshot(path) : undefined;
+				if (now && prior.stat && now.mtimeMs === prior.stat.mtimeMs && now.size === prior.stat.size) {
+					const lo = prior.spans[0].start;
+					const hi = prior.spans[prior.spans.length - 1].end;
+					return {
+						block: true,
+						reason:
+							`Token Economy (Re-read): ${lo === hi ? `line ${lo}` : `lines ${lo}–${hi === Infinity ? "EOF" : hi}`} of '${display}' are already in context ` +
+							`from an earlier ${prior.kind === "edit" ? "edit result" : prior.kind} this session and the file is unchanged since. If you need another region, use a windowed read ` +
+							`(offset/limit) outside the covered span.`,
+					};
+				}
+				coverage.delete(path); // changed on disk (or no baseline) — the read is legitimate
 			}
 			pendingReads.set(event.toolCallId, { path, win });
 		}
@@ -358,12 +378,6 @@ export default function (pi: ExtensionAPI) {
 
 		if (!isToolCallEventType("bash", event)) return;
 		const cmd = event.input.command;
-
-		// a bash command naming a covered file may have changed it externally -> drop coverage
-		for (const path of coverage.keys()) {
-			const base = path.split("/").pop() as string;
-			if (base && cmd.includes(base)) coverage.delete(path);
-		}
 
 		// split into segments; each checked independently
 		const segs = cmd.split(/(?:\n|&&|;|\|\|)/).map((s) => s.trim()).filter(Boolean);
@@ -461,11 +475,12 @@ export default function (pi: ExtensionAPI) {
 			const content: unknown[] = event.content ?? [];
 			// image result: whole file in context — no continuation windows exist
 			if (content.some((b) => (b as { type?: unknown })?.type === "image")) {
-				coverage.set(read.path, { spans: [{ start: 1, end: Infinity }], kind: "read" });
+				coverage.set(read.path, { spans: [{ start: 1, end: Infinity }], kind: "read", stat: await snapshot(read.path) });
 				return;
 			}
 			// certify the ACTUAL returned lines — requested offset/limit lie at
 			// EOF edges and on 2000-line/50KB truncation
+			const snap = await snapshot(read.path);
 			const trunc = (event as { details?: { truncation?: { outputLines?: unknown; truncated?: unknown } } }).details
 				?.truncation;
 			const counted = countTextLines(content);
@@ -480,6 +495,7 @@ export default function (pi: ExtensionAPI) {
 					read.path,
 					wholeFile ? { start: 1, end: Infinity } : { start: read.win.start, end: read.win.start + lines - 1 },
 					"read",
+					snap,
 				);
 			}
 			return;
@@ -492,8 +508,10 @@ export default function (pi: ExtensionAPI) {
 			// failed edit/write: content may have drifted — a re-read is legitimate
 			coverage.delete(entry.path);
 		} else if (entry.spans) {
-			// fuzzy-matched anchors carry no spans — nothing to certify (errs allow)
-			for (const s of entry.spans) certify(coverage, entry.path, s, entry.kind);
+			// fuzzy-matched anchors carry no spans — nothing to certify (errs allow);
+			// snapshot AFTER our own edit so mtime reflects the post-edit content
+			const snap = await snapshot(entry.path);
+			for (const s of entry.spans) certify(coverage, entry.path, s, entry.kind, snap);
 		}
 	});
 

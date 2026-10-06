@@ -35,7 +35,7 @@
 - `npm install` → `--no-fund --no-audit | tail -5`. `git` reads: cap `diff`/`show` (`head -c 4000`, never tens-of-KB caps).
 - Commands work on macOS and Linux: stick to portable BSD/GNU flags (`head -c`, `tail -N`, `sed -n 'A,Bp'`); no `sed -i` (macOS needs `-i ''` — prefer the `edit` tool), no `stat -c/-f`, no `grep -P`.
 
-**Enforced by permission-gate** (extension blocks the call, reason carries the fix): `cat`/`sed -n` viewing, re-reads fully covered by earlier reads/edits/writes this session (resets on compaction), `oldText` anchor validity, `rg -o`/`git log` caps, recursive walks, runner output caps, `git commit`/`push` tails, commit-message format.
+**Enforced by permission-gate** (extension blocks the call, reason carries the fix): `cat`/`sed -n` viewing, re-reads fully covered by earlier reads/edits/writes this session (resets on compaction or on-disk change — mtime/size staleness), `oldText` anchor validity, `rg -o`/`git log` caps, recursive walks, runner output caps, `git commit`/`push` tails, commit-message format.
 
 **Turns** (each round-trip re-sends and re-processes the whole prefix)
 - Batch independent commands (`a && b`) **and independent tool calls into one turn** — most calling turns were measured single-call.
