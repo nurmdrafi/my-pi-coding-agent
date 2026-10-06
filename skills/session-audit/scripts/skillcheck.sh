@@ -15,7 +15,7 @@ if [ ! -d "$SESSIONS_DIR" ]; then
 	exit 1
 fi
 
-# ponytail: newest = `ls -t | head -1`; breaks only if xargs splits ls into
+# newest = `ls -t | head -1`; breaks only if xargs splits ls into
 # multiple invocations (ARG_MAX — ~10k session files) or paths contain newlines.
 LATEST=$(find "$SESSIONS_DIR" -type f -name '*.jsonl' -print0 |
 	xargs -0 ls -t 2>/dev/null | head -1)
@@ -28,7 +28,7 @@ echo "Session: ${LATEST##*/}"
 
 # A real read = a line with BOTH "type":"toolCall" and "name":"read" (the
 # system preamble / toolsAdded entries carry "name":"read" without toolCall).
-# ponytail: assumes pi's compact JSON.stringify output (no spaces) and no
+# assumes pi's compact JSON.stringify output (no spaces) and no
 # JSON-escaped chars in skill paths — both hold for pi-written sessions.
 CALLS=$(grep '"type":"toolCall"' "$LATEST" | grep '"name":"read"')
 

@@ -36,7 +36,7 @@ Single `tool_call` interceptor; one handler, deterministic order (edit → read 
 | R9 | bash | `git commit -m <msg>` header not matching commitlint conventional pattern `type(scope?): subject` (types: feat/fix/docs/style/refactor/perf/test/build/ci/chore/revert; also header ≤ 100 chars, subject not capitalized, no trailing `.`); header rules only — body `-m` flags, `-F`, heredoc skipped; checked before R8 so a bad message never reaches hooks |
 | Runner cap | bash | uncapped `npm`/`vitest`/`jest`/`playwright`/`tsc` runners (suggests the filter pipe) |
 
-State (per extension instance): `coverage` (path → merged span union + last kind), `pendingEdits`, `pendingReads` drive R1; a failed edit drops coverage — content may have drifted, so a re-read is legitimate; `session_compact` clears everything. ponytail: no hydration on session resume — the map starts empty, erring toward allowing. Fuzzy matching mirrors edit-diff.js `normalizeForFuzzyMatch` (NFKC, trailing whitespace, smart quotes/dashes/spaces) so the guard and the tool agree on what "matches". Anchor validation runs before coverage registration, so a blocked edit never enters the map.
+State (per extension instance): `coverage` (path → merged span union + last kind), `pendingEdits`, `pendingReads` drive R1; a failed edit drops coverage — content may have drifted, so a re-read is legitimate; `session_compact` clears everything. No hydration on session resume — the map starts empty, erring toward allowing. Fuzzy matching mirrors edit-diff.js `normalizeForFuzzyMatch` (NFKC, trailing whitespace, smart quotes/dashes/spaces) so the guard and the tool agree on what "matches". Anchor validation runs before coverage registration, so a blocked edit never enters the map.
 
 ## Conventions (pi)
 

@@ -68,7 +68,6 @@ function cmdRun(opts) {
 
   const sessions = [];
   const skills = {};
-  const astgrep = { calls: 0, sessions: 0, rgSessions: 0, rgOnlySessions: 0 };
   const tools = {};
   const gapBuckets = {};
   const findings = [];
@@ -94,19 +93,12 @@ function cmdRun(opts) {
     // tools: calls / errors / bytes per name (result joined by toolCall id)
     const calls = toolCalls(entries);
     const results = new Map(toolResults(entries).map((r) => [r.toolUseId, r]));
-    let hasAg = false, hasRg = false;
     for (const c of calls) {
       const t = (tools[c.name] ??= { calls: 0, errors: 0, resultBytes: 0 });
       t.calls++;
       const r = results.get(c.id);
       if (r) { t.resultBytes += r.bytes; if (r.isError) t.errors++; }
-      if (c.name !== 'bash') continue;
-      const cmd = String(c.input?.command ?? '');
-      if (/\bast-grep\b/.test(cmd)) { hasAg = true; astgrep.calls++; }
-      if (/\brg\b/.test(cmd)) hasRg = true;
     }
-    if (hasAg) astgrep.sessions++;
-    if (hasRg) { astgrep.rgSessions++; if (!hasAg) astgrep.rgOnlySessions++; }
 
     for (const e of entries) {
       const s = loadedSkillName(e);
@@ -201,7 +193,7 @@ function cmdRun(opts) {
   write('l1_findings.json', findings);
   write('overview.json', {
     sessions: sessions.sort((a, b) => b.wasteTokens - a.wasteTokens),
-    projects, tools, gapBuckets, dates, skills: skillsOut, batching, astgrep,
+    projects, tools, gapBuckets, dates, skills: skillsOut, batching,
   });
 
   const ds = [...new Set(sessions.map((s) => s.date))].sort();

@@ -170,17 +170,6 @@ export function renderViews(workdir) {
   }
   say();
 
-  // ast-grep discipline: ast-grep runs inside bash commands, so the tool
-  // table cannot see it. AGENTS.md says construct-shape search runs ast-grep
-  // FIRST; rg-only sessions are the violation signal.
-  say(`## ast-grep discipline (bash command text)`);
-  {
-    const a = overview.astgrep ?? {};
-    say(`ast-grep/sg calls ${a.calls ?? 0} across ${a.sessions ?? 0} sessions · bash rg calls in ${a.rgSessions ?? 0} sessions`);
-    say(`rg-but-never-ast-grep sessions ${a.rgOnlySessions ?? 0} / ${sessions.length} (AGENTS.md: ast-grep first for construct-shape search)`);
-  }
-  say();
-
   // Tool detail: calls × sessions × dup findings linkage — the byte table
   // above says what landed in context; this says which tool the waste hangs on.
   say(`## Tool detail (calls · sessions · dup linkage)`);

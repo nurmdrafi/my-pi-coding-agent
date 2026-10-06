@@ -10,8 +10,7 @@
  *     2026-10-05, replacing the 6-call recency window)
  *   - bash calls: reading/output economy — R2 cat/standalone-sed viewing,
  *     R5 git log caps, R6 rg -o caps, R7 recursive walks, verbose runner caps,
- *     R9 commitlint conventional-commit message validation on git commit -m,
- *     R10 construct-shape rg searches rewritten to ast-grep
+ *     R9 commitlint conventional-commit message validation on git commit -m
  * Sources: 2026-09-16 audit (cat-for-viewing 86, uncapped runners, git log),
  * 2026-09-23 audit (read-after-edit re-read loops 316K/wk, uncapped rg -o
  * 119K/wk), 2026-09-24 (anchor overlap pre-check, R7, sed -n batching fix,
@@ -20,14 +19,11 @@
  * agent-project audit (post-edit windowed re-reads over the edited anchor:
  * sessions 01a0d347 / 01a0d1f6 / 01a0d33a), 2026-10-05 audit (read dup
  * 258× / 3,089K across 95 sessions — windowed reads never registered,
- * REREAD_WINDOW=6 expired late-session dups → coverage model), 2026-10-05
- * R10 (ast-grep discipline: 145/177 sessions rg-only, 13 calls ever —
- * calibration session 01a10654: bare 'rg -n foo\(' call-site hunts).
+ * REREAD_WINDOW=6 expired late-session dups → coverage model).
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { existsSync } from "fs";
 import { readFile } from "fs/promises";
 import { resolve } from "path";
 
@@ -189,7 +185,7 @@ async function validateEditAnchors(input: {
 	// post-application spans of this call's edits, for the windowed re-read check
 	let delta = 0; // cumulative line shift from earlier edits in this call
 	const edited: LineSpan[] = [];
-	// ponytail: fuzzy-matched anchors contribute no span (index only exists in
+	// fuzzy-matched anchors contribute no span (index only exists in
 	// normalized space) — windowed re-read checks fall back to allow for them
 
 	for (let i = 0; i < edits.length; i++) {
@@ -299,73 +295,6 @@ function validateCommitMessages(seg: string): string | undefined {
 	return;
 }
 
-// ---- R10: construct-shape rg searches → ast-grep ----
-
-/** cached per process — unscoped construct-shape searches trip R10 only in TS/JS projects */
-let tsProjectCwd: boolean | undefined;
-function isTsProjectCwd(): boolean {
-	if (tsProjectCwd === undefined) {
-		tsProjectCwd = ["tsconfig.json", "package.json"].some((m) => existsSync(resolve(process.cwd(), m)));
-	}
-	return tsProjectCwd;
-}
-
-const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte)$/i;
-
-/** classify an rg command's scoping: explicit code targets, explicit non-code (the escape), or bare */
-function rgScope(head: string): "code" | "non-code" | "unscoped" {
-	if (/node_modules|\b(dist|build|coverage)\/|\.next\b/.test(head)) return "non-code"; // not first-party
-	const globs = [...head.matchAll(/(?:-g|--glob)(?:=|\s+)('[^']*'|"[^"]*"|\S+)/g)].map((m) =>
-		m[1].replace(/^['"]|['"]$/g, ""),
-	);
-	const types = [...head.matchAll(/(?:^|\s)-t\s+(\w+)/g)].map((m) => m[1]);
-	// extensioned path args ('rg pat src/app/x.ts'); quoted patterns can't match (quote not in class)
-	const paths = [...head.matchAll(/\s([\w./@$+-]+\.[a-zA-Z]{2,4})(?=\s|$)/g)].map((m) => m[1]);
-	const scoped = [...globs, ...types, ...paths];
-	if (scoped.some((s) => CODE_EXT.test(s) || /^(ts|tsx|js|jsx|typescript|javascript)$/i.test(s))) return "code";
-	if (scoped.length) return "non-code";
-	return "unscoped";
-}
-
-/**
- * R10 (2026-10-08): construct-shape searches via rg — the model never selects
- * ast-grep (audit 2026-10-05: 145/177 sessions rg-only; calibration: bare
- * `rg -n 'foo\('` call-site hunts). Returns a block reason carrying the exact
- * ast-grep rewrite so the retry succeeds first time. Deterministic escape: rg
- * scoped to non-code files or non-first-party dirs passes untouched (a cd'd
- * target can false-fire; the -g escape makes that recoverable).
- */
-function constructShapeNudge(seg: string): string | undefined {
-	if (!/^rg\b/.test(seg)) return; // rg initiates the search — pipe filters don't trip
-	const head = seg.split("|", 1)[0];
-	const ident = /(\w+)\\\(/.exec(head)?.[1];
-	const shape =
-		ident !== undefined || /\\\(/.test(head)
-			? "call site"
-			: /=>/.test(head)
-				? "arrow fn"
-				: /<[A-Z]\w/.test(head)
-					? "JSX"
-					: undefined;
-	if (!shape) return;
-	const scope = rgScope(head);
-	if (scope === "non-code") return; // escape: explicitly not first-party code
-	if (scope === "unscoped" && !isTsProjectCwd()) return; // bare search outside a TS/JS project
-	const rewrite =
-		shape === "call site"
-			? `ast-grep run -p '${ident ?? "foo"}($$$)'`
-			: shape === "arrow fn"
-				? `ast-grep run -p '($$$) => $$$'`
-				: `ast-grep run -p '<Button $$$>$$$</Button>'`;
-	return (
-		`Token Economy (Searching): construct-shape ${shape} search via rg — AGENTS.md: ast-grep first for construct shape ` +
-		`in first-party TS/TSX/JS (audit 2026-10-05: 145/177 sessions rg-only). Rewrite: ${rewrite} — patterns must be COMPLETE valid ` +
-		`code; bodyless fragments ('function $F($$$)') silently match nothing — use 'function $F($$$) { $$$ }' (typed returns need ': $RET'). ` +
-		`rg stays right for keywords/minified and definitions (symbol outline); cap either. If this search genuinely is not ` +
-		`construct-shaped (prose/config/strings), re-scope rg to those files (e.g. -g '*.md') or non-first-party dirs and it passes.`
-	);
-}
-
 export default function (pi: ExtensionAPI) {
 	/**
 	 * In-context coverage (2026-10-05 audit): per absolute path, the union of
@@ -377,7 +306,7 @@ export default function (pi: ExtensionAPI) {
 	 * command naming the file's basename (may have changed it externally), a
 	 * failed edit (context may have drifted).
 	 *
-	 * ponytail: not hydrated on session resume — the map starts empty and the
+	 * Not hydrated on session resume — the map starts empty and the
 	 * failure mode errs toward allowing. Revisit only if audits show
 	 * post-resume dup reads mattering.
 	 */
@@ -505,11 +434,6 @@ export default function (pi: ExtensionAPI) {
 						`pollute context. List with 'rg --files <dir> | head -N'; find matching files with 'rg -l <pattern> <dir>'.`,
 				};
 			}
-
-			// R10 (2026-10-08): construct-shape rg searches — the model never selects
-			// ast-grep (145/177 sessions rg-only); block with the exact rewrite
-			const nudge = constructShapeNudge(seg);
-			if (nudge) return { block: true, reason: nudge };
 
 			// Output cap: verbose build/test runners need a filter pipe
 			const verbose =
