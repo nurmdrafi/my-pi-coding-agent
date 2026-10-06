@@ -35,7 +35,7 @@
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { homedir } from "os";
-import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { appendFileSync, mkdirSync, readFileSync } from "fs";
 import { readFile, stat } from "fs/promises";
 import { dirname, join, resolve } from "path";
 
@@ -54,7 +54,9 @@ function isCapped(seg: string): boolean {
 /**
  * first unquoted pipe/redirect — a '|' inside a quoted regex must not split
  * the R10 base (2026-10-06: quote-blind split false-positive-blocked two
- * different rg commands whose patterns both contained '|')
+ * different rg commands whose patterns both contained '|'); unquoted backslash
+ * escapes honored (2026-10-07: 'foo\\|bar' truncated bases the same way).
+ * Heredoc bodies count as unquoted — stable across runs, so R10-safe.
  */
 function firstUnquotedPipeOrRedirect(cmd: string): number {
 	let quote: string | undefined;
@@ -63,7 +65,8 @@ function firstUnquotedPipeOrRedirect(cmd: string): number {
 		if (quote) {
 			if (ch === "\\") i++;
 			else if (ch === quote) quote = undefined;
-		} else if (ch === "'" || ch === '"') quote = ch;
+		} else if (ch === "\\") i++; // unquoted \| \> are literals, not separators
+		else if (ch === "'" || ch === '"') quote = ch;
 		else if (ch === "|" || ch === ">") return i;
 	}
 	return -1;
@@ -72,7 +75,9 @@ function firstUnquotedPipeOrRedirect(cmd: string): number {
 /**
  * split at unquoted \n / && / ; / || — a quoted ';' (sed '1p;5p', regex char
  * classes) must not split (2026-10-06: quote-blind split made R2 block the
- * sanctioned sed-batch form by truncating it to "sed -n '1p")
+ * sanctioned sed-batch form by truncating it to "sed -n '1p"); unquoted
+ * backslash escapes the next char (2026-10-07: '1p\\;5p' split the same way).
+ * Heredoc bodies count as unquoted (known limitation).
  */
 function splitSegments(cmd: string): string[] {
 	const out: string[] = [];
@@ -88,6 +93,11 @@ function splitSegments(cmd: string): string[] {
 			}
 			if (ch === quote) quote = undefined;
 			cur += ch;
+			continue;
+		}
+		if (ch === "\\") {
+			cur += ch + (cmd[i + 1] ?? ""); // unquoted \; \& \| — literals, not separators
+			i++;
 			continue;
 		}
 		if (ch === "'" || ch === '"') {
@@ -426,41 +436,73 @@ export default function (pi: ExtensionAPI) {
 	let mutationSeq = 0;
 
 	// ---- violation memory: cross-session repeat-offense reduction ----
-	const memoryPath = process.env.PGATE_MEMORY ?? join(homedir(), ".pi", "agent", "logs", "violation-memory.json");
+	// NDJSON append-only store (2026-10-07): parallel sessions (gated subagents)
+	// made the read-modify-write JSON blob racy — last writer silently dropped
+	// counts. Appends are atomic; aggregation happens at load. The legacy JSON
+	// blob stays readable as a frozen base (pre-NDJSON telemetry, never written).
+	const memoryNdjson = process.env.PGATE_MEMORY ?? join(homedir(), ".pi", "agent", "logs", "violation-memory.ndjson");
+	const memoryLegacy = process.env.PGATE_MEMORY
+		? memoryNdjson.replace(/\.ndjson$/, ".json")
+		: join(homedir(), ".pi", "agent", "logs", "violation-memory.json");
 	const loadCounts = (): Record<string, number> => {
+		const counts: Record<string, number> = {};
 		try {
-			const parsed: unknown = JSON.parse(readFileSync(memoryPath, "utf8"));
-			return parsed && typeof parsed === "object" ? (parsed as Record<string, number>) : {};
+			const legacy: unknown = JSON.parse(readFileSync(memoryLegacy, "utf8"));
+			if (legacy && typeof legacy === "object") {
+				for (const [k, v] of Object.entries(legacy as Record<string, unknown>)) if (typeof v === "number") counts[k] = v;
+			}
 		} catch {
-			return {};
+			// absent or corrupt legacy blob — start from NDJSON alone
 		}
+		try {
+			for (const line of readFileSync(memoryNdjson, "utf8").split("\n")) {
+				if (!line.trim()) continue;
+				try {
+					const e = JSON.parse(line) as { family?: string; n?: number };
+					if (typeof e.family === "string" && typeof e.n === "number" && e.n > 0) {
+						counts[e.family] = (counts[e.family] ?? 0) + e.n;
+					}
+				} catch {
+					continue; // torn tail append — tolerate like pi's session files
+				}
+			}
+		} catch {
+			// no NDJSON yet — legacy counts (if any) stand alone
+		}
+		return counts;
 	};
 	const counts = loadCounts();
 	/** record a block's family; persist top-offender telemetry for the next session's prompt */
 	const blockCall = (reason: string): { block: true; reason: string } => {
-		const family = reason.slice(0, reason.indexOf(":"));
+		const colon = reason.indexOf(":");
+		const family = colon === -1 ? reason : reason.slice(0, colon); // colon-less reason → whole string, never a truncated key
 		if (FAMILY_LESSONS[family]) {
 			counts[family] = (counts[family] ?? 0) + 1;
 			try {
-				mkdirSync(dirname(memoryPath), { recursive: true });
-				writeFileSync(memoryPath, JSON.stringify(counts));
+				mkdirSync(dirname(memoryNdjson), { recursive: true });
+				appendFileSync(memoryNdjson, `${JSON.stringify({ family, n: 1, ts: Date.now() })}\n`);
 			} catch {
 				// telemetry must never break the agent loop
 			}
 		}
 		return { block: true, reason };
 	};
-	let memoryInjected = false;
+	// module scope: one process can host several sessions (ctx.newSession, e.g.
+	// /handoff, replaces the session in-process) — injection stays suppressed for
+	// the replacement session; accepted for now, name documents the scope
+	let memoryInjectedThisProcess = false;
 	pi.on("before_agent_start", (event) => {
-		if (memoryInjected) return; // once per session — per-run re-entry must not stack copies
-		memoryInjected = true;
+		if (memoryInjectedThisProcess) return; // once per process — per-run re-entry must not stack copies
+		memoryInjectedThisProcess = true;
 		const lessons = Object.entries(counts)
 			.filter(([family, n]) => n >= MEMORY_THRESHOLD && FAMILY_LESSONS[family])
 			.sort((a, b) => b[1] - a[1])
 			.slice(0, 3)
 			.map(([family]) => `- ${FAMILY_LESSONS[family]}`);
 		if (lessons.length === 0) return;
-		event.systemPromptOptions.appendSystemPrompt +=
+		// pi seeds appendSystemPrompt to "" today; guard anyway — undefined must never
+		// leak into the system prompt as the literal "undefined" (2026-10-07 review)
+		event.systemPromptOptions.appendSystemPrompt = (event.systemPromptOptions.appendSystemPrompt ?? "") +
 			`<violation-memory>\nRecurring tool-call violations from your prior sessions (gate telemetry) — apply before the first call:\n${lessons.join("\n")}\n</violation-memory>\n`;
 	});
 
@@ -589,7 +631,7 @@ export default function (pi: ExtensionAPI) {
 		// intervening edit/write re-sends output already in context (gh run list
 		// double-polls 31 s apart, identical vitest re-runs). Watchers and retries
 		// of failed runs are exempt; the run is recorded on tool_result.
-		const stripped = cmd.replace(/\s\d>&\d\s?/g, " ");
+		const stripped = cmd.replace(/\b\d>&\d\b\s?/g, " "); // \b: '2>&1' at command start strips too
 		const cut = firstUnquotedPipeOrRedirect(stripped);
 		const base = (cut === -1 ? stripped : stripped.slice(0, cut)).trim();
 		const watcher = /(^|\s)(watch|sleep)\b/.test(base) || /(^|\s)tail\s+(-[a-zA-Z]*[fF])/.test(base) || /--watch\b/.test(base);
@@ -670,5 +712,95 @@ export default function (pi: ExtensionAPI) {
 		pendingEdits.clear();
 		pendingBash.clear();
 		lastBashRun.clear();
+	});
+
+	// R1 resume hydration (2026-10-07): a resumed/continued session replays its
+	// prior branch into context — replay that branch's read/write tool entries
+	// through the same certify() path so dup-read coverage survives a process
+	// restart (2026-10-05 audit: 258 dup reads / ~3,089K across 95 sessions;
+	// post-resume reads were the untracked slice). Source of truth is
+	// ctx.sessionManager.getBranch() — pi's own in-context projection — so a
+	// fresh session (empty branch) is a natural no-op; `--continue` (reason
+	// "startup"), in-process switches ("resume"/"fork") and reloads all work
+	// without file-format guessing. Edits are skipped (span derivation needs
+	// anchor validation — skipping only loses savings, never adds a false
+	// block); R10 is skipped (10-min window makes it moot). Truncation is
+	// derived from the replayed text; stale entries are dropped lazily by the
+	// stat-mismatch check at the next read attempt.
+		pi.on("session_start", async (event, ctx) => {
+		void event;
+		// in-process switches reuse this module — drop the previous session's
+		// coverage/pending state so only the new session's branch is certified
+		coverage.clear();
+		pendingReads.clear();
+		pendingEdits.clear();
+		pendingBash.clear();
+		lastBashRun.clear();
+		const raw = ctx.sessionManager.getBranch();
+		if (raw.length === 0) return;
+		// only the post-compaction slice is in context (same rule as the
+		// session_compact handler and the handoff extension's branch walk)
+		let compactIdx = -1;
+		let firstKeptId: string | undefined;
+		for (let i = raw.length - 1; i >= 0; i--) {
+			const e = raw[i] as { type?: string; firstKeptEntryId?: string };
+			if (e.type === "compaction") {
+				compactIdx = i;
+				firstKeptId = e.firstKeptEntryId;
+				break;
+			}
+		}
+		const keptIdx = firstKeptId ? raw.findIndex((e) => (e as { id?: string }).id === firstKeptId) : -1;
+		const branch =
+			compactIdx < 0
+				? raw
+				: [...(keptIdx >= 0 ? raw.slice(keptIdx, compactIdx) : []), ...raw.slice(compactIdx + 1)];
+		const pending = new Map<string, { path: string; win: LineSpan; write?: boolean }>();
+		for (const entry of branch) {
+			if ((entry as { type?: string }).type !== "message") continue;
+			const msg = (entry as { message?: { role?: string; content?: unknown[] } }).message;
+			if (!msg || !Array.isArray(msg.content)) continue;
+			if (msg.role === "assistant") {
+				for (const b of msg.content) {
+					const call = b as { type?: string; id?: string; name?: string; arguments?: Record<string, unknown> };
+					if (call?.type !== "toolCall" || !call.id) continue;
+					if ((call.name === "read" || call.name === "write") && typeof call.arguments?.path === "string") {
+						const path = normPath(call.arguments.path);
+						if (!path) continue;
+						if (call.name === "write") {
+							pending.set(call.id, { path, win: { start: 1, end: Infinity }, write: true });
+							continue;
+						}
+						const start = Math.max(1, typeof call.arguments.offset === "number" ? call.arguments.offset : 1);
+						pending.set(call.id, {
+							path,
+							win: { start, end: typeof call.arguments.limit === "number" ? start + call.arguments.limit - 1 : Infinity },
+						});
+					}
+				}
+			} else if (msg.role === "toolResult") {
+				const res = msg as unknown as { isError?: boolean; content?: unknown[] };
+				const id = (msg as unknown as { toolCallId?: string }).toolCallId;
+				if (!id) continue;
+				const p = pending.get(id);
+				if (!p) continue;
+				pending.delete(id);
+				if (res.isError || !(res.content ?? []).length) continue;
+				if (p.write || (res.content ?? []).some((b) => (b as { type?: string })?.type === "image")) {
+					coverage.set(p.path, { spans: [{ start: 1, end: Infinity }], kind: p.write ? "write" : "read", stat: await snapshot(p.path) });
+					continue;
+				}
+				const counted = countTextLines(res.content ?? []);
+				if (counted.lines <= 0) continue;
+				const wholeFile = p.win.start === 1 && p.win.end === Infinity && !counted.truncated;
+				certify(
+					coverage,
+					p.path,
+					wholeFile ? { start: 1, end: Infinity } : { start: p.win.start, end: p.win.start + counted.lines - 1 },
+					"read",
+					await snapshot(p.path),
+				);
+			}
+		}
 	});
 }

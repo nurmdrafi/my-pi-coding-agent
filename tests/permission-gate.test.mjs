@@ -97,11 +97,28 @@ writeFileSync(fileA, 'a\nb\nc\n');
 const relA = relative(process.cwd(), fileA); // same file via the other key form (Q3)
 const skillFile = join(tmp, 'SKILL.md'); // 2026-10-06 feedback: R1 coverage must close same-session skill re-reads
 writeFileSync(skillFile, Array.from({ length: 30 }, (_, i) => `skill line ${i + 1}`).join('\n') + '\n');
+const fileC = join(tmp, 'hydrate-c.ts'); // 2026-10-07: resume-hydration fixtures
+writeFileSync(fileC, 'l1\nl2\nl3\n');
+const fileD = join(tmp, 'hydrate-d.ts');
+writeFileSync(fileD, 'l1\nl2\n');
+const fileE = join(tmp, 'hydrate-e.ts');
+writeFileSync(fileE, 'l1\nl2\nl3\n');
+/** build fake previous-session branch entries for the hydration fixtures */
+function prevBranch(descs) {
+  return descs.map((d) =>
+    d.compactionAfter
+      ? { type: 'compaction', id: d.id, firstKeptEntryId: d.compactionAfter }
+      : d.call
+        ? { type: 'message', id: d.id, message: { role: 'assistant', content: [{ type: 'toolCall', id: d.callId, name: d.call, arguments: d.call === 'write' ? { path: d.path, content: 'x' } : { path: d.path } }] } }
+        : { type: 'message', id: d.id, message: { role: 'toolResult', toolCallId: d.resultFor, toolName: d.tool ?? 'read', content: [{ type: 'text', text: d.text }], isError: false } },
+  );
+}
+const hydrate = (pi, descs) => pi.handlers.get('session_start')({ type: 'session_start', reason: 'resume' }, { sessionManager: { getBranch: () => prevBranch(descs) } });
 const fileB = join(tmp, 'dup.ts'); // duplicate line for the anchor-uniqueness case
 writeFileSync(fileB, 'x\nx\n');
 // violation-memory isolation: never touch the real ~/.pi/agent/logs telemetry
-process.env.PGATE_MEMORY = join(tmp, 'vmem.json');
-writeFileSync(process.env.PGATE_MEMORY, '{}');
+process.env.PGATE_MEMORY = join(tmp, 'vmem.ndjson');
+writeFileSync(process.env.PGATE_MEMORY, '');
 
 // ---- cases: [name, expectation, async fn -> {blocked}] ----
 
@@ -129,15 +146,20 @@ const cases = [
   // ---- R10 quote-aware base (2026-10-06: a quoted '|' must not truncate the base) ----
   ['quoted pattern pipes do not collide R10 bases', 'pass', async (pi) => bash(pi, "rg -o '(Alpha|Gamma)' data.log | head -5")],
   ['identical quoted-pattern command still blocked', 'blocked', async (pi) => bash(pi, "rg -o '(Alpha|Beta)' data.log | head -5")],
+  // ---- unquoted backslash escapes (2026-10-07: 'foo\|bar' / '1p\;5p' split the same as the quoted bugs) ----
+  ['escaped-pipe bases do not collide R10', 'pass', async (pi) => bash(pi, 'rg -o foo\\|bar data.log | head -5')],
+  ['identical escaped-pipe command still blocked', 'blocked', async (pi) => bash(pi, 'rg -o foo\\|bar data.log | head -5')],
+  ['escaped semicolon keeps sed batch intact', 'pass', async (pi) => bash(pi, 'sed -n 1p\\;5p notes.md')],
   // ---- skill re-read (2026-10-06 feedback item — R1 coverage closes it) ----
   ['full SKILL.md re-read same session is blocked', 'blocked', async (pi) => read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 })],
   ['SKILL.md re-read after compaction passes', 'pass', async (pi) => read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 })],
   // ---- violation memory (before_agent_start injection — 2026-10-06) ----
-  ['violation memory: block persists family count', 'blocked', async (pi) => {
+  ['violation memory: block appends ndjson family count', 'blocked', async (pi) => {
     const r = await bash(pi, 'cat package.json');
-    const saved = JSON.parse(readFileSync(process.env.PGATE_MEMORY, 'utf8'));
-    if (saved['Token Economy (Reading)'] !== 1) {
-      console.log(`      expected count 1, file has ${JSON.stringify(saved)}`);
+    const lines = readFileSync(process.env.PGATE_MEMORY, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const n = lines.filter((e) => e.family === 'Token Economy (Reading)').reduce((s, e) => s + (e.n ?? 0), 0);
+    if (n !== 1) {
+      console.log(`      expected count 1, ndjson has ${JSON.stringify(lines)}`);
       return { blocked: false };
     }
     return r;
@@ -158,6 +180,53 @@ const cases = [
     pi.handlers.get('before_agent_start')(a);
     const n = (a.systemPromptOptions.appendSystemPrompt.match(/<violation-memory>/g) ?? []).length;
     return n === 1 ? { blocked: false } : { blocked: true };
+  }],
+  ['violation memory: injection tolerates undefined appendSystemPrompt', 'pass', async (pi) => {
+    const ev = { type: 'before_agent_start', prompt: '', systemPrompt: '', systemPromptOptions: {} };
+    pi.handlers.get('before_agent_start')(ev);
+    const s = ev.systemPromptOptions.appendSystemPrompt ?? '';
+    return typeof s === 'string' && s.startsWith('<violation-memory>') ? { blocked: false } : { blocked: true };
+  }],
+  // ---- R1 resume hydration (2026-10-07: coverage replays from the previous session file) ----
+  ['resume hydration: prior full read blocks re-read window', 'blocked', async (pi) => {
+    await hydrate(pi, [
+      { id: 'e1', call: 'read', callId: 'c1', path: fileC },
+      { id: 'e2', resultFor: 'c1', text: 'l1\nl2\nl3\n' },
+    ]);
+    return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 });
+  }],
+  ['resume hydration: changed-on-disk file re-read passes', 'pass', async (pi) => {
+    await hydrate(pi, [
+      { id: 'e1', call: 'read', callId: 'c1', path: fileC },
+      { id: 'e2', resultFor: 'c1', text: 'l1\nl2\nl3\n' },
+    ]);
+    writeFileSync(fileC, 'CHANGED\nl2\nl3\nl4\n'); // stat must mismatch the certified snapshot
+    return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 });
+  }],
+  ['resume hydration: pre-compaction reads stay legitimate', 'pass', async (pi) => {
+    await hydrate(pi, [
+      { id: 'e1', call: 'read', callId: 'c1', path: fileD },
+      { id: 'e2', resultFor: 'c1', text: 'l1\nl2\n' },
+      { id: 'e3', compactionAfter: 'e4' },
+      { id: 'e4', call: 'read', callId: 'c2', path: fileC },
+      { id: 'e5', resultFor: 'c2', text: 'l1\nl2\nl3\n' },
+    ]);
+    return read(pi, fileD, { offset: 1, limit: 2 }, { outputLines: 2 });
+  }],
+  ['resume hydration: prior write certifies the whole file', 'blocked', async (pi) => {
+    await hydrate(pi, [
+      { id: 'e1', call: 'write', callId: 'c1', path: fileE },
+      { id: 'e2', resultFor: 'c1', text: 'ok', tool: 'write' },
+    ]);
+    return read(pi, fileE, { offset: 1, limit: 2 }, { outputLines: 2 });
+  }],
+  ['resume hydration: re-start with an empty branch drops prior coverage', 'pass', async (pi) => {
+    await hydrate(pi, [
+      { id: 'e1', call: 'read', callId: 'c1', path: fileC },
+      { id: 'e2', resultFor: 'c1', text: 'l1\nl2\nl3\n' },
+    ]);
+    await pi.handlers.get('session_start')({ type: 'session_start', reason: 'new' }, { sessionManager: { getBranch: () => [] } }); // in-process switch to a fresh session
+    return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 });
   }],
   // ---- Anchor Guard (existence / uniqueness / overlap) ----
   ['anchor not found is blocked', 'blocked', async (pi) => edit(pi, fileA, [{ oldText: 'zzz', newText: 'y' }])],
@@ -241,15 +310,26 @@ const preambles = {
   'bash re-run after compaction passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3'); await compact(pi); return pi; },
   'quoted pattern pipes do not collide R10 bases': async () => { const pi = freshGate(); await runBash(pi, "rg -o '(Alpha|Beta)' data.log | head -5"); return pi; },
   'identical quoted-pattern command still blocked': async () => { const pi = freshGate(); await runBash(pi, "rg -o '(Alpha|Beta)' data.log | head -5"); return pi; },
+  'escaped-pipe bases do not collide R10': async () => { const pi = freshGate(); await runBash(pi, 'rg -o foo\\|qux data.log | head -5'); return pi; },
+  'identical escaped-pipe command still blocked': async () => { const pi = freshGate(); await runBash(pi, 'rg -o foo\\|bar data.log | head -5'); return pi; },
   'full SKILL.md re-read same session is blocked': async () => { const pi = freshGate(); await read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 }); return pi; },
   'SKILL.md re-read after compaction passes': async () => { const pi = freshGate(); await read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 }); await compact(pi); return pi; },
-  'violation memory: block persists family count': async () => { writeFileSync(process.env.PGATE_MEMORY, '{}'); return freshGate(); },
+  'violation memory: block appends ndjson family count': async () => { writeFileSync(process.env.PGATE_MEMORY, ''); return freshGate(); },
   'violation memory: before_agent_start injects top-3 lessons at threshold': async () => {
-    writeFileSync(process.env.PGATE_MEMORY, JSON.stringify({ 'Token Economy (Reading)': 6, 'Token Economy (Re-run)': 7, 'Token Economy (Extraction)': 5, Commitlint: 9 }));
+    writeFileSync(process.env.PGATE_MEMORY, [
+      { family: 'Token Economy (Reading)', n: 6 },
+      { family: 'Token Economy (Re-run)', n: 7 },
+      { family: 'Token Economy (Extraction)', n: 5 },
+      { family: 'Commitlint', n: 9 },
+    ].map((e) => JSON.stringify(e)).join('\n') + '\n');
     return freshGate();
   },
   'violation memory: injection happens once per session': async () => {
-    writeFileSync(process.env.PGATE_MEMORY, JSON.stringify({ 'Token Economy (Reading)': 9 }));
+    writeFileSync(process.env.PGATE_MEMORY, JSON.stringify({ family: 'Token Economy (Reading)', n: 9 }) + '\n');
+    return freshGate();
+  },
+  'violation memory: injection tolerates undefined appendSystemPrompt': async () => {
+    writeFileSync(process.env.PGATE_MEMORY, JSON.stringify({ family: 'Token Economy (Reading)', n: 9 }) + '\n');
     return freshGate();
   },
 };

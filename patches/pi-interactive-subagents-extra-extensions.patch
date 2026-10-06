@@ -1,0 +1,24 @@
+diff --git a/pi-extension/subagents/index.ts b/pi-extension/subagents/index.ts
+index 7e20a0f..3173aca 100644
+--- a/pi-extension/subagents/index.ts
++++ b/pi-extension/subagents/index.ts
+@@ -869,6 +869,19 @@ function applySandboxToParts(
+       const extPath = getToolExtensionPath(tool);
+       if (extPath && existsSync(extPath)) extPaths.add(extPath);
+     }
++    // Local addition (not upstream): re-enable extra global extensions inside
++    // the sandbox. PI_SUBAGENT_EXTRA_EXTENSIONS (colon-separated paths)
++    // overrides; default re-enables the permission-gate extension when present
++    // so sandboxed subagents keep the parent session's context-economy guards.
++    const extraExts = (
++      process.env.PI_SUBAGENT_EXTRA_EXTENSIONS ?? join(homedir(), ".pi", "agent", "extensions", "permission-gate.ts")
++    )
++      .split(":")
++      .map((p) => p.trim())
++      .filter(Boolean);
++    for (const extPath of extraExts) {
++      if (!extPaths.has(extPath) && existsSync(extPath)) parts.push("-e", shellEscape(extPath));
++    }
+     for (const extPath of extPaths) {
+       parts.push("-e", shellEscape(extPath));
+     }
