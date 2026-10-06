@@ -29,16 +29,17 @@ Single `tool_call` interceptor; one handler, deterministic order (edit → read 
 | Rule | Scope | Blocks |
 |---|---|---|
 | `Anchor Guard:` | edit | `oldText` not found (exact + fuzzy normalization), non-unique anchor (reports line numbers), intra-call overlap of exact-matched anchors |
-| R1 | read | any re-read whose requested window is fully covered by the session's in-context span union — read results (actual returned lines from result truncation stats; an untruncated whole-file read certifies 1–EOF), edit-result spans (exact-match anchors), whole file after `write` and for images; partial overlap passes; resets on `session_compact`, a bash command naming the file's basename, a failed edit |
+| R1 | read | any re-read whose requested window is fully covered by the session's in-context span union — read results (actual returned lines from result truncation stats; an untruncated whole-file read certifies 1–EOF), edit-result spans (exact-match anchors), whole file after `write` and for images; partial overlap passes; freshness = mtime+size snapshot per certified path — an external on-disk change invalidates coverage (stat, not command-text guessing); also resets on `session_compact`, a failed edit |
 | R2 | bash | `cat` / `sed -n` for viewing with no pipe consumer — `sed -n` batching 2+ regions (`;` or two `-e`) is allowed |
 | R5 | bash | `git log` without `--oneline` / `-n <N>` / pipe cap |
 | R6 | bash | `rg -o` without pipe cap (quoted patterns stripped first so a pattern containing `-o` can't false-fire) |
 | R7 | bash | recursive walks: `ls -R`-family flags, `find -exec`/`-execdir` (redirected `ls -R > f` exempt; `find -executable` doesn't false-fire) |
 | R8 | bash | `git commit`/`git push` without `--no-verify`, a pipe cap, or `2>&1 \| tail -20` — hooks (lint/test/build) flood context; a cap anywhere in the full command satisfies the check (heredoc messages) |
 | R9 | bash | `git commit -m <msg>` header not matching commitlint conventional pattern `type(scope?): subject` (types: feat/fix/docs/style/refactor/perf/test/build/ci/chore/revert; also header ≤ 100 chars, subject not capitalized, no trailing `.`); header rules only — body `-m` flags, `-F`, heredoc skipped; checked before R8 so a bad message never reaches hooks |
+| R10 | bash | identical re-run: same base command (command up to the first pipe/redirect, `2>&1` stripped) re-run ≤10 min after its last successful run with no intervening edit/write — its output is already in context; watchers (`watch`, `tail -f`, `sleep`, `--watch`) and retries of failed runs exempt; recorded on `tool_result`, cleared on `session_compact` |
 | Runner cap | bash | uncapped `npm`/`vitest`/`jest`/`playwright`/`tsc` runners (suggests the filter pipe) |
 
-State (per extension instance): `coverage` (path → merged span union + last kind), `pendingEdits`, `pendingReads` drive R1; a failed edit drops coverage — content may have drifted, so a re-read is legitimate; `session_compact` clears everything. No hydration on session resume — the map starts empty, erring toward allowing. Fuzzy matching mirrors edit-diff.js `normalizeForFuzzyMatch` (NFKC, trailing whitespace, smart quotes/dashes/spaces) so the guard and the tool agree on what "matches". Anchor validation runs before coverage registration, so a blocked edit never enters the map.
+State (per extension instance): `coverage` (path → merged span union + last kind), `pendingEdits`, `pendingReads` drive R1; `pendingBash` / `lastBashRun` (base command → last-run record) plus a `mutationSeq` counter bumped by every successful edit/write drive R10 — a mutation makes verify re-runs legitimate. A failed edit drops coverage — content may have drifted, so a re-read is legitimate; `session_compact` clears everything. No hydration on session resume — the map starts empty, erring toward allowing. Fuzzy matching mirrors edit-diff.js `normalizeForFuzzyMatch` (NFKC, trailing whitespace, smart quotes/dashes/spaces) so the guard and the tool agree on what "matches". Anchor validation runs before coverage registration, so a blocked edit never enters the map.
 
 ## Conventions (pi)
 
@@ -51,7 +52,7 @@ State (per extension instance): `coverage` (path → merged span union + last ki
 ## Verifying changes
 
 - Strict typecheck against the installed package's types (`npx tsc --noEmit --strict` with a `paths` mapping to the global `@earendil-works/pi-coding-agent/dist/index.d.ts` — the global path is machine-specific).
-- `permission-gate` fixture test: `node tests/permission-gate.test.mjs` — 13 black-box cases through a stubbed ExtensionAPI (exit 0 = pass; preflight symlinks the global package into the gitignored root `node_modules`).
+- `permission-gate` fixture test: `node tests/permission-gate.test.mjs` — 19 black-box cases through a stubbed ExtensionAPI (exit 0 = pass; preflight symlinks the global package into the gitignored root `node_modules`).
 - `node skills/harness-engineer/scripts/mdcmdcheck.mjs` must exit 0 (validates every command/path this README declares).
 - Restart pi to load changes; watch the first few tool calls — a misfiring rule shows up immediately as a block.
 

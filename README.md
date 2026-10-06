@@ -113,8 +113,9 @@ command/path declared in markdown resolves (also exits 1 on findings).
 
 Always-on TypeScript modules in `extensions/` (loaded by pi, never in the model
 prefix) — currently one: `permission-gate.ts`, a `tool_call` interceptor with
-edit-anchor pre-validation, reading/output economy rules, and commitlint
-conventional-commit validation on `git commit -m` headers (R9). Raw events
+edit-anchor pre-validation, reading/output economy rules, an identical re-run
+guard (R10), and commitlint conventional-commit validation on `git commit -m`
+headers (R9). Raw events
 (tool errors, guard blocks) land in pi's native `sessions/**/*.jsonl` — the
 audit toolkit derives every signal from there. Full docs:
 `extensions/README.md`.
