@@ -1,6 +1,6 @@
 ---
 name: refactoring-ui
-description: Audit and fix existing web UIs — hierarchy, spacing, color, depth. Use when the UI "looks off", needs polish, a design system, or dark mode. FIXING/POLISHING existing UI only — NOT for building new UI → frontend-design.
+description: Audit and fix existing web UIs — hierarchy, spacing, color, depth. Use when the UI "looks off", needs polish, a design system, or dark mode, or small UI defects need fixing (links to missing routes, invalid media queries, shared spinner states). FIXING/POLISHING existing UI only — NOT for building new UI → frontend-design.
 license: MIT
 metadata:
   author: wondelai

@@ -3,14 +3,14 @@
 [![pi coding agent](https://img.shields.io/badge/pi-coding_agent-8A2BE2)](https://github.com/earendil-works/pi-coding-agent)
 [![Node](https://img.shields.io/badge/node_%E2%89%A522_%C2%B7_nvmrc_24-339933?logo=nodedotjs&logoColor=white)](#portability-contract)
 [![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555)](#portability-contract)
-[![skills](https://img.shields.io/badge/skills-25-2563eb)](#skills)
-[![always-on floor](https://img.shields.io/badge/always--on_floor_%7E2.5K_tok-f97316)](#always-on-token-budget-measure-this)
+[![skills](https://img.shields.io/badge/skills-23-2563eb)](#skills)
+[![always-on floor](https://img.shields.io/badge/always--on_floor_%7E2.1K_tok-f97316)](#always-on-token-budget-measure-this)
 
 Personal [pi coding agent](https://github.com/earendil-works/pi-coding-agent) harness — a
 single portable `~/.pi/agent/` directory, synced via this git repo between machines.
 
 **What you get:** a lean always-on behavioral core (AGENTS.md), 25 progressive-disclosure
-skills, and an audit methodology that keeps the permanent token floor ~2.5K tokens
+skills, and an audit methodology that keeps the permanent token floor ~2.1K tokens
 (1.5K core — AGENTS.md 5,396 c + 2 model-visible descriptions 585 c ÷ 4, measured
 2026-09-23; subagents tool defs removed 2026-10-06, see [1.16.10]).
 No env vars, no absolute paths — clone anywhere on macOS/Linux.
@@ -48,7 +48,7 @@ No env vars; default path only.
 ├── models.json               # custom model defs (glm-5.3-flash)
 ├── models-store.json         # catalog cache (machine-local, regen)
 │
-├── skills/                   # 25 skills; each: SKILL.md + scripts/ references/ assets/
+├── skills/                   # 23 skills; each: SKILL.md + scripts/ references/ assets/
 ├── extensions/               # always-on TS extensions (permission-gate)
 ├── agents/                   # global subagent defs (scout/researcher/worker/reviewer) — override pkg-bundled
 ├── README.md                 # this file (incl. portability contract)
@@ -63,34 +63,33 @@ No env vars; default path only.
 
 ## Skills
 
-Auto-invocable (the model may load them on match): **ponytail**, **tavily-search**, plus the wayfinder set's auto skills — **grilling**, **research**, **prototype**, **domain-modeling**.
+Auto-invocable (the model may load them on match) — 4 of 23: **ponytail**, **web-search**, **systematic-debugging**, **pre-push-review**.
 Everything else is manual — invoke with `/skill:<name>`.
 
 | Skill | Purpose | Invocation |
 |---|---|---|
-| ponytail | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder | auto |
-| tavily-search | Web research via Tavily CLI (`tvly search`) — primary research route | auto |
-| auth | NextAuth v4 credentials auth for Next.js App Router against an external REST backend | `/skill:auth` |
+| ponytail | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder + over-engineering review mode | auto |
+| web-search | Web search + URL extraction via Tavily CLI (`tvly search` / `tvly extract`) — primary web route | auto |
+| github-actions | Author/harden CI workflows: SHA-pinned actions, scoped secrets, actionlint | `/skill:github-actions` |
+| auth | NextAuth v4 credentials auth for Next.js App Router against an external REST IdP | `/skill:auth` |
 | brainstorming | Explore genuinely-unclear feature direction; one question at a time | `/skill:brainstorming` |
 | browser-tools | Live DOM via CDP `:9222` — Playwright/e2e only (deps: `npm install` at skill root) | `/skill:browser-tools` |
 | fallow-audit | Dead-code / unused-export / unused-dependency cleanup (fallow, knip, ts-prune, depcheck) | `/skill:fallow-audit` |
 | frontend-design | New web components/pages/apps from scratch (detects the UI stack) | `/skill:frontend-design` |
 | harness-engineer | Meta: audit/improve this harness (budgets, evidence, skill audits) | `/skill:harness-engineer` |
-| map-integration | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw | `/skill:map-integration` |
-| playwright-tester | e2e specs, stress/update-flow runs, bug-hunt iterations, slow-startup diagnosis | `/skill:playwright-tester` |
-| ponytail-review | Over-engineering review: finds what to delete | `/skill:ponytail-review` |
-| pre-push-review | CI-parity correctness review of the diff before commit/push | `/skill:pre-push-review` |
-| refactoring-ui | Audit/fix existing UI: hierarchy, spacing, color, depth | `/skill:refactoring-ui` |
+| map-integration | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw; Barikoi stack | `/skill:map-integration` |
+| playwright-tester | e2e specs, stress/update-flow runs, bug-hunt iterations, untested-critical-path coverage | `/skill:playwright-tester` |
+| pre-push-review | CI-parity correctness review of the diff before commit/push | auto |
+| refactoring-ui | Audit/fix existing UI: hierarchy, spacing, color, depth, small UI defects | `/skill:refactoring-ui` |
 | sdk-development | Installable packages (Go/npm/CLI): OpenAPI codegen, test, publish | `/skill:sdk-development` |
 | session-audit | Token/cost waste audit of `~/.pi/agent/sessions` | `/skill:session-audit` |
 | skill-manager | Create/modify SKILL.md + mandatory validator gate | `/skill:skill-manager` |
-| systematic-debugging | Phased root-cause debugging before proposing any fix | `/skill:systematic-debugging` |
-| tavily-extract | URL → clean markdown via Tavily CLI (`tvly extract`) | `/skill:tavily-extract` |
+| systematic-debugging | Phased root-cause debugging (incl. error-class loops) before proposing any fix | auto |
 | documentation-writer | Diátaxis-based tech writer: SDK docs, READMEs, CONTRIBUTING, docs audits | `/skill:documentation-writer` |
-| domain-modeling | Build/sharpen a project's domain model — GLOSSARY.md terms, ADRs (upstream: mattpocock/skills) | auto |
-| grilling | Relentless one-question-at-a-time stress-testing of a plan/decision (upstream: mattpocock/skills) | auto |
-| prototype | Throwaway prototype (HTML state-model walkthrough / UI variations) to answer a design question | auto |
-| research | Delegate reading legwork to a background agent against high-trust sources; findings as Markdown | auto |
+| domain-modeling | Build/sharpen a project's domain model — GLOSSARY.md terms, ADRs (upstream: mattpocock/skills) | `/skill:domain-modeling` |
+| grilling | Relentless one-question-at-a-time stress-testing of a plan/decision (upstream: mattpocock/skills) | `/skill:grilling` |
+| prototype | Throwaway prototype (HTML state-model walkthrough / UI variations) to answer a design question | `/skill:prototype` |
+| research | Delegate reading legwork to a background agent against high-trust sources; findings as Markdown | `/skill:research` |
 | wayfinder | Chart a too-big effort as a map of decision tickets on the issue tracker; resolve one per session | `/skill:wayfinder` |
 
 ### Skill layout (convention — validator-enforced)
@@ -193,7 +192,7 @@ wc -c ~/.pi/agent/AGENTS.md
 |-----------|--------|-------|
 | AGENTS.md | as small as possible (behavioral core only) | no stack essays, no skill lists |
 | Skill descriptions | short; delete dead skills | largest descriptions cost every session |
-| **Total always-on** | prefer ≤ ~2K tok | bodies/refs stay out until needed; no package tool defs (subagents pkg removed [1.16.10]) |
+| **Total always-on** | prefer ≤ ~2.2K tok (4 auto skills, post-1.18.0; 11 briefly during 1.18.0, 2 pre-1.18.0) | bodies/refs stay out until needed; no package tool defs (subagents pkg removed [1.16.10]) |
 
 Thinking default: `off` (token economy). Bump per-task with `--thinking high` if needed.
 

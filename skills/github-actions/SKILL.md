@@ -1,6 +1,7 @@
 ---
 name: github-actions
 description: Authors and hardens GitHub Actions workflow files (.github/workflows) — pins actions to commit SHAs via gh api tag resolution, scopes secrets out of workflow-level env, applies least-privilege permissions via workflow/job-level only, validates with actionlint. Use when creating, editing, or fixing CI workflows, when removing or restructuring jobs (auditing `needs:` and lost toolchain setup), when a release pipeline derives a version or tag from CHANGELOG.md, when a review or issue flags unpinned actions, secret exposure, over-broad permissions, missing build gates, or tag overwriting. NOT for general pre-push diff review (use pre-push-review) or non-GitHub CI systems.
+disable-model-invocation: true
 ---
 
 # GitHub Actions workflows
@@ -45,8 +46,7 @@ actionlint exits 1 and names the key. Delete the temp copy afterwards.
 
 Mutable tags (`@v3`, `@v1`) can be moved by anyone with write access to the
 action repo — a moved tag is remote code execution inside the workflow. Pin to
-the 40-char SHA with the tag as a comment; Dependabot bumps the pin by reading
-that comment.
+the 40-char SHA with the tag as a comment.
 
 Resolve tag → SHA via gh api:
 
@@ -64,15 +64,13 @@ done
 uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
 ```
 
-- Pin everything, including first-party (`actions/*`, `docker/*`) — once
-  Dependabot manages bumps, uniform pinning costs nothing and removes the
+- Pin everything, including first-party (`actions/*`, `docker/*`) — uniform
+  pinning costs nothing and removes the
   "is this third-party?" judgment call.
-- Pin the current major only. Do not jump majors in the same change; let
-  Dependabot propose major upgrades separately.
+- Pin the current major only. Do not jump majors in the same change.
 - Reusable workflows pin the same way:
   `uses: org/repo/.github/workflows/x.yml@<sha> # v1`. Repos with a single
-  moving major tag (only `v1`, no patches) still pin — Dependabot tracks the
-  comment when the tag moves.
+  moving major tag (only `v1`, no patches) still pin.
 
 ## 3. Permissions: workflow and job level only — never step level
 
@@ -216,24 +214,6 @@ with an EOF-delimited `GITHUB_OUTPUT` block; they flow intact through
 echo "notes<<EOF" >> $GITHUB_OUTPUT
 echo "$NOTES" >> $GITHUB_OUTPUT
 echo "EOF" >> $GITHUB_OUTPUT
-```
-
-## 9. Dependabot keeps pins fresh
-
-Pinning without automated bumps rots into stale SHAs. Add
-`.github/dependabot.yml`:
-
-```yaml
-version: 2
-updates:
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-    groups:
-      actions:
-        patterns:
-          - "*"
 ```
 
 ## Checklist

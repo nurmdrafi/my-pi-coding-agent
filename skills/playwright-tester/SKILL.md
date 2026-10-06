@@ -1,6 +1,6 @@
 ---
 name: playwright-tester
-description: "Playwright test automation — e2e specs, stress/update-flow runs, bug-hunt iterations, slow-startup diagnosis. Attaches to running Chrome (CDP :9222) for logged-in sessions; falls back to isolated runs. Use for any Playwright/e2e/browser-automation task. NOT one-off DOM poking (→ browser-tools), component specs (Vitest), CI."
+description: "Playwright test automation — e2e specs, stress/update-flow runs, bug-hunt iterations, slow-startup diagnosis. Attaches to running Chrome (CDP :9222) for logged-in sessions; falls back to isolated runs. Use for any Playwright/e2e/browser-automation task, including 'untested critical paths' / 'no e2e coverage' gaps (auth flow, 401 ladder, wallet/settlement). NOT one-off DOM poking (→ browser-tools), component specs (Vitest), CI."
 disable-model-invocation: true
 ---
 

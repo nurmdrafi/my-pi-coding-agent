@@ -1,6 +1,7 @@
 ---
 name: auth
-description: "Implements or migrates to NextAuth v4 credentials auth for Next.js App Router apps against an external REST IdP issuing bearer tokens: authorize() with server-side backend calls, session-token plumbing for RTK Query/fetch layers, middleware route guards, 401 retry and sign-out ladder, OTP registration and password-reset flows, social-login token exchange, deterministic post-login redirects. Use for 'nextauth', 'auth migration', 'login not redirecting', 'stuck on login page', 'refresh fixes login', 'protect routes', 'middleware auth', 'session token', 'signIn credentials', '401 handling', 'otp login', 'social login', 'new auth integration'. NOT for OAuth-first setups, Auth.js v5, Firebase auth, or non-Next.js apps."
+description: "Implements or migrates to NextAuth v4 credentials auth for Next.js App Router apps against an external REST IdP issuing bearer tokens: authorize() with server-side backend calls, session-token plumbing for RTK Query/fetch layers, middleware route guards, 401 retry and sign-out ladder, OTP registration and password-reset flows, social-login token exchange, deterministic post-login redirects. Use for 'nextauth', 'auth migration', 'login not redirecting', 'stuck on login page', 'refresh fixes login', 'protect routes', 'middleware auth', 'session token', 'signIn credentials', '401 handling', 'session outlives backend token', 'jwt sliding session', 'signOut on every 401', 'random sign-outs', 'signed out while browsing', 'otp login', 'social login', 'new auth integration'. NOT for OAuth-first setups, Auth.js v5, Firebase auth, or non-Next.js apps."
+disable-model-invocation: true
 ---
 
 # auth
@@ -61,7 +62,7 @@ File map (every piece exists for a reason; do not skip one):
 - **`await hydrateSessionToken()` after every successful `signIn`** (login, register auto-login, any programmatic sign-in) before any authorized request or redirect. `signIn({redirect:false})` resolves *before* the `useSession` cache updates; acting on the stale empty token sends requests as anonymous → 401 → logout loop.
 - **Redirect = awaited `router.push(callbackUrl)` in the component**, never `window.location.href` buried in an API layer, never conditional on a profile fetch succeeding. Sanitize `callbackUrl` to a same-origin relative path first — it's a query param, fully user-controllable, and `router.push("https://evil.com")` navigates off-origin (open redirect).
 - **Session cookie maxAge = backend token `exp`** (decode with `jose`) — always, no fallback. `authorize()` rejects tokens without a usable expiry (`'Login token has no expiry'`); a guessed lifetime (fixed 24h etc.) either kills live sessions early or leaves expired ones minted. Custom `jwt.encode` override, not the default.
-- **401 ladder in the base query:** retry only if something can actually rotate the token between attempts (a refresh endpoint, a re-fetch of the session). With a static module-holder token the retry is byte-identical — skip it and go straight to `signOut({redirect:false})` + `location.replace('/login?callbackUrl=...')` gated by `isProtectedRoute()` so public pages don't bounce.
+- **401 ladder in the base query:** retry only if something can actually rotate the token between attempts (a refresh endpoint, a re-fetch of the session). With a static module-holder token the retry is byte-identical — skip it and go straight to `signOut({redirect:false})` + `location.replace('/login?callbackUrl=...')` gated by `isProtectedRoute()` so public pages don't bounce. Sign-out is single-flight: only the base-query ladder owns it — never fire `signOut` from per-request listeners, or one expired token triggers N parallel 401s → N sign-outs → users logged out mid-action.
 - **No token in localStorage, ever.** The only client-visible token copy is the NextAuth session; API layers read it via the module holder.
 - **Social logins exchange the provider token for a backend token inside the `jwt` callback** — the provider token is never stored as the app token.
 
@@ -72,7 +73,8 @@ File map (every piece exists for a reason; do not skip one):
 - [ ] Redirect chain: `callbackUrl` (same-origin validated) → same-origin referrer (≠ auth page) → default
 - [ ] Route guard uses `getToken()` (signature-verified), not cookie presence
 - [ ] Unauthenticated on protected → `/login?callbackUrl=<path>`
-- [ ] Base query: Bearer per request, 401 ladder (retry only with real token rotation), signOut fallback
+- [ ] Base query: Bearer per request, 401 ladder (retry only with real token rotation), single-flight signOut fallback
+- [ ] Session user typed from the backend profile; components read merchant fields via one accessor, not ad-hoc `session?.user?.x` chains
 - [ ] Layout passes server session into `SessionProvider`
 - [ ] OTP flows: plain endpoints, no auth side effects; resend cooldown enforced
 - [ ] Social: provider token exchanged for backend token before session write

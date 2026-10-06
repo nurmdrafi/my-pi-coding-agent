@@ -1,6 +1,6 @@
 ---
 name: map-integration
-description: "ANY map work, Barikoi stack included: react-bkoi-gl / bkoi-gl (Barikoi's maplibre wrappers), maplibre-gl/mapbox-gl and react-map-gl-family wrappers, deck.gl overlays, turf geometry, draw polygons/polylines, camera flyTo/fitBounds, geolocation, MQTT real-time plotting, GPX routes, snap-to-road (OSRM), boundary layers, Barikoi map styles and barikoi.xyz APIs, map bugs (style-load, marker drift). Detects stack from package.json; reuses existing idioms."
+description: "ANY map work, Barikoi stack included: react-bkoi-gl / bkoi-gl (Barikoi's maplibre wrappers), maplibre-gl/mapbox-gl and react-map-gl-family wrappers, deck.gl overlays, turf geometry, draw polygons/polylines, camera flyTo/fitBounds, geolocation, MQTT real-time plotting, GPX routes, snap-to-road (OSRM), boundary layers, Barikoi map styles and barikoi.xyz APIs, map bugs (style-load, marker drift), map key leaks (api key in client bundle, hardcoded barikoi key, key shipped to browser). Detects stack from package.json; reuses existing idioms."
 disable-model-invocation: true
 ---
 
@@ -148,3 +148,4 @@ For anything beyond this shape, follow the github-actions skill (SHA pinning, le
 6. Map wrapper library work: framework apps install the fresh packed tarball (never link); every README claim covered by an e2e case; engine majors = silent render failures — run the README matrix first.
 7. Draw/edit flows: idempotent polygon-sync upsert covering all three triggers (§5.5); guarded geometry loads with failure-path clearing (§5.6); resets touch every derived field; markers capture `dragend` and draw-clears propagate to parent state (§5.7–5.8).
 8. CI touched: secrets step-scoped, actions SHA-pinned, least-privilege permissions (§11).
+9. No provider key literal in source or a bundled config (`app.config.ts` etc.) — keys ride env vars; anything `NEXT_PUBLIC_*` or client-imported is public by definition. Server-side Barikoi/routing calls go through an API proxy, never a client-held key.

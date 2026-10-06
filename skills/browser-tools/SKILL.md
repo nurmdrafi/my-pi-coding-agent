@@ -1,6 +1,6 @@
 ---
 name: browser-tools
-description: "Playwright/e2e testing ONLY via CDP :9222: live replay of failing specs, DOM inspection, screenshots, storageState for e2e work. NOT research/web content (→ tavily-search / tavily-extract skills), NOT manual QA, NOT general debugging (→ systematic-debugging), NOT frontend design (→ refactoring-ui)."
+description: "Playwright/e2e testing ONLY via CDP :9222: verify UI fixes in the running app, live replay of failing specs, DOM inspection, screenshots, storageState for e2e work. NOT research/web content (→ web-search), NOT manual QA, NOT general debugging (→ systematic-debugging), NOT frontend design (→ refactoring-ui)."
 disable-model-invocation: true
 ---
 
@@ -139,7 +139,7 @@ Navigate to a URL and extract readable content as markdown. Uses Mozilla Readabi
 
 **This skill exists for Playwright/e2e testing only.** Anything else routes elsewhere:
 
-- Read-only research / web content → tavily-search / tavily-extract skills (`tvly search`, `tvly extract`); for static pages `{baseDir}/scripts/web-fetch.mjs <url> <maxChars>` is the cheapest extractor (headless, capped, no quota). Never this skill for research.
+- Read-only research / web content → web-search skill (`tvly search`, `tvly extract`); for static pages `{baseDir}/scripts/web-fetch.mjs <url> <maxChars>` is the cheapest extractor (headless, capped, no quota). Never this skill for research.
 - Manual QA / visual review → refactoring-ui or user-driven, not agent browser driving.
 - General debugging (runtime errors, wrong data) → systematic-debugging; go live only when the failing spec needs it.
 

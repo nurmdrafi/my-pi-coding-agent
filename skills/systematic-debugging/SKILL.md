@@ -1,7 +1,7 @@
 ---
 name: systematic-debugging
-description: Use BEFORE proposing any fix when something is broken — runtime errors (TypeError, undefined), wrong/null API data, build/test failures, "X stopped working", regressions, unexpected behavior. Find root cause first; never patch symptoms. NOT for features or greenfield work.
-disable-model-invocation: true
+description: Use BEFORE proposing any fix when something is broken — runtime errors (TypeError, undefined), wrong/null API data, build/test failures, "X stopped working", regressions, unexpected behavior, recurring errors that survive fixes ("same error again", "error keeps coming back"), repeated TypeScript strict errors (TS2345 null, TS2304 cannot-find-name), tests importing nonexistent modules. Find root cause first; never patch symptoms. NOT for features or greenfield work.
+disable-model-invocation: false
 ---
 
 # Systematic Debugging
@@ -35,6 +35,20 @@ Use for ANY technical issue:
 - "Just one quick fix" seems obvious
 - You've already tried multiple fixes
 - Previous fix didn't work
+
+## The Error-Class Loop
+
+When the **same class** of error appears a second time (TS2345 null-check,
+TS2304 cannot-find-name, a test importing a nonexistent module, the same
+build error on another file): stop instance-patching. An error that survives
+two fixes means the fixes targeted instances, not the cause.
+
+1. `rg` the pattern repo-wide — enumerate every occurrence, not the one the
+   compiler happened to show first.
+2. Fix the whole class as one change (shared guard, real import path, actual
+   module name).
+3. Run the narrow check once (`tsc --noEmit` / the single failing test file)
+   and confirm zero occurrences — not one-turn-per-instance.
 - You don't fully understand the issue
 
 **Don't skip when:**
