@@ -169,6 +169,13 @@ and never committed.
 
 ## 7. Extract the release version from one parser only
 
+Version-source-of-truth first: before touching release CI, check how the
+repo actually derives its version — e.g. the version is extracted directly
+from `CHANGELOG.md` (no script), `generate-version.mjs` runs in Actions
+without any build setup, and the repo relies on build-only-on-main plus a
+tag guard via husky. Do not assume `package.json` or a release script is the
+source of truth; read the repo before designing the workflow.
+
 When a workflow derives a version (for an image tag, a git tag, a release),
 shell-side `grep`/`cut` on `CHANGELOG.md` silently diverges from the app's own
 parser. Two parsers means two contracts: the workflow tags `main-Unreleased`

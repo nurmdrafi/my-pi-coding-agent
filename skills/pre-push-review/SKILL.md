@@ -45,10 +45,20 @@ Read whole functions/components around each hunk, not just the hunk.
 4. **Payload/contract correctness**: field-by-field vs the API docs and vs
    sibling configs; request params vs documented caps — paginate or warn,
    never silently truncate.
-5. **Pre-filled form vs `??` fallback**: `values.x ?? o.x` is dead code when
+   - Truthiness guards on payload fields drop `false`/`0`/`''` values:
+     `if (k === 'x' && !values[k]) return` makes `x: false` unsendable. For
+     optional booleans use tri-state (undefined = untouched) and
+     `!== undefined` checks, never `!`.
+5. **Null-unsafe member access**: API-derived values reach
+   `.charAt`/`.toString`/`.map`/… without optional chaining or a null check
+   — grep the touched file for member access on response fields.
+6. **Failure paths keep context**: failure paths clear loading/spinner state
+   and preserve user context (modal stays open with the server error shown),
+   instead of closing on error.
+7. **Pre-filled form vs `??` fallback**: `values.x ?? o.x` is dead code when
    the form pre-fills `x` — bulk operations then apply row 1's value to all
    rows. Leave fields empty or track touched fields.
-6. **Framework-behavior assumptions**: when a fix's correctness hinges on
+8. **Framework-behavior assumptions**: when a fix's correctness hinges on
    library internals (event order, prop injection, form-store semantics),
    verify against the installed package source
    (`node_modules/<pkg>/es|lib/*.js`) instead of reasoning from memory.
@@ -59,8 +69,8 @@ Read whole functions/components around each hunk, not just the hunk.
    the store update; form `initialValues` apply only at mount, so
    async-loaded data needs a remount gate (loading spinner) or
    `setFieldsValue`.
-7. **UI polarity/defaults**: visibility conditions and default states.
-8. **Security** (check every one):
+9. **UI polarity/defaults**: visibility conditions and default states.
+10. **Security** (check every one):
    - Route-level: mutating endpoints/routes carry authN + permission gates
      (role/permission check, not just "logged in").
    - Object-level (IDOR): every id-addressed read/write verifies the caller
@@ -71,7 +81,7 @@ Read whole functions/components around each hunk, not just the hunk.
      (PII, tokens, internal ids); no secrets compiled into client bundles.
    - CI/workflow edits: self-hosted runners on public repos, secret exposure,
      unpinned third-party actions/tags.
-9. **CI/env awareness**: browser/tool launches must go headless when `CI`
+11. **CI/env awareness**: browser/tool launches must go headless when `CI`
    is set; env-aware defaults everywhere.
 
 ## 3. Severity
@@ -116,7 +126,10 @@ suggestion: what to change
 Then a verdict: every medium+ is fixed or explicitly waived with a stated
 reason before `git commit` / `git push`. Keep retracted false positives in the
 verdict as "cleared, do NOT chase" so nobody re-raises them — the same reasoning
-that discounts it once discounts it the second time.
+that discounts it once discounts it the second time. Commit message must
+pass commitlint convention (`type(scope): subject`, lowercase, imperative)
+*before* committing — fix it before `git commit`, not after commitlint
+rejects it.
 
 ## 5. Fix loop (mandatory)
 
@@ -127,7 +140,14 @@ suggestion: hold every suggestion to the same evidence standard (installed
 source, actual id/link sources, payload consumers) before applying it, and
 waiving a finding with corrected reasoning is a valid outcome.
 
-## 6. Changelog / version hygiene
+## 6. Per-issue ship loop
+
+When the work is tied to a gh issue, the loop is: fix → review (this skill)
+→ changelog entry under the *existing latest* version → conventional-commit
+message ending `(issue #N)` → push → `gh issue close N --comment` with a
+summary of the shipped changes.
+
+## 7. Changelog / version hygiene
 
 Before committing, settle the version question **once** and stop:
 
@@ -159,3 +179,9 @@ If the version is generated (e.g. `scripts/generate-version.mjs` writes
 `src/version.js`), re-run that generator and confirm it prints the version you
 expect. Check the file is git-ignored before staging — a generated file that
 should not be committed is a common stray in the diff.
+
+After any changelog edit, re-read the edited region (not just `rg` the
+heading) to confirm the anchor didn't swallow a neighboring bullet prefix —
+it is a repeated-block file; the same anchor discipline as test files
+applies. Real case: an edit deleted a `- Auth session handling:` prefix and
+needed a repair edit.
