@@ -1890,6 +1890,32 @@ describe("commands", () => {
     assert.ok(activeTools.includes("subagent"), "a spawn should activate the subagent tool");
     assert.equal(sentUserMessages.length, 1);
   });
+
+  it("/subagent tolerates prose before the agent name", () => {
+    const { api, registeredCommands, sentUserMessages } = createMockExtensionApi();
+    (subagentsModule as any).default(api);
+    const subagent = registeredCommands.find((command) => command.name === "subagent");
+
+    subagent.handler("use the scout to map the database schema", { ui: { notify() {} } });
+
+    assert.equal(sentUserMessages.length, 1);
+    assert.match(sentUserMessages[0], /agent: "scout"/);
+    assert.match(sentUserMessages[0], /map the database schema/);
+  });
+
+  it("/subagent with no known agent routes via the session model", () => {
+    const { api, registeredCommands, activeTools, sentUserMessages } = createMockExtensionApi();
+    (subagentsModule as any).default(api);
+    const subagent = registeredCommands.find((command) => command.name === "subagent");
+
+    subagent.handler("investigate why the build is flaky", { ui: { notify() {} } });
+
+    assert.ok(activeTools.includes("subagent"), "routing should activate the spawn tools");
+    assert.equal(sentUserMessages.length, 1);
+    assert.match(sentUserMessages[0], /subagents_list/);
+    assert.match(sentUserMessages[0], /investigate why the build is flaky/);
+    assert.match(sentUserMessages[0], /Do not do the work yourself/);
+  });
 });
 
 describe("tool registration", () => {

@@ -2365,7 +2365,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
   // /subagent command — spawn a subagent by name
   pi.registerCommand("subagent", {
-    description: "Spawn a subagent: /subagent <agent> <task>",
+    description: "Spawn a subagent: /subagent [agent] [task] (agent optional — routed by task)",
     handler: async (args, ctx) => {
       const trimmed = args.trim();
       if (!trimmed) {
@@ -2390,15 +2390,31 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       }
       activateSpawnTools(); // any explicit spawn is also a trigger
 
-      const spaceIdx = trimmed.indexOf(" ");
-      const agentName = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
-      const task = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
+      const words = trimmed.split(/\s+/);
+      let agentName = words[0];
+      let task = words.slice(1).join(" ");
+      let defs = loadAgentDefaults(agentName);
 
-      const defs = loadAgentDefaults(agentName);
       if (!defs) {
-        ctx.ui.notify(
-          `Agent "${agentName}" not found in ~/.pi/agent/agents/ or .pi/agents/`,
-          "error",
+        // Prose tolerance: users write "/subagent use the worker to …". If the
+        // first word isn't a known agent, use the first known agent name in the
+        // phrase and treat the words after it as the task.
+        const idx = words.findIndex((w, i) => i > 0 && loadAgentDefaults(w));
+        if (idx !== -1) {
+          agentName = words[idx];
+          task = words.slice(idx + 1).join(" ");
+          defs = loadAgentDefaults(agentName);
+        }
+      }
+
+      if (!defs) {
+        // No agent named anywhere — let the session model route by task
+        // content (it can inspect agents via subagents_list). Same one-turn
+        // cost as the named path; no keyword heuristics to maintain.
+        pi.sendUserMessage(
+          `Spawn a subagent for this task: ${JSON.stringify(trimmed)} — first call ` +
+            `subagents_list, pick the most suitable agent for the task, then call ` +
+            `subagent with that agent and the task. Do not do the work yourself.`,
         );
         return;
       }

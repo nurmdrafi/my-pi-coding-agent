@@ -150,7 +150,7 @@ Owned first-party code at `extensions/subagents/` (`subagent` / `subagent_messag
 **Gated by default** — the spawning tools are registered inactive in top-level sessions (zero prompt tokens) until a trigger activates them:
 
 - `/subagent on` / `/subagent off` — toggle for the session
-- `/subagent <agent> <task>` — any spawn auto-enables
+- `/subagent [agent] [task]` — any spawn auto-enables; the agent name is optional (prose like `/subagent use the worker to fix X` picks the named agent; with no agent named at all, the session model routes by task via `subagents_list`)
 - `PI_SUBAGENTS=1` — start active (scripted opt-in)
 
 Subagent sessions always register active (the child's `--tools` sandbox governs). Activation appends the tool set before the next model request (one-time cached-prefix invalidation possible). Upstream updates are manual: fetch any clone, `git diff c3e8b53..<new> -- pi-extension`, apply into `extensions/subagents/`.

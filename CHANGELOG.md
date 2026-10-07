@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Subagent tools gated by default** (`extensions/subagents/index.ts`): `subagent`, `subagent_message`, `subagents_list` register with `defaultActive: false` in top-level sessions (pi's native deferred activation) — zero prompt tokens until a trigger: `/subagent on` / `/subagent off`, any `/subagent <agent> [task]` spawn (auto-enables), or `PI_SUBAGENTS=1` at process start. Subagent sessions always register active (the child's `--tools` sandbox governs). +5 unit tests: registration gating, both env variants via cache-busted re-import, and the command toggles.
 - **Integration harness spawn-tool opt-in** (`tests/subagents/integration/harness.ts`): `startPi` injects `PI_SUBAGENTS=1` so integration sessions start with the tools active — the first live rerun without it showed models echoing spawn tasks instead of calling the hidden tool (and one false pass where the parent ran the marker-file echoes itself via bash).
+- **`/subagent` auto-routing** (`extensions/subagents/index.ts`): the agent argument is optional. Prose input picks the first known agent name in the phrase (`/subagent use the worker to fix X` → `worker`); when no agent is named at all, the command activates the spawn tools and asks the session model to route by task content (`subagents_list` → `subagent`) — same one-turn cost as the named path, no keyword heuristics. Replaces the hard `Agent "…" not found` error.
 
 ### Changed
 
@@ -22,7 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Patch machinery and package indirection**: `patches/` (update.sh + both .patch files), the `git/` clone, the `settings.json` `packages` entry, and the `git/` gitignore rule — `pi update --extensions` can no longer wipe local modifications; upstream updates are a manual diff against the vendored import. Root `package.json` gains test-resolution devDeps only (`@mariozechner/pi-coding-agent`, `@mariozechner/pi-tui`, `@sinclair/typebox`).
 
-Measured: unit 153/153 PASS (148 upstream + 5 gating tests); `system-prompt-mode` 21/21; integration with real pi + zai/glm-5.3 in a 220-col detached tmux — lifecycle 7/7 (spawn+steer-back, stalled-status, parallel, fork-linked session, caller_ping, project-agent discovery, systemPrompt) and tmux-surface 7/7; tree diff vs the patched checkout shows only the intended deltas (extra-extensions patch fold, gating block, status.ts path re-anchor); fresh `pi -p` smoke loads the extension clean with no package conflicts.
+### Fixed
+
+- **`activateSpawnTools` duplicate names**: a session started with a partial `--tools` set (e.g. `pi --tools subagent`) could push duplicate names into `setActiveTools` on `/subagent on`; the merge is now deduped via `Set`.
+
+Measured: unit 155/155 PASS (148 upstream + 7 gating/command tests); `system-prompt-mode` 21/21; integration with real pi + zai/glm-5.3 in a 220-col detached tmux — lifecycle 7/7 (spawn+steer-back, stalled-status, parallel, fork-linked session, caller_ping, project-agent discovery, systemPrompt) and tmux-surface 7/7; tree diff vs the patched checkout shows only the intended deltas (extra-extensions patch fold, gating block, status.ts path re-anchor); fresh `pi -p` smoke loads the extension clean with no package conflicts.
 
 ## [1.21.0] - 10-07-2026
 
