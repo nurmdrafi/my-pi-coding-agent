@@ -140,7 +140,10 @@ const cases = [
   // ---- R10: identical re-run guard ----
   ['identical bash re-run (no edit since) is blocked', 'blocked', async (pi) => bash(pi, 'gh run list --limit 3')],
   ['bash re-run after an intervening edit passes', 'pass', async (pi) => bash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15')],
-  ['re-run differing only in pipe cap is blocked', 'blocked', async (pi) => bash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -12')],
+  ['re-run with a different pipe cap passes', 'pass', async (pi) => bash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -12')], // 2026-10-07: full-command keying — a changed filter is a legitimate re-view, not a dup
+  ['whitespace-only variation still blocked', 'blocked', async (pi) => bash(pi, 'gh  run list --limit 3')],
+  ['shared nvm preamble does not collide R10 keys', 'pass', async (pi) => bash(pi, 'source ~/.nvm/nvm.sh && nvm use 22.17.0 >/dev/null 2>&1 && pnpm run check-types 2>&1 | tail -5')],
+  ['identical compound with watcher word is exempt', 'pass', async (pi) => bash(pi, 'sleep 1; rm -f /tmp/x')],
   ['re-run of a failed command passes', 'pass', async (pi) => bash(pi, 'gh run list --limit 3')],
   ['gh run watch re-run passes', 'pass', async (pi) => bash(pi, 'gh run watch 123 --exit-status')],
   ['bash re-run after compaction passes', 'pass', async (pi) => bash(pi, 'gh run list --limit 3')],
@@ -233,12 +236,22 @@ const cases = [
   ['anchor not found is blocked', 'blocked', async (pi) => edit(pi, fileA, [{ oldText: 'zzz', newText: 'y' }])],
   ['non-unique anchor is blocked with line numbers', 'blocked', async (pi) => edit(pi, fileB, [{ oldText: 'x', newText: 'y' }])],
   ['intra-call overlapping anchors are blocked', 'blocked', async (pi) => edit(pi, fileA, [{ oldText: 'a\nb', newText: 'q' }, { oldText: 'b\nc', newText: 'r' }])],
-  // ---- R2 cat/sed viewing ----
+  // ---- R2 cat/head/tail/sed viewing ----
   ['standalone cat viewing is blocked', 'blocked', async (pi) => bash(pi, 'cat package.json')],
+  ['standalone head viewing is blocked', 'blocked', async (pi) => bash(pi, 'head -40 config.json.example')],
+  ['standalone tail viewing is blocked', 'blocked', async (pi) => bash(pi, 'tail -20 CHANGELOG.md')],
+  ['tail -f watcher is not viewing', 'pass', async (pi) => bash(pi, 'tail -f /tmp/server.log')],
   ['sed -n batching 2+ regions passes', 'pass', async (pi) => bash(pi, "sed -n '1p;5p' notes.md")],
+  ['sed s///p substitution-print passes', 'pass', async (pi) => bash(pi, 'sed -n "s/^export const APP_VERSION = \'\\(.*\\)\'$/\\1/p" src/version.js')],
+  ['loop-body sed viewing is not split out', 'pass', async (pi) => bash(pi, 'for s in research domain; do echo "== $s"; sed -n \'1,6p\' "$s.md"; done')],
+  ['R2 reason carries the R1-cascade hint', 'blocked', async (pi) => {
+    const r = await bash(pi, 'cat package.json');
+    return r.blocked && r.reason.includes('already in context') ? r : { blocked: false };
+  }],
   // ---- R5 git log caps ----
   ['uncapped git log is blocked', 'blocked', async (pi) => bash(pi, 'git log')],
   ['git log --oneline -n passes', 'pass', async (pi) => bash(pi, 'git log --oneline -n 5')],
+  ['git log -<N> short count passes', 'pass', async (pi) => bash(pi, 'git log -1 --format=%ci')],
   // ---- R6 rg -o caps ----
   ['uncapped rg -o is blocked', 'blocked', async (pi) => bash(pi, "rg -o 'pattern' src/")],
   ['capped rg -o passes', 'pass', async (pi) => bash(pi, "rg -o 'pattern' src/ | head -20")],
@@ -254,6 +267,7 @@ const cases = [
   // ---- runner caps ----
   ['uncapped npm test is blocked', 'blocked', async (pi) => bash(pi, 'npm test')],
   ['capped npm test passes', 'pass', async (pi) => bash(pi, 'npm test 2>&1 | tail -5')],
+  ['stdout redirect to a file caps runner output', 'pass', async (pi) => bash(pi, 'npx tsc --noEmit > /tmp/tsc.out 2>&1; echo "TSC=$?"')],
 ];
 
 // ---- runner: each case replays its preamble on a fresh gate, then the probe ----
@@ -305,7 +319,10 @@ const preambles = {
     if (r.blocked) throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
     return pi;
   },
-  're-run differing only in pipe cap is blocked': async () => { const pi = freshGate(); await runBash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15'); return pi; },
+  're-run with a different pipe cap passes': async () => { const pi = freshGate(); await runBash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15'); return pi; },
+  'whitespace-only variation still blocked': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3'); return pi; },
+  'shared nvm preamble does not collide R10 keys': async () => { const pi = freshGate(); await runBash(pi, 'source ~/.nvm/nvm.sh && nvm use 22.17.0 >/dev/null 2>&1 && pnpm vitest run x.test.ts 2>&1 | tail -8'); return pi; },
+  'identical compound with watcher word is exempt': async () => { const pi = freshGate(); await runBash(pi, 'sleep 1; rm -f /tmp/x'); return pi; },
   're-run of a failed command passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3', { error: true }); return pi; },
   'gh run watch re-run passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run watch 123 --exit-status'); return pi; },
   'bash re-run after compaction passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3'); await compact(pi); return pi; },

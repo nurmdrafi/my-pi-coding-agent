@@ -11,10 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Post-Block Impact Analysis** (`audit-reports/harness/2026-10-07T110500Z-block-impact-permission-gate.md`, Feedbacks.md taxonomy v1; classifier in `tmp/block-impact/`): every gate block in watermark-scoped sessions joined to its next tool call, labeled per taxonomy (compliant / cosmetic / semantic-evasion / fragmentation / loop / abandonment), scored on 4 axes. R6/R7/R9 healthy; **R10 withdraw-or-narrow** (compliance 0.06, mean −1.83 — base-key prefix collisions: shared `nvm use`/`KEY=` preambles, heredoc `cat` base, `node --test` re-filters; escapes are token-level; 2 correctness hits from tails of never-created files); R2 needs narrowing (`sed -n "s/…/p"` extraction false-positive, free `head`/`awk` evasion lane, er 0.24); runner caps mis-flag `> file` redirects; R5 misses `git log -<N>` short form; Anchor Guard / R1 kept (loss-rate artifacts documented in-report). Ranked actions in report §5 — implement on request. Measured: 139 blocks classified (0 unknown), 20 pre-watermark excluded as stale-gate; 42 sessions >30 d pruned (339→297 files); watermark advanced to `2026-10-07T10:50:40Z`.
+
+### Added
+
 - **Strict typecheck pipeline**: `tsconfig.json` (strict, `noEmit`, covers `extensions/` + `tests/`), `npm run typecheck`, and `scripts/link-pi.mjs` — symlinks the global `@earendil-works/pi-coding-agent` + nested `pi-tui` into the gitignored `node_modules` (validating link resolvability, not bare existence), so extensions compile-check against the exact host pi version and API drift after a global pi update surfaces as compile errors.
 
 ### Changed
 
+- **Gate narrowed per the 2026-10-07 block-impact audit** (`extensions/permission-gate.ts`, report `audit-reports/harness/2026-10-07T110500Z-block-impact-permission-gate.md`, research: Claude Code PreToolUse deny+reason pattern, Hermes-agent #18076 identical-args dedup):
+  - **R10 rekeyed to full-command identity** (fd-merges `2>&1` stripped, whitespace collapsed; `firstUnquotedPipeOrRedirect` deleted). The pipe-truncated base collided every command sharing a preamble — `source nvm.sh && nvm use X` keyed four different test runs, `KEY=$(…)` keyed different curl targets, `cat > f <<EOF` truncated to base `cat` — compliance 0.06, mean net −1.83, and the only escape was token-level mutation. A different downstream filter is now a legitimate re-view, not a dup.
+  - **R2 narrowed + widened**: `sed -n "s/…/…/p"` substitution-print exempt (extraction, prints matches only — false-fired 5 blocks in one dropx-admin session); `do … done` bodies no longer split (the suggested fix, read, cannot loop); standalone `head`/`tail` viewers joined the block set with `tail -f` exempt (evasion was cheaper than compliance: er 0.24 via `head -40 file`/`awk NR`); reason now warns that a re-read of in-context lines hits R1 (cascade fix).
+  - **`isCapped` counts stdout redirects to files** (`> /tmp/x`, incl. `/dev/null`; `2> err` alone does not) — `npx tsc --noEmit > /tmp/tsc.out 2>&1` was false-flagged though the bytes never land in context.
+  - **R5 accepts `git log -<N>`** short form (lookbehind-guarded) — `git log -1 --format=%ci` false-fired. Measured: `node tests/permission-gate.test.mjs` 63/63 PASS (was 54; +9 fixtures: nvm-preamble non-collision, whitespace-variation still blocked, watcher-word exemption, head/tail viewing blocked, `tail -f` exempt, s///p pass, loop-body pass, redirect-caps-runner, `git log -1`); `tsc -p tsconfig.json` clean; `tests/block-recovery-audit.mjs` 98% one-shot recovery (gate ≥ 85%).
 - **pi imports migrated to the `@earendil-works` scope** (`extensions/subagents/*`, `tests/subagents/*`): all `@mariozechner/*@0.65` imports replaced — subagents code had been executing pre-1.0 modules inside the 1.0.4 host (1.x API like `defaultActive` silently no-oped). Root devDeps: `typescript` + `@types/node` in, stale `@mariozechner/*` out.
 
 ### Fixed

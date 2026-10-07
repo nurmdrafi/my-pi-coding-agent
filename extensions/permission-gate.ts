@@ -30,6 +30,13 @@
  * split made quote-aware — a quoted '|' no longer truncates it (false
  * positive); skill re-read item closed by R1 coverage, fixture-tested;
  * tests/block-recovery-audit.mjs gates one-shot recovery ≥ 85%).
+ * 2026-10-07 block-impact audit (139 blocks, Feedbacks.md taxonomy, report
+ * audit-reports/harness/2026-10-07T110500Z): R10 rekeyed to full-command
+ * identity (prefix collisions were the top harmful pattern), R2 narrowed
+ * (sed s///p substitution-print exempt, do…done loop bodies unsplittable)
+ * and widened to head/tail viewers (free-evasion lane closed), isCapped
+ * counts stdout redirects to files, R5 accepts git log -<N>, R2 reason now
+ * warns about the R1 re-read cascade.
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
@@ -46,30 +53,15 @@ interface EditEntry {
 
 // ---- shared ----
 
-/** true if cmd segment ends in a pipe to a capping/filtered consumer */
-function isCapped(seg: string): boolean {
-	return /\|\s*(head|tail|rg|grep|cut|jq|sort|uniq|wc)\b/.test(seg);
-}
-
 /**
- * first unquoted pipe/redirect — a '|' inside a quoted regex must not split
- * the R10 base (2026-10-06: quote-blind split false-positive-blocked two
- * different rg commands whose patterns both contained '|'); unquoted backslash
- * escapes honored (2026-10-07: 'foo\\|bar' truncated bases the same way).
- * Heredoc bodies count as unquoted — stable across runs, so R10-safe.
+ * true if the segment's stdout cannot flood context: a pipe to a capping/
+ * filtered consumer, or a stdout redirect to a file — incl. /dev/null; the
+ * bytes never land in context at all (2026-10-07 block-impact audit:
+ * `npx tsc --noEmit > /tmp/tsc.out 2>&1` was false-flagged as uncapped).
+ * `2> err` alone does NOT cap stdout, so it stays uncapped.
  */
-function firstUnquotedPipeOrRedirect(cmd: string): number {
-	let quote: string | undefined;
-	for (let i = 0; i < cmd.length; i++) {
-		const ch = cmd[i];
-		if (quote) {
-			if (ch === "\\") i++;
-			else if (ch === quote) quote = undefined;
-		} else if (ch === "\\") i++; // unquoted \| \> are literals, not separators
-		else if (ch === "'" || ch === '"') quote = ch;
-		else if (ch === "|" || ch === ">") return i;
-	}
-	return -1;
+function isCapped(seg: string): boolean {
+	return /\|\s*(head|tail|rg|grep|cut|jq|sort|uniq|wc)\b/.test(seg) || /(^|\s)1?>+\s*\S/.test(seg);
 }
 
 /**
@@ -83,6 +75,7 @@ function splitSegments(cmd: string): string[] {
 	const out: string[] = [];
 	let cur = "";
 	let quote: string | undefined;
+	let loopDepth = 0;
 	for (let i = 0; i < cmd.length; i++) {
 		const ch = cmd[i];
 		if (quote) {
@@ -105,8 +98,26 @@ function splitSegments(cmd: string): string[] {
 			cur += ch;
 			continue;
 		}
+		// `do … done` bodies stay one segment (2026-10-07 block-impact audit: a
+		// loop-body `sed -n '1,6p'` was split out standalone and blocked — but the
+		// suggested fix, the read tool, cannot loop). Word boundaries keep
+		// `docker`/`document` out; heredoc bodies count as unquoted (known
+		// limitation — an unbalanced `do` errs toward fewer splits, never more).
+		const wordStart = i === 0 || /[\s;&]/.test(cmd[i - 1]);
+		if (wordStart && /^do\b/.test(cmd.slice(i))) {
+			loopDepth++;
+			cur += "do";
+			i++;
+			continue;
+		}
+		if (wordStart && /^done\b/.test(cmd.slice(i))) {
+			loopDepth = Math.max(0, loopDepth - 1);
+			cur += "done";
+			i += 3;
+			continue;
+		}
 		const two = cmd.slice(i, i + 2);
-		if (ch === "\n" || ch === ";" || two === "&&" || two === "||") {
+		if (loopDepth === 0 && (ch === "\n" || ch === ";" || two === "&&" || two === "||")) {
 			out.push(cur);
 			cur = "";
 			if (two === "&&" || two === "||") i++;
@@ -393,7 +404,7 @@ const RERUN_WINDOW_MS = 10 * 60_000;
 const MEMORY_THRESHOLD = 5; // all-time blocks before a lesson enters the prompt
 const FAMILY_LESSONS: Record<string, string> = {
 	"Token Economy (Reading)":
-		"File viewing: the read tool (offset/limit) — never start a bash segment with cat or sed -n (sed -n only when batching 2+ regions).",
+		"File viewing: the read tool (offset/limit) — never start a bash segment with cat, head, tail or sed -n (sed -n only when batching 2+ regions).",
 	"Token Economy (Re-run)":
 		"Never re-run a command unchanged within 10 min without an edit/write since — its output is already in context.",
 	"Token Economy (Extraction)": "Every 'rg -o' is piped through '| head -N' or '| cut -c1-200'.",
@@ -560,14 +571,35 @@ export default function (pi: ExtensionAPI) {
 		const segs = splitSegments(cmd);
 
 		for (const seg of segs) {
-			// R2: cat/head/tail/sed for file viewing (no pipe consumer); sed -n allowed when batching 2+ regions
+			// R2: cat/head/tail/sed for file viewing (no pipe consumer); sed -n allowed
+			// when batching 2+ regions or substituting — `s/…/…/p` prints matches only,
+			// not regions (2026-10-07 audit: the s///p extraction shape false-fired 5
+			// blocks in one dropx-admin session); head/tail joined the viewer set the
+			// same audit — leaving them out made evasion cheaper than compliance
+			// (evasion rate 0.24). tail -f is a watcher, not viewing.
 			const sedBatch =
 				/^sed -n\b/.test(seg) &&
 				(/;\s*[^\s;]+p\b/.test(seg) || (seg.match(/(?:^|\s)-e\b/g) ?? []).length >= 2);
-			if (/^(cat|sed -n)\b/.test(seg) && !sedBatch && !seg.includes("|") && !seg.includes(">>") && !seg.includes(">")) {
+			const sedSubstPrint =
+				/^sed -n\b/.test(seg) &&
+				/(?:^|\s|['"])s([|#/@])[\s\S]*\1[\s\S]*\1[a-zA-Z]*p[a-zA-Z]*(?=['"\s]|$)/.test(seg);
+			if (
+				/^(cat|head|tail|sed -n)\b/.test(seg) &&
+				!/(^|\s)tail\s+-[a-zA-Z]*[fF]/.test(seg) &&
+				!sedBatch &&
+				!sedSubstPrint &&
+				!seg.includes("|") &&
+				!seg.includes(">>") &&
+				!seg.includes(">")
+			) {
+				const extra = /^sed -n\b/.test(seg)
+					? " sed -n only when batching 2+ regions."
+					: /^cat\b/.test(seg)
+						? " cat only inside a pipeline."
+						: "";
 				return blockCall(
-					`Token Economy (Reading): use 'read' (offset/limit), not bash '${seg.split(" ")[0]}'. ` +
-					`sed -n only when batching 2+ regions; cat only inside a pipeline.`,
+					`Token Economy (Reading): use 'read' (offset/limit), not bash '${seg.split(" ")[0]}'.${extra} ` +
+					`If the region is already in context, act on it — a re-read will be blocked.`,
 				);
 			}
 
@@ -582,7 +614,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// R5-ish: git log must be capped
-			if (/^git log\b/.test(seg) && !/--oneline/.test(seg) && !/-n\s?\d+|--max-count=\d+/.test(seg) && !isCapped(seg)) {
+			if (/^git log\b/.test(seg) && !/--oneline/.test(seg) && !/-n\s?\d+|--max-count=\d+|(?<![\w-])-\d+\b/.test(seg) && !isCapped(seg)) {
 				return blockCall(`Token Economy (git reads): 'git log' must be 'git log --oneline | head' or '-n <N>'.`);
 			}
 
@@ -628,14 +660,18 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 
-		// R10 (2026-10-06 audit): identical re-run guard — the same base command
-		// (command up to the first pipe/redirect, 2>&1 stripped) re-run with no
-		// intervening edit/write re-sends output already in context (gh run list
-		// double-polls 31 s apart, identical vitest re-runs). Watchers and retries
-		// of failed runs are exempt; the run is recorded on tool_result.
-		const stripped = cmd.replace(/\b\d>&\d\b\s?/g, " "); // \b: '2>&1' at command start strips too
-		const cut = firstUnquotedPipeOrRedirect(stripped);
-		const base = (cut === -1 ? stripped : stripped.slice(0, cut)).trim();
+		// R10 (2026-10-06 audit; rekeyed 2026-10-07): identical re-run guard — the
+		// SAME command (fd-merges like 2>&1 stripped, whitespace collapsed) re-run
+		// with no intervening edit/write re-sends output already in context (gh run
+		// list double-polls 31 s apart, identical vitest re-runs). Keyed on the full
+		// command, not a pipe-truncated base — base keys collided every command
+		// sharing a preamble (`nvm use` keyed four different test runs, `KEY=$(…)`
+		// keyed different curls, heredoc `cat > f` truncated to base `cat`) and
+		// taught token-level escapes (block-impact audit: compliance 0.06, mean net
+		// −1.83; Hermes-agent #18076 converges on identical name+args keying).
+		// Watchers and retries of failed runs are exempt; the run is recorded on
+		// tool_result.
+		const base = cmd.replace(/\b\d>&\d\b\s?/g, " ").replace(/\s+/g, " ").trim(); // \b: '2>&1' at command start strips too
 		const watcher = /(^|\s)(watch|sleep)\b/.test(base) || /(^|\s)tail\s+(-[a-zA-Z]*[fF])/.test(base) || /--watch\b/.test(base);
 		const prior = lastBashRun.get(base);
 		if (prior && !prior.failed && !watcher && prior.mut === mutationSeq && Date.now() - prior.ts < RERUN_WINDOW_MS) {
