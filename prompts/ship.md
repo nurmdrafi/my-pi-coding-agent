@@ -2,24 +2,14 @@
 description: Ship session work — scoped review (code files only), concise conventional commit, push
 ---
 
-Ship this session's work. Commit message concise, never bloated. The commit+push output costs ≤500 tokens.
+Ship this session's work. Commit+push output ≤500 tokens.
 
-**Context first — no re-reads.** The session already contains every edit and command result. Do not run `git diff`, `git status`, or `git log` to reconstruct changes. The only allowed re-read: `git status --porcelain` (paths only, no content) if genuinely uncertain which paths changed after compaction or a very long session.
+**No re-reads.** Session context has every change — no `git diff`/`git status`/`git log` to reconstruct it (only exception: `git status --porcelain`, paths only, if compaction left path uncertainty). Never pre-read `.husky/`, `commitlint.config.*`, or `lint-staged` blocks — hooks run on their own; adapt only if one rejects.
 
-**Review gate — code files only.** pre-push-review is disabled by default; this command is the only thing that enables it. If this session touched code files (functionality or business logic: source, scripts, tests, workflows), run pre-push-review scoped to exactly those files and fix what it flags. Docs (`.md`), assets, and data files carry no logic — never review them. Docs-only session → skip the gate entirely.
+**Review gate — code files only.** Docs/assets/data → skip. The gate is the `pre-push-review` checklist: hidden from auto-invocation, never in your skills list, not a repo artifact — never hunt for it in the repo. Body already in context → use it; else read `~/.pi/agent/skills/pre-push-review/SKILL.md` once. Apply to the touched code files; fix what it flags.
 
-**Commit message — Conventional Commits, compressed.**
+**Message.** `type(scope): imperative summary` — ≤50 chars preferred, 72 hard cap, no trailing period. Types: feat fix refactor perf docs test chore build ci style revert. Body only for non-obvious why, breaking (`!` + `BREAKING CHANGE:` footer), migrations, security fixes, reverts, `Closes #N` — bullets `-`, wrap 72. Never: "This commit…", I/we, AI attribution, emoji, restating the scope.
 
-- Subject: `type(scope): imperative summary` — ≤50 chars preferred, hard cap 72, no trailing period. Types: `feat` `fix` `refactor` `perf` `docs` `test` `chore` `build` `ci` `style` `revert`.
-- Body only when the subject cannot carry it: non-obvious why, breaking changes (`!` plus `BREAKING CHANGE` footer), data migrations, `Closes #N`. Bullets `-`, wrap at 72.
-- Never: "This commit…", "I/we", AI attribution, emoji, restating what the scope already says.
-- Always include a body for: breaking changes, security fixes, data migrations, reverts.
+**Execute** — this invocation approves commit+push, do not re-ask: `git add <exact touched paths>` (`-A` only for sweeping changes) → `git commit -m "<subject>"` (+ `-m "<body>"` if needed; hook rejects → fix, re-commit once) → `git push` → report one line: `<short-sha> <subject> → pushed to <branch>`.
 
-**Execute.** This invocation is the commit+push approval — do not re-ask.
-
-1. `git add <exact touched paths>` — `-A` only for sweeping session-wide changes
-2. `git commit -m "<subject>"` — add `-m "<body>"` only if needed; hook rejects → fix header, re-commit once
-3. `git push`
-4. Report one line: `<short-sha> <subject> → pushed to <branch>`
-
-**Never:** amend, rebase, force-push, or commit secrets (`auth.json` stays out). If asked for the message only, output it as a code block and stop.
+**Never:** amend, rebase, force-push, commit secrets (`auth.json` stays out). Message-only request → code block, stop.
