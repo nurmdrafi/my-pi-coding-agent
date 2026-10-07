@@ -521,6 +521,8 @@ export default function (pi: ExtensionAPI) {
 		if (isToolCallEventType("read", event)) {
 			const display = String(event.input.path ?? "");
 			const path = normPath(display);
+			// clamp the path contribution so the reason stays inside the 220c diet cap for any path length or kind
+			const shown = display.length > 57 ? `…${display.slice(-56)}` : display;
 			const start = Math.max(1, typeof event.input.offset === "number" ? event.input.offset : 1);
 			const win: LineSpan = {
 				start,
@@ -536,7 +538,7 @@ export default function (pi: ExtensionAPI) {
 					const lo = prior.spans[0].start;
 					const hi = prior.spans[prior.spans.length - 1].end;
 					return blockCall(
-						`Token Economy (Re-read): ${lo === hi ? `line ${lo}` : `lines ${lo}–${hi === Infinity ? "EOF" : hi}`} of '${display}' are already in context ` +
+						`Token Economy (Re-read): ${lo === hi ? `line ${lo}` : `lines ${lo}–${hi === Infinity ? "EOF" : hi}`} of '${shown}' are already in context ` +
 						`(${prior.kind}, file unchanged). Read a different window (offset/limit) or act on what is there.`,
 					);
 				}

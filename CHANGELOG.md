@@ -7,6 +7,25 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 10-07-2026
+
+### Added
+
+- **Strict typecheck pipeline**: `tsconfig.json` (strict, `noEmit`, covers `extensions/` + `tests/`), `npm run typecheck`, and `scripts/link-pi.mjs` — symlinks the global `@earendil-works/pi-coding-agent` + nested `pi-tui` into the gitignored `node_modules` (validating link resolvability, not bare existence), so extensions compile-check against the exact host pi version and API drift after a global pi update surfaces as compile errors.
+
+### Changed
+
+- **pi imports migrated to the `@earendil-works` scope** (`extensions/subagents/*`, `tests/subagents/*`): all `@mariozechner/*@0.65` imports replaced — subagents code had been executing pre-1.0 modules inside the 1.0.4 host (1.x API like `defaultActive` silently no-oped). Root devDeps: `typescript` + `@types/node` in, stale `@mariozechner/*` out.
+
+### Fixed
+
+- **15 strict-mode type errors** in `extensions/subagents/`: `launchSubagent` name-required guard and `getSessionFile(): string | undefined` (ExtensionToolContext match), `ImageContent | TextContent` discriminant checks on `.text`, required `invalidate()` on the three message renderers, narrowed `activityFile` copy for the hoisted `flushNow` closure.
+- **Gate re-read block reasons could exceed the 220c diet cap** on long paths (`extensions/permission-gate.ts`) — displayed path clamped to `…` + last 58 chars, worst-case reason ≈218c for any path length.
+- **Test-suite env leakage** (`tests/subagents/test-env.ts`, imported first by `test.ts`): strips `PI_SUBAGENT_NAME`/`_AGENT`/`PI_SUBAGENTS`/`_ALLOWED` before the extension module evaluates — module-scope gating reads had flipped tool activation, discovery, and error paths when the suite ran inside a spawned subagent.
+- **`tests/permission-gate.test.mjs` symlink preflight** checked bare `existsSync` — a leftover empty `node_modules/@earendil-works/` dir skipped link creation and crashed the module import; now validates `package.json` resolvability and clears the stale dir.
+
+Measured: `npm run typecheck` exit 0; unit 156/156 (clean env) and 155/155 under a simulated `PI_SUBAGENT_*` env; `system-prompt-mode` 21/21.
+
 ## [1.22.0] - 10-07-2026
 
 ### Added

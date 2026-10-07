@@ -295,6 +295,7 @@ export function createSubagentActivityRecorder(params: {
   const runningChildId = params.runningChildId?.trim();
   const activityFile = params.activityFile?.trim();
   if (!runningChildId || !activityFile) return createNoopRecorder();
+  const activityFilePath = activityFile; // narrowed copy — hoisted closures below can't see the guard's narrowing
 
   const now = params.now ?? (() => Date.now());
   const createdAt = now();
@@ -331,7 +332,7 @@ export function createSubagentActivityRecorder(params: {
   function flushNow(): void {
     if (disabled) return;
     try {
-      writeSubagentActivityFile(activityFile, activity);
+      writeSubagentActivityFile(activityFilePath, activity);
       lastFlushAt = now();
       failureCount = 0;
     } catch {

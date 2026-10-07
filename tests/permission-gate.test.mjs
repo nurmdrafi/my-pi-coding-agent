@@ -14,7 +14,7 @@
  *
  * Run: node tests/permission-gate.test.mjs   (exit 0 = all pass)
  */
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +22,8 @@ import { tmpdir } from 'node:os';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pkgLink = join(ROOT, 'node_modules', '@earendil-works', 'pi-coding-agent');
-if (!existsSync(pkgLink)) {
+if (!existsSync(join(pkgLink, 'package.json'))) {
+  rmSync(pkgLink, { recursive: true, force: true }); // stale empty dir / broken link must not pass
   const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
   mkdirSync(dirname(pkgLink), { recursive: true });
   symlinkSync(join(globalRoot, '@earendil-works', 'pi-coding-agent'), pkgLink, 'dir');
