@@ -15,7 +15,7 @@ Check the project's `package.json`, bundler aliases, and existing map components
 - Legacy: `react-map-gl` + `maplibre-gl` / `mapbox-gl` (some pin `mapbox-gl@1.13.3` or alias `mapbox-gl → maplibre-gl` in bundler config). Same react-map-gl API surface.
 - `@deck.gl/*` (overlays), `@turf/turf` (geometry), `@mapbox/mapbox-gl-draw` (editing), `mqtt` / `socket.io-client` (real-time), `geo-polyline-tools` (route polyline utils).
 
-Sibling dashboards (optimus/dropx/dhaka/jti/laboni/akg/cnl/harmony…) are forks of one template — before writing new map code, grep the nearest sibling for the existing idiom.
+Sibling dashboards are forks of one shared template — before writing new map code, grep the nearest sibling for the existing idiom.
 
 Do not let `mapbox-gl` drift to v3 via transitive deps — v3 demands a Mapbox token and breaks custom/self-hosted styles.
 
@@ -58,7 +58,7 @@ const DeckGLOverlay = (props: MapboxOverlayProps) => {
 - Paths: `PathLayer` with `PathStyleExtension({ dashed })`. Markers: `IconLayer` / `ScatterplotLayer`.
 - Performance rules: never `setState` inside `onHover`/view-state callbacks — they fire per frame and rerender the tree; throttle them (the dashboards use `useThrottle(popupData, 250)`). Recreating layer instances each render is fine (deck diffs props), but appending live data must not rebuild the whole buffer — append into a stable structure or emit one layer per chunk.
 - Existing layers to reuse before writing new ones (marker/trace/boundary layers) — search the repo for its layer components first.
-- Barikoi dashboards share one template: `components/Map/DeckGLMap.jsx` (Map shell, `MAP.STYLES[0]`, throttled tooltip) + `OverLayers.jsx` (the DeckGLOverlay above — `useControl` imported from `react-bkoi-gl`) + `Map/Layers/` composite layer classes (`TraceLayer`, `RouteLayer`…), all fed from a Redux slice. Before writing a new one, diff against a sibling dashboard (optimus/dropx/dhaka/jti/laboni) — they are forks of the same shape.
+- The dashboards share one template: `components/Map/DeckGLMap.jsx` (Map shell, `MAP.STYLES[0]`, throttled tooltip) + `OverLayers.jsx` (the DeckGLOverlay above — `useControl` imported from `react-bkoi-gl`) + `Map/Layers/` composite layer classes (`TraceLayer`, `RouteLayer`…), all fed from a Redux slice. Before writing a new one, diff against a sibling dashboard — they are forks of the same shape.
 
 ## 5. Known map bugs / pitfalls (fixed before — keep the guards)
 
@@ -83,7 +83,7 @@ const DeckGLOverlay = (props: MapboxOverlayProps) => {
 9. **react-bkoi-gl exports React components, not constructors** — `new Map(...)` / `new Marker(...)` imported from `react-bkoi-gl` throw "not a constructor": every export named like an engine class (`Map`, `Marker`, `Popup`, `NavigationControl`, `FullscreenControl`) is a `React.FC`; only types + a few utils (`getVersion`, `setWorkerUrl`, `LngLat`, …) are re-exported. Imperative code (legacy class components, hand-built maps) must import the vanilla `bkoi-gl` package instead — switching a component between the two styles is a rewrite, not an import swap. Also: `MapRef` proxies engine methods but SKIPS `addSource/addLayer/removeSource/removeLayer/setFilter/setStyle…` — go through `mapRef.current.getMap()` for source/layer mutation.
 10. **DrawControl is callback-only (no instance)** — react-bkoi-gl vendors `maplibre-gl-draw` INLINE in its dist (not a dependency, not exported, no ref forwarding), so `draw.add/deleteAll/getAll/changeMode` are unreachable through it. Two valid architectures:
     - **(a) imperative**: keep `@mapbox/mapbox-gl-draw` and get the raw instance with `useControl(() => new MapboxDraw(...))` (the hook IS exported and returns the control). Required for §5.5 vertex-editing of preloaded geometry.
-    - **(b) pure wrapper**: `<DrawControl onDrawCreate/onDrawUpdate/onDrawDelete>` (events deliver `e.features` — build the FeatureCollection yourself, matching the old `draw.getAll()` shape), clear by re-keying/remounting the control, preload existing geometry as a read-only `<Source>/<Layer>` preview the user redraws over. Costs vertex-editing of existing shapes — accepted in dropx-admin (barikoi/react-bkoi-gl#2, closed "not planned" with this workaround). Make that regression explicit to the user; it is invisible in code review.
+    - **(b) pure wrapper**: `<DrawControl onDrawCreate/onDrawUpdate/onDrawDelete>` (events deliver `e.features` — build the FeatureCollection yourself, matching the old `draw.getAll()` shape), clear by re-keying/remounting the control, preload existing geometry as a read-only `<Source>/<Layer>` preview the user redraws over. Costs vertex-editing of existing shapes — upstream closed that support as "not planned"; this wrapper pattern is the accepted answer. Make that regression explicit to the user; it is invisible in code review.
 11. **Draw toolbar CSS class mismatch** — `@mapbox/mapbox-gl-draw` renders `mapboxgl-ctrl-*` DOM and its own CSS contains ZERO base-control rules; `react-bkoi-gl/styles` covers `maplibregl-ctrl-*` plus `.mapbox-gl-draw_*` buttons only. The old CDN `bkoi-gl.css` shipped `mapboxgl-*` aliases — so removing the CDN stylesheet blanks the @mapbox draw toolbar (invisible buttons → "cannot draw"). Fix: compat CSS for `.mapboxgl-ctrl-group`, or move to the wrapper's DrawControl (its vendored buttons are styled).
 12. **turf rejects degenerate rings** — `centerOfMass`/`polygon()` throw `Each LinearRing of a Polygon must have 4 or more Positions` on real DB geometries; one bad zone crashes a whole selection flow. Validate rings (≥4 positions) before turf and return undefined instead of throwing; never hand-turf a pseudo-geometry built by flatMapping rings where polygons belong — it works only until one ring is degenerate.
 
@@ -129,7 +129,7 @@ Browser-visible credentials are public by definition: the style key rides in the
 
 ## 11. CI for the dashboard family (solved once — keep the pattern)
 
-The shared Production/Staging/Review workflow family across the dashboards was hardened once (dropx-admin #26); do not reintroduce the fixed patterns:
+The shared Production/Staging/Review workflow family across the dashboards was hardened once; do not reintroduce the fixed patterns:
 
 - Secrets reach steps via `with:` only, never workflow-level `env:` — workflow-level env exposes them to every step, including third-party webhook/release actions.
 - Third-party actions and reusable workflows are pinned to full commit SHAs (tag as comment), not mutable tags.

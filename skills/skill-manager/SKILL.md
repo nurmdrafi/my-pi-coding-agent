@@ -34,8 +34,7 @@ Best-practice source: [SKILL.md best practices](https://www.mdskills.ai/docs/ski
 ```
 
 - Nothing loose in the root besides `SKILL.md` — executable or doc files in the
-  root are the standard way skills rot (this harness was restructured 09-2026
-  after exactly that). Bin+src splits (`bin/`, `src/`) also go under `scripts/`.
+  root are the standard way skills rot. Bin+src splits (`bin/`, `src/`) also go under `scripts/`.
 - `package.json` + `node_modules/` are tolerated for skills with declared deps
   (e.g. `browser-tools`); document the `npm install` step in the skill body.
 - Keep `scripts/` flat unless a module needs its own subdirectory; scripts are
@@ -108,6 +107,9 @@ the agent know exactly when to pick this one?
 - Dated/time-sensitive instructions ("before August 2025 use the old API", postmortem dates,
   session war-story attributions) — they go stale silently; state current behavior, push legacy
   detail into a reference file.
+- Session-distilled lessons carrying app residue: issue numbers, repo variable/function names
+  (`our consignmentsData`), app-specific error chains — strip to the generalizable rule; if an
+  example is needed, make it library-level (rc-select event order), never app-level.
 - Windows backslash paths — always forward slashes.
 - Vague skill names (`helper`, `utils`, `tools`, `documents`) — the name is a routing signal;
   prefer gerund or action names (`processing-pdfs`, `process-pdfs`), and keep the naming
@@ -146,6 +148,6 @@ the agent know exactly when to pick this one?
 - [ ] Body <500 lines; long material split to `references/`
 - [ ] Layout: executables in `scripts/`, docs in `references/`, static data in `assets/` — nothing loose in the root
 - [ ] Relative file references, one level deep; descriptive filenames
-- [ ] No dated/time-sensitive instructions; one default per choice, not option lists
+- [ ] No dated/time-sensitive instructions; one default per choice, not option lists; no session residue (issue numbers, repo identifiers, app-specific examples)
 - [ ] Validator exit 0 (re-run after every fix); if commands/paths changed, mdcmdcheck clean
 - [ ] After `/reload`, the skill loads (`/skill:name` responds or skillcheck.sh confirms a read)

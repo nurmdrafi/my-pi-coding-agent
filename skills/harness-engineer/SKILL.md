@@ -45,7 +45,7 @@ If `README.md` is missing, create a minimal version first.
 
 One skill covers the full loop: inspect → audit/score → diagnose → change → measure → log. Audit-only mode: **do not modify any files** (except the report, watermark advance, and the 30-day session prune) unless the user asks.
 
-0. **Watermark check** — read `~/.pi/agent/audit-reports/.watermark.json` (`auditedThrough`, ISO ts). Scope every session-derived scan strictly to session files whose ISO-prefixed filename timestamp is newer (parse it — filenames dash the time, `2026-10-05T07-52-21…`, and plain string compare mis-orders the same-hour case against the colon-format watermark); never re-audit covered sessions. No watermark yet: everything is unaudited.
+0. **Watermark check** — read `~/.pi/agent/audit-reports/.watermark.json` (`auditedThrough`, ISO ts). Scope every session-derived scan strictly to session files whose ISO-prefixed filename timestamp is newer (parse it — filenames dash the time (`YYYY-MM-DDTHH-MM-SS…`), and plain string compare mis-orders the same-hour case against the colon-format watermark); never re-audit covered sessions. No watermark yet: everything is unaudited.
 1. **Inventory** (chars/4 as token heuristic):
    - Context files: `AGENTS.md` (+ any always-loaded file) byte size → tokens.
    - Every skill: `description` field char count → tokens (extract frontmatter only, never load bodies).
@@ -54,14 +54,14 @@ One skill covers the full loop: inspect → audit/score → diagnose → change 
    awk '/^description:/{f=1;next} /^---/{f=0} f' ~/.pi/agent/skills/*/SKILL.md | wc -c
    ```
 2. **Compute permanent floor** = context tokens + Σ skill-description tokens.
-3. **Health Score** — start at 100, deduct (same rules as 2026-08-28 audit):
+3. **Health Score** — start at 100, deduct:
    - context > 800 tok: −10; skill count > 15: −10
    - any single desc > 250 tok: −10; avg desc > 100 tok: −10
    - huge body (>2,000 tok) AND long desc (>100 tok): −5 per skill (progressive-disclosure failure)
    - AGENTS.md ↔ skill rule duplication: −5 per overlap
    - vague/missing descriptions: −5 each; skills-dir pollution (node_modules, .zip, ._*): −5 each class
    - portability quick-check hits in functional files: −5 per class
-4. **Write the report** into the matching `~/.pi/agent/audit-reports/{harness,skills,sessions}/` subdir as `<date>T<time>Z-<topic>.md` (every filename carries its date; header records machine provenance — `uname -srm` + `uname -n`, this repo runs from multiple machines/OSes) — same structure as the 2026-08-28 report: executive summary, inventory table, top consumers, overlaps, score breakdown, comparison to previous report if present (delta per metric).
+4. **Write the report** into the matching `~/.pi/agent/audit-reports/{harness,skills,sessions}/` subdir as `<date>T<time>Z-<topic>.md` (every filename carries its date; header records machine provenance — `uname -srm` + `uname -n`, this repo runs from multiple machines/OSes) — structure: executive summary, inventory table, top consumers, overlaps, score breakdown, comparison to previous report if present (delta per metric).
 5. Report BEFORE → AFTER numbers; recommendations ranked by impact. Implement only on request, then log per *Workflow* step 5.
 6. **Close the audit** — advance `.watermark.json`'s `auditedThrough` to the newest session covered; prune: delete `~/.pi/agent/sessions/**/*.jsonl` not modified in 30 days, then remove emptied cwd-slug dirs.
 
@@ -89,8 +89,8 @@ Optional deep evidence (only when user asks for skill-usage or token audit):
   HOME with those skills model-visible (real harness untouched), then
   `bash scripts/ab_prefix.sh "<prompt>" <dest> [model]` runs one prompt under both
   configs and prints first-turn tokens / cache-read / cost / wall time.
-- Evidence from the 2026-09-03 L2-vs-L3 decision (glm-5.3, 10 runs, tasks T1–T5):
-  `assets/2026-09-03_l2_vs_l3_matrix.json` — only tavily-search fired (enabled
+- Evidence (L2-vs-L3 benchmark, 10 runs):
+  `assets/l2-vs-l3-matrix.json` — only tavily-search fired (enabled
   model-visible as a result); L3-as-a-set failed the ≤20% median-cost rule.
 - pi sessions: `~/.pi/agent/sessions/*/*.jsonl` — skill loads, `/skill:` invocations, correction words
 - Rank skills: auto-load vs explicit vs never fire — `uv run --script scripts/skill_usage_audit.py` (from this skill dir) counts per-skill invocations across all sessions and tiers them high/medium/low/unused

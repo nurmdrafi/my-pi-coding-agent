@@ -49,6 +49,10 @@ Read whole functions/components around each hunk, not just the hunk.
      `if (k === 'x' && !values[k]) return` makes `x: false` unsendable. For
      optional booleans use tri-state (undefined = untouched) and
      `!== undefined` checks, never `!`.
+   - Data-shape reads verified against a sibling consumer of the same
+     endpoint/hook: RTK Query `.unwrap()` returns the response *body*, so
+     `res?.data?.x` after unwrap is silently `undefined` — the sibling's
+     read of the same field settles it in one glance.
 5. **Null-unsafe member access**: API-derived values reach
    `.charAt`/`.toString`/`.map`/… without optional chaining or a null check
    — grep the touched file for member access on response fields.
@@ -83,6 +87,10 @@ Read whole functions/components around each hunk, not just the hunk.
      unpinned third-party actions/tags.
 11. **CI/env awareness**: browser/tool launches must go headless when `CI`
    is set; env-aware defaults everywhere.
+12. **Regression-test discrimination**: a test added for a fixed bug must be
+   shown to fail on the bug — restore the buggy line once, watch it go red,
+   re-apply the fix. A regression test that has never failed proves nothing
+   about detection.
 
 ## 3. Severity
 

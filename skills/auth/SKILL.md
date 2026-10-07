@@ -74,7 +74,7 @@ File map (every piece exists for a reason; do not skip one):
 - [ ] Route guard uses `getToken()` (signature-verified), not cookie presence
 - [ ] Unauthenticated on protected → `/login?callbackUrl=<path>`
 - [ ] Base query: Bearer per request, 401 ladder (retry only with real token rotation), single-flight signOut fallback
-- [ ] Session user typed from the backend profile; components read merchant fields via one accessor, not ad-hoc `session?.user?.x` chains
+- [ ] Session user typed from the backend profile; components read domain/user fields via one accessor, not ad-hoc `session?.user?.x` chains
 - [ ] Layout passes server session into `SessionProvider`
 - [ ] OTP flows: plain endpoints, no auth side effects; resend cooldown enforced
 - [ ] Social: provider token exchanged for backend token before session write

@@ -81,6 +81,9 @@ You MUST complete each phase before proceeding to the next.
    - Git diff, recent commits
    - New dependencies, config changes
    - Environmental differences
+   - Bug reports quote code at the commit they were filed against — re-read
+     current HEAD before acting; the claim may already be fixed, or that fix
+     may itself be the source of the bug you're now chasing
 
 4. **Gather Evidence in Multi-Component Systems**
 
@@ -139,6 +142,10 @@ You MUST complete each phase before proceeding to the next.
 1. **Find Working Examples**
    - Locate similar working code in same codebase
    - What works that's similar to what's broken?
+   - For wrong/null API data: read a sibling consumer of the same
+     endpoint/hook plus the endpoint definition (transformResponse?) — the
+     actual post-unwrap shape settles it in one glance; variable names like
+     `res.data` lie (`.unwrap()` already returns the body)
 
 2. **Compare Against References**
    - If implementing pattern, read reference implementation COMPLETELY
@@ -189,6 +196,9 @@ You MUST complete each phase before proceeding to the next.
    - Automated test if possible
    - One-off test script if no framework
    - MUST have before fixing
+   - Written after the fix already exists? Flip the fix back once and
+     confirm the test goes red — a regression test that has never failed
+     proves nothing about detection
 
 2. **Implement Single Fix**
    - Address the root cause identified
@@ -200,6 +210,9 @@ You MUST complete each phase before proceeding to the next.
    - Test passes now?
    - No other tests broken?
    - Issue actually resolved?
+   - Original failing command re-run end-to-end and green? Failures stack —
+     one root cause masks the next, so a green on the fixed layer alone is
+     not done
    - **Adjacent-path check** (fixes themselves are the most common source of
      regressions): enumerate every other path the touched guard/effect/state
      participates in and verify each still behaves. A guard that closes the
