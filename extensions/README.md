@@ -16,11 +16,12 @@ Edits take effect on the next session start (or via `/reload-runtime` if adopted
 
 ## Extensions
 
-> **Extensions vs packages:** pi packages (`pi install git:…`) are declared in `settings.json` → `packages` and cloned machine-local under `~/.pi/agent/git/`. Unlike extensions, their tool definitions DO add to the model-visible prefix. Currently one: `pi-interactive-subagents` (pinned commit + local detached-tmux patch — `pi update --extensions` re-clones and wipes the patch, re-apply it; see the main `README.md` "Subagents" section).
+> **Extensions vs packages:** pi packages (`pi install git:…`) are declared in `settings.json` → `packages` and cloned machine-local under `~/.pi/agent/git/`. Unlike extensions, their tool definitions DO add to the model-visible prefix. Currently none — the former `pi-interactive-subagents` package is owned in-tree as `subagents/` below (vendored at `c3e8b53` with local patches folded in; spawning tools default-inactive — see the main `README.md` "Subagents" section).
 
 | Extension | Role | Hooks |
 |---|---|---|
 | `permission-gate.ts` | Blocks rule-violating tool calls before execution, with corrective rule text | `tool_call`, `tool_result`, `session_compact` |
+| `subagents/` | Interactive tmux subagents (vendored upstream at `c3e8b53`, patches folded in; spawning tools gated by default) | tools, commands, renderers |
 
 ## `permission-gate.ts` — rule catalog
 
@@ -47,7 +48,7 @@ State (per extension instance): `coverage` (path → merged span union + last ki
 
 - **One file per extension**, `export default function (pi: ExtensionAPI)` — per [pi conventions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md); use a directory + nearby `package.json` only for multi-file implementations with deps.
 - **Naming**: kebab-case, function-descriptive. Note this harness's `permission-gate.ts` *blocks unconditionally* — upstream's same-named example *confirms* instead, so the planned commit/push confirmation gate is named `commit-gate.ts`.
-- **No npm dependencies** — Node stdlib + `@earendil-works/pi-coding-agent` only. If a dep is ever needed, the pi-native way is `pi install npm:<pkg>` (declares it in `settings.json` → `packages`, installs under `~/.pi/agent/npm`) — *not* the root `package.json`, which holds repo tooling (husky/commitlint) only.
+- **No npm dependencies in extensions** — Node stdlib + `@earendil-works/pi-coding-agent` only. If a runtime dep is ever needed, the pi-native way is `pi install npm:<pkg>` (declares it in `settings.json` → `packages`, installs under `~/.pi/agent/npm`) — *not* the root `package.json`. The root `package.json` holds repo tooling (husky/commitlint) plus test-resolution devDeps for `tests/subagents/` (`@mariozechner/pi-coding-agent`, `@mariozechner/pi-tui`, `@sinclair/typebox`) — nothing pi loads at runtime.
 - **Portability (macOS + Linux)**: paths via `os.homedir()` / `~`; no absolute user paths; no OS-only commands.
 - Machine-local, gitignored, auto-regenerated: `bin/` (pi downloads arch-correct binaries), `npm/` (pi-managed installs).
 

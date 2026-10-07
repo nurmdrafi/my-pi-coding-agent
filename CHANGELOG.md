@@ -7,6 +7,23 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 10-07-2026
+
+### Added
+
+- **Subagent tools gated by default** (`extensions/subagents/index.ts`): `subagent`, `subagent_message`, `subagents_list` register with `defaultActive: false` in top-level sessions (pi's native deferred activation) — zero prompt tokens until a trigger: `/subagent on` / `/subagent off`, any `/subagent <agent> [task]` spawn (auto-enables), or `PI_SUBAGENTS=1` at process start. Subagent sessions always register active (the child's `--tools` sandbox governs). +5 unit tests: registration gating, both env variants via cache-busted re-import, and the command toggles.
+- **Integration harness spawn-tool opt-in** (`tests/subagents/integration/harness.ts`): `startPi` injects `PI_SUBAGENTS=1` so integration sessions start with the tools active — the first live rerun without it showed models echoing spawn tasks instead of calling the hidden tool (and one false pass where the parent ran the marker-file echoes itself via bash).
+
+### Changed
+
+- **Subagents extension is now first-party** (`extensions/subagents/`, vendored from `pi-extension/` of `amosblomqvist/pi-interactive-subagents@c3e8b53`, itself a tmux-only fork of HazAT's): both former `patches/*.patch` folded into the source — detached `pi-agents` tmux session + tmux ≥3.0 compat, and permission-gate re-enabled inside sandboxed spawns (also repairs the drift where that patch was not applied live); `status.ts` config paths re-anchored to the extension dir; tests moved to `tests/subagents/` with import paths fixed and three upstream test defects repaired: the env-dependent `getToolExtensionPath` test made hermetic (failed on any machine without `~/.pi/agent/extensions/web-search/` — confirmed failing on the pristine checkout too), the fork-mode test retargeted to the real API (it instructed a `fork: true` tool param the schema never had — fork mode is agent frontmatter `session-mode: fork`, exercised via a new `test-fork` agent), and the harness now rewrites the pinned haiku child model to `PI_TEST_MODEL` plus sizes the detached test session wide, re-joins hard-wrapped tokens in `waitForScreen`, and routes over-width commands through `sendLongCommand` so markers don't wrap.
+
+### Removed
+
+- **Patch machinery and package indirection**: `patches/` (update.sh + both .patch files), the `git/` clone, the `settings.json` `packages` entry, and the `git/` gitignore rule — `pi update --extensions` can no longer wipe local modifications; upstream updates are a manual diff against the vendored import. Root `package.json` gains test-resolution devDeps only (`@mariozechner/pi-coding-agent`, `@mariozechner/pi-tui`, `@sinclair/typebox`).
+
+Measured: unit 153/153 PASS (148 upstream + 5 gating tests); `system-prompt-mode` 21/21; integration with real pi + zai/glm-5.3 in a 220-col detached tmux — lifecycle 7/7 (spawn+steer-back, stalled-status, parallel, fork-linked session, caller_ping, project-agent discovery, systemPrompt) and tmux-surface 7/7; tree diff vs the patched checkout shows only the intended deltas (extra-extensions patch fold, gating block, status.ts path re-anchor); fresh `pi -p` smoke loads the extension clean with no package conflicts.
+
 ## [1.21.0] - 10-07-2026
 
 ### Added

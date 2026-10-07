@@ -145,27 +145,23 @@ Layout is enforced by `node skills/skill-manager/scripts/validate-skill.mjs <ski
 
 ## Subagents
 
-Opt-in. The `pi-interactive-subagents` package (`subagent` / `subagent_message` / `subagents_list` + `/subagent` command, ~1K tok/session tool defs) is pinned to a commit and patched locally for agents-only tmux + tmux ≥3.0 compat (upstream's pane filtering needs ≥3.2 — the patch lists unfiltered and filters in-process; works on macOS brew and distro apt builds alike) and to re-enable the permission-gate extension inside the sandboxed subagent spawns.
+Owned first-party code at `extensions/subagents/` (`subagent` / `subagent_message` / `subagents_list` + `/subagent` command) — vendored from `amosblomqvist/pi-interactive-subagents@c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7` (itself a tmux-only fork of HazAT's) with the former `patches/*.patch` folded in: agents-only tmux + tmux ≥3.0 compat (upstream's pane filtering needs ≥3.2 — we list unfiltered and filter in-process; works on macOS brew and distro apt builds alike) and the permission-gate extension re-enabled inside sandboxed subagent spawns (`PI_SUBAGENT_EXTRA_EXTENSIONS` colon-separated override). No `settings.json` → `packages` entry; `pi update --extensions` can no longer wipe it.
 
-**Updating packages** — never run raw `pi update --extensions`; use the wrapper, which updates and then re-applies every `patches/*.patch` (skips ones already applied, fails loudly when a patch no longer fits upstream):
+**Gated by default** — the spawning tools are registered inactive in top-level sessions (zero prompt tokens) until a trigger activates them:
 
-```sh
-sh ~/.pi/agent/patches/update.sh               # update + re-patch
-sh ~/.pi/agent/patches/update.sh --no-update   # verify/re-apply patches only
-```
+- `/subagent on` / `/subagent off` — toggle for the session
+- `/subagent <agent> <task>` — any spawn auto-enables
+- `PI_SUBAGENTS=1` — start active (scripted opt-in)
 
-After a wipe or fresh clone, `/reload` (or restart pi) — a running process keeps the code it loaded. Fresh install:
+Subagent sessions always register active (the child's `--tools` sandbox governs). Activation appends the tool set before the next model request (one-time cached-prefix invalidation possible). Upstream updates are manual: fetch any clone, `git diff c3e8b53..<new> -- pi-extension`, apply into `extensions/subagents/`.
 
-```sh
-pi install git:github.com/amosblomqvist/pi-interactive-subagents@c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7
-sh ~/.pi/agent/patches/update.sh --no-update
-```
+**Tests** — `node --test tests/subagents/test.ts` (unit, mock-based; also `node tests/subagents/system-prompt-mode.test.ts`). Integration under `tests/subagents/integration/`: real pi + real model inside tmux — `PI_TEST_MODEL` / `PI_TIMEOUT` knobs; the harness injects `PI_SUBAGENTS=1` so test sessions start with the tools active.
 
 **tmux is agents-only** (local patch — upstream requires pi inside tmux). The main terminal runs pi plain. When a subagent spawns and pi is not inside tmux, panes appear in a detached session `pi-agents` — attach with `tmux attach -t pi-agents`, detach with `Ctrl+b d`. The tmux binary is required either way.
 
-Spawn-failure triage: `Subagents require tmux. Start pi inside tmux` = the **running session loaded unpatched upstream code** (patch was missing at load time, or the session predates the patch) — re-apply the patch (command above) and `/reload` or restart pi; the running process keeps its loaded code until then. `Install tmux (…)` = the binary is missing.
+Spawn-failure triage: the model says it has no `subagent` tool = **spawn tools gated** — run `/subagent on` (or `/subagent <agent> <task>`) and retry. `Install tmux (…)` = the tmux binary is missing.
 
-Agent definitions in `agents/` are plain files — inert without the package; when installed, they override package-bundled defs (discovery: project > global > package).
+Agent definitions in `agents/` are plain files — inert while the spawn tools are gated; discovery: project > global.
 
 | Agent | Tools | Role |
 |---|---|---|
