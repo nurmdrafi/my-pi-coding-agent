@@ -163,8 +163,8 @@ const SPAWNING_TOOLS = [
 
 /**
  * In top-level sessions the spawning tools are registered but NOT active
- * (zero prompt tokens) until a trigger activates them: `/subagent on`, any
- * `/subagent <agent> [task]` spawn, or PI_SUBAGENTS=1 at process start.
+ * (zero prompt tokens) until a trigger activates them: `/subagents on`, any
+ * `/subagents <agent> [task]` spawn, or PI_SUBAGENTS=1 at process start.
  * Subagent sessions (PI_SUBAGENT_NAME set) always register active — the
  * child's `--tools` sandbox governs what it may actually use.
  */
@@ -2366,16 +2366,16 @@ export default function subagentsExtension(pi: ExtensionAPI) {
     return true;
   };
 
-  // /subagent command — spawn a subagent by name
-  pi.registerCommand("subagent", {
-    description: "Spawn a subagent: /subagent [agent] [task] (agent optional — routed by task)",
+  // /subagents command — spawn a subagent by name
+  pi.registerCommand("subagents", {
+    description: "Spawn a subagent: /subagents [agent] [task] (agent optional — routed by task)",
     handler: async (args, ctx) => {
       const trimmed = args.trim();
       if (!trimmed) {
         ctx.ui.notify(
           spawnToolsActive()
-            ? "Usage: /subagent <agent> [task] — spawn tools active ('/subagent off' hides them)"
-            : "Usage: /subagent <agent> [task] — spawn tools hidden; '/subagent on' (or any spawn) enables them",
+            ? "Usage: /subagents <agent> [task] — spawn tools active ('/subagents off' hides them)"
+            : "Usage: /subagents <agent> [task] — spawn tools hidden; '/subagents on' (or any spawn) enables them",
           "warning",
         );
         return;
@@ -2399,7 +2399,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       let defs = loadAgentDefaults(agentName);
 
       if (!defs) {
-        // Prose tolerance: users write "/subagent use the worker to …". If the
+        // Prose tolerance: users write "/subagents use the worker to …". If the
         // first word isn't a known agent, use the first known agent name in the
         // phrase and treat the words after it as the task.
         const idx = words.findIndex((w, i) => i > 0 && loadAgentDefaults(w));

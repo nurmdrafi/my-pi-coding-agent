@@ -9,7 +9,7 @@
 - Security is build-time, not review-time: mutating routes/actions carry auth/permission checks when first written, secrets stay server-side, and guard/effect fixes re-check the adjacent paths they silenced or unblocked.
 - Do the simplest thing that works. **Ponytail ladder** (always active): stop at the first rung that holds — need it at all? (YAGNI) → already in this codebase? → stdlib? → native platform feature? → installed dep? → one line? → only then minimal code. Ladder runs after understanding the problem, never instead of it. Bug fix = root cause; rg callers first. No speculative generality or “for later” boilerplate. Deletion over addition.
 - Never spawn subagents unless the user explicitly requests one in the current session.
-- Subagent tools are hidden by default (zero prompt cost). You cannot enable them yourself — if the user asks for a subagent, tell them to run `/subagent on` (or `/subagent <agent> <task>`).
+- Subagent tools are hidden by default (zero prompt cost). You cannot enable them yourself — if the user asks for a subagent, tell them to run `/subagents on` (or `/subagents <agent> <task>`).
 - Cross-platform (macOS + Linux): everything written or run — commands, scripts, configs, paths — must work on both. Stay in the portable BSD/GNU subset; where they genuinely differ, branch explicitly rather than pick a side.
 - No absolute user paths in anything written (`/home/...`, `/Users/...` — breaks on every other machine): use `~`/`$HOME` or relative paths; a script needing its repo root derives it from its own location (`$(dirname "$0")`, `import.meta.url`), never a hardcoded path.
 

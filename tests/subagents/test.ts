@@ -1840,13 +1840,13 @@ describe("spawn-tool gating", () => {
 });
 
 describe("commands", () => {
-  it("/subagent emits a spawn tool call for a known agent", () => {
+  it("/subagents emits a spawn tool call for a known agent", () => {
     const { api, registeredCommands, sentUserMessages } = createMockExtensionApi();
 
     (subagentsModule as any).default(api);
 
-    const subagent = registeredCommands.find((command) => command.name === "subagent");
-    assert.ok(subagent, "expected /subagent to be registered");
+    const subagent = registeredCommands.find((command) => command.name === "subagents");
+    assert.ok(subagent, "expected /subagents to be registered");
 
     subagent.handler("scout map the auth code", {
       ui: { notify() {} },
@@ -1864,27 +1864,27 @@ describe("commands", () => {
     assert.equal(registeredCommands.find((c) => c.name === "plan"), undefined);
   });
 
-  it("/subagent on|off toggles spawn-tool activation", async () => {
+  it("/subagents on|off toggles spawn-tool activation", async () => {
     const { api, registeredCommands, activeTools } = createMockExtensionApi();
     (subagentsModule as any).default(api);
-    const subagent = registeredCommands.find((command) => command.name === "subagent");
+    const subagent = registeredCommands.find((command) => command.name === "subagents");
     const ctx = { ui: { notify() {} } };
 
     await subagent.handler("on", ctx);
     for (const name of ["subagent", "subagent_message", "subagents_list"]) {
-      assert.ok(activeTools.includes(name), `${name} should be active after /subagent on`);
+      assert.ok(activeTools.includes(name), `${name} should be active after /subagents on`);
     }
 
     await subagent.handler("off", ctx);
     for (const name of ["subagent", "subagent_message", "subagents_list"]) {
-      assert.ok(!activeTools.includes(name), `${name} should be inactive after /subagent off`);
+      assert.ok(!activeTools.includes(name), `${name} should be inactive after /subagents off`);
     }
   });
 
-  it("/subagent <agent> <task> auto-activates the spawn tools", () => {
+  it("/subagents <agent> <task> auto-activates the spawn tools", () => {
     const { api, registeredCommands, activeTools, sentUserMessages } = createMockExtensionApi();
     (subagentsModule as any).default(api);
-    const subagent = registeredCommands.find((command) => command.name === "subagent");
+    const subagent = registeredCommands.find((command) => command.name === "subagents");
 
     subagent.handler("scout map the auth code", { ui: { notify() {} } });
 
@@ -1892,10 +1892,10 @@ describe("commands", () => {
     assert.equal(sentUserMessages.length, 1);
   });
 
-  it("/subagent tolerates prose before the agent name", () => {
+  it("/subagents tolerates prose before the agent name", () => {
     const { api, registeredCommands, sentUserMessages } = createMockExtensionApi();
     (subagentsModule as any).default(api);
-    const subagent = registeredCommands.find((command) => command.name === "subagent");
+    const subagent = registeredCommands.find((command) => command.name === "subagents");
 
     subagent.handler("use the scout to map the database schema", { ui: { notify() {} } });
 
@@ -1904,10 +1904,10 @@ describe("commands", () => {
     assert.match(sentUserMessages[0], /map the database schema/);
   });
 
-  it("/subagent with no known agent routes via the session model", () => {
+  it("/subagents with no known agent routes via the session model", () => {
     const { api, registeredCommands, activeTools, sentUserMessages } = createMockExtensionApi();
     (subagentsModule as any).default(api);
-    const subagent = registeredCommands.find((command) => command.name === "subagent");
+    const subagent = registeredCommands.find((command) => command.name === "subagents");
 
     subagent.handler("investigate why the build is flaky", { ui: { notify() {} } });
 

@@ -145,12 +145,12 @@ Layout is enforced by `node skills/skill-manager/scripts/validate-skill.mjs <ski
 
 ## Subagents
 
-Owned first-party code at `extensions/subagents/` (`subagent` / `subagent_message` / `subagents_list` + `/subagent` command) — vendored from `amosblomqvist/pi-interactive-subagents@c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7` (itself a tmux-only fork of HazAT's) with the former `patches/*.patch` folded in: agents-only tmux + tmux ≥3.0 compat (upstream's pane filtering needs ≥3.2 — we list unfiltered and filter in-process; works on macOS brew and distro apt builds alike) and the permission-gate extension re-enabled inside sandboxed subagent spawns (`PI_SUBAGENT_EXTRA_EXTENSIONS` colon-separated override). No `settings.json` → `packages` entry; `pi update --extensions` can no longer wipe it.
+Owned first-party code at `extensions/subagents/` (`subagent` / `subagent_message` / `subagents_list` + `/subagents` command) — vendored from `amosblomqvist/pi-interactive-subagents@c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7` (itself a tmux-only fork of HazAT's) with the former `patches/*.patch` folded in: agents-only tmux + tmux ≥3.0 compat (upstream's pane filtering needs ≥3.2 — we list unfiltered and filter in-process; works on macOS brew and distro apt builds alike) and the permission-gate extension re-enabled inside sandboxed subagent spawns (`PI_SUBAGENT_EXTRA_EXTENSIONS` colon-separated override). No `settings.json` → `packages` entry; `pi update --extensions` can no longer wipe it.
 
 **Gated by default** — the spawning tools are registered inactive in top-level sessions (zero prompt tokens) until a trigger activates them:
 
-- `/subagent on` / `/subagent off` — toggle for the session
-- `/subagent [agent] [task]` — any spawn auto-enables; the agent name is optional (prose like `/subagent use the worker to fix X` picks the named agent; with no agent named at all, the session model routes by task via `subagents_list`)
+- `/subagents on` / `/subagents off` — toggle for the session
+- `/subagents [agent] [task]` — any spawn auto-enables; the agent name is optional (prose like `/subagents use the worker to fix X` picks the named agent; with no agent named at all, the session model routes by task via `subagents_list`)
 - `PI_SUBAGENTS=1` — start active (scripted opt-in)
 
 Subagent sessions always register active (the child's `--tools` sandbox governs). Activation appends the tool set before the next model request (one-time cached-prefix invalidation possible). Upstream updates are manual: fetch any clone, `git diff c3e8b53..<new> -- pi-extension`, apply into `extensions/subagents/`.
@@ -159,7 +159,7 @@ Subagent sessions always register active (the child's `--tools` sandbox governs)
 
 **tmux is agents-only** (local patch — upstream requires pi inside tmux). The main terminal runs pi plain. When a subagent spawns and pi is not inside tmux, panes appear in a detached session `pi-agents` — attach with `tmux attach -t pi-agents`, detach with `Ctrl+b d`. The tmux binary is required either way.
 
-Spawn-failure triage: the model says it has no `subagent` tool = **spawn tools gated** — run `/subagent on` (or `/subagent <agent> <task>`) and retry. `Install tmux (…)` = the tmux binary is missing.
+Spawn-failure triage: the model says it has no `subagent` tool = **spawn tools gated** — run `/subagents on` (or `/subagents <agent> <task>`) and retry. `Install tmux (…)` = the tmux binary is missing.
 
 Agent definitions in `agents/` are plain files — inert while the spawn tools are gated; discovery: project > global.
 
