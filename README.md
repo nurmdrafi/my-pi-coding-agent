@@ -1,14 +1,24 @@
 # pi agent harness
 
-[![Release CI/CD](https://github.com/nurmdrafi/my-pi-coding-agent/actions/workflows/release.yml/badge.svg)](https://github.com/nurmdrafi/my-pi-coding-agent/actions/workflows/release.yml)
-[![pi coding agent](https://img.shields.io/badge/pi-coding_agent-8A2BE2?logo=github&labelColor=555)](https://github.com/earendil-works/pi-coding-agent)
-[![stars](https://img.shields.io/github/stars/nurmdrafi/my-pi-coding-agent?logo=github&labelColor=555)](https://github.com/nurmdrafi/my-pi-coding-agent/stargazers)
-[![last commit](https://img.shields.io/github/last-commit/nurmdrafi/my-pi-coding-agent?logo=git&logoColor=white&label=updated&labelColor=555)](https://github.com/nurmdrafi/my-pi-coding-agent/commits)
-[![Node](https://img.shields.io/badge/node_%E2%A5%BC_22.19_%C2%B7_.nvmrc_24-339933?logo=nodedotjs&logoColor=white)](#requirements)
-[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555?logo=linux&logoColor=white)](#portability)
-[![tmux](https://img.shields.io/badge/tmux-optional-555?logo=tmux&logoColor=white)](#subagents)
-[![skills](https://img.shields.io/badge/skills-23-2563eb?logo=readthedocs&logoColor=white)](#skills)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow?logo=opensourceinitiative&logoColor=white)](LICENSE)
+[![release CI](https://img.shields.io/github/actions/workflow/status/nurmdrafi/my-pi-coding-agent/release.yml?label=release%20CI&logo=githubactions&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/actions/workflows/release.yml)
+[![release](https://img.shields.io/github/v/release/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/releases)
+[![license](https://img.shields.io/github/license/nurmdrafi/my-pi-coding-agent?logo=opensourceinitiative&logoColor=white&labelColor=24292f&style=flat-square)](LICENSE)
+[![pi coding agent](https://img.shields.io/badge/pi-coding_agent-8A2BE2?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/earendil-works/pi-coding-agent)
+<br>
+[![stars](https://img.shields.io/github/stars/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/stargazers)
+[![forks](https://img.shields.io/github/forks/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/forks)
+[![contributors](https://img.shields.io/github/contributors/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/graphs/contributors)
+[![issues](https://img.shields.io/github/issues/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/issues)
+[![commits/month](https://img.shields.io/github/commit-activity/m/nurmdrafi/my-pi-coding-agent?logo=git&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/commits)
+[![last commit](https://img.shields.io/github/last-commit/nurmdrafi/my-pi-coding-agent?logo=git&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/commits)
+[![repo size](https://img.shields.io/github/repo-size/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent)
+<br>
+[![node](https://img.shields.io/badge/node_%E2%A5%BC_22.19_%C2%B7_.nvmrc_24-339933?logo=nodedotjs&logoColor=white&labelColor=24292f&style=flat-square)](#requirements)
+[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-6e7681?logo=linux&logoColor=white&labelColor=24292f&style=flat-square)](#portability)
+[![tmux](https://img.shields.io/badge/tmux-optional-6e7681?logo=tmux&logoColor=white&labelColor=24292f&style=flat-square)](#subagents)
+[![skills](https://img.shields.io/badge/skills-23-2563eb?logo=readthedocs&logoColor=white&labelColor=24292f&style=flat-square)](#skills)
+[![extensions](https://img.shields.io/badge/extensions-2-2563eb?labelColor=24292f&style=flat-square)](#extensions)
+[![token floor](https://img.shields.io/badge/token_floor-%E2%89%88_0.7K-2ea44f?labelColor=24292f&style=flat-square)](#always-on-token-budget)
 
 A portable, git-synced configuration for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent) — one `~/.pi/agent/` directory that turns any macOS or Linux machine into a fully configured coding-agent workstation in minutes.
 
