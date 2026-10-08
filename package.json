@@ -1,17 +1,18 @@
 {
-  "name": "pi-agent-harness",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "prepare": "husky",
-    "typecheck": "node scripts/link-pi.mjs && tsc -p tsconfig.json"
-  },
-  "devDependencies": {
-    "@commitlint/cli": "^19.6.1",
-    "@commitlint/config-conventional": "^19.6.1",
-    "@sinclair/typebox": "^0.34.49",
-    "@types/node": "^26.4.1",
-    "husky": "^9.1.7",
-    "typescript": "^7.0.2"
-  }
+ "name": "pi-agent-harness",
+ "private": true,
+ "type": "module",
+ "scripts": {
+  "prepare": "husky",
+  "typecheck": "node scripts/link-pi.mjs && tsc -p tsconfig.json",
+  "gate:eval": "node scripts/gate-eval.mjs"
+ },
+ "devDependencies": {
+  "@commitlint/cli": "^19.6.1",
+  "@commitlint/config-conventional": "^19.6.1",
+  "@sinclair/typebox": "^0.34.49",
+  "@types/node": "^26.4.1",
+  "husky": "^9.1.7",
+  "typescript": "^7.0.2"
+ }
 }

@@ -1,0 +1,288 @@
+{
+  "assumptions": {
+    "tokens": "chars/4 of toolResult text (no per-call usage fields exist); assistant-message usage summed separately as ground truth",
+    "note": "W3/W4 include retry-call args; W10 = assistant text blocks >1600 chars (~400 tok); W9 = AGENTS.md + violation-memory.ndjson size, attributed once per active session (real cost is per-turn resend)"
+  },
+  "buckets": [
+    {
+      "bucket": "W10 over-explanation",
+      "calls": 277,
+      "est_tokens": 170026,
+      "examples": [
+        {
+          "file": "--home-nurmdrafi-.pi--/2026-08-11T14-55-38-164Z_019ff152-6ab4-78ea-a580-f9f03102b2bb.jsonl",
+          "detail": "assistant text 3171 chars: \"## Reality check: no web-search tool in this harness\n\nI veri...\""
+        },
+        {
+          "file": "--home-nurmdrafi-.pi--/2026-08-11T14-55-38-164Z_019ff152-6ab4-78ea-a580-f9f03102b2bb.jsonl",
+          "detail": "assistant text 2400 chars: \"## My honest take: curl is the right *transport*, the wrong ...\""
+        },
+        {
+          "file": "--home-nurmdrafi-.pi--/2026-08-11T14-55-38-164Z_019ff152-6ab4-78ea-a580-f9f03102b2bb.jsonl",
+          "detail": "assistant text 4771 chars: \"All 5 sources extracted clean — **including OpenAI** (which ...\""
+        }
+      ],
+      "share_pct": 35
+    },
+    {
+      "bucket": "W2 uncapped-dump",
+      "calls": 67,
+      "est_tokens": 110702,
+      "examples": [
+        {
+          "file": "--home-nurmdrafi-.pi--/2026-08-11T15-46-14-685Z_019ff180-c01d-78bf-b0ec-30ba0cc3e3b0.jsonl",
+          "detail": "4332 chars from: echo \"=== .nvmrc ===\" ; cat ~/.pi/agent/.nvmrc ; echo \"=== p"
+        },
+        {
+          "file": "--home-nurmdrafi-.pi--/2026-08-11T15-46-14-685Z_019ff180-c01d-78bf-b0ec-30ba0cc3e3b0.jsonl",
+          "detail": "7230 chars from: echo \"=== changelog tail (format match) ===\" ; tail -40 ~/.p"
+        }
+      ],
+      "share_pct": 22.8
+    },
+    {
+      "bucket": "W9 instruction-overhead",
+      "calls": 120,
+      "est_tokens": 88440,
+      "examples": [],
+      "share_pct": 18.2
+    },
+    {
+      "bucket": "W1 dup-read",
+      "calls": 90,
+      "est_tokens": 67096,
+      "examples": [
+        {
+          "file": "--home-nurmdrafi-.pi--/2026-08-11T16-21-40-254Z_019ff1a1-2f1e-7fe4-8534-bcbe02312346.jsonl",
+          "detail": "read /home/nurmdrafi/.pi/agent/bundle.sh @36 overlaps prior window"
+        }
+      ],
+      "share_pct": 13.8
+    },
+    {
+      "bucket": "W8 failed-edit-retry",
+      "calls": 67,
+      "est_tokens": 41062,
+      "examples": [
+        {
+          "file": "--home-nurmdrafi-.pi--/2026-08-11T15-23-01-165Z_019ff16b-7cad-721b-a65f-22685683ace6.jsonl",
+          "detail": "edit error: Validation failed for tool \"edit\":\n  - edits.2.oldText: must have required prope"
+        }
+      ],
+      "share_pct": 8.4
+    },
+    {
+      "bucket": "W3 block-retry",
+      "calls": 86,
+      "est_tokens": 8647,
+      "examples": [
+        {
+          "file": "--home-nurmdrafi-.pi-agent--/2026-09-23T15-37-08-529Z_01a0cee9-deb0-7037-87d2-7034888c255a.jsonl",
+          "detail": "Token Economy (Reading): use the 'read' tool (offset/limit) for file viewing, not bash 'cat'. sed -n only when batching "
+        },
+        {
+          "file": "--home-nurmdrafi-.pi-agent--/2026-09-23T15-37-08-529Z_01a0cee9-deb0-7037-87d2-7034888c255a.jsonl",
+          "detail": "Token Economy (Reading): use the 'read' tool (offset/limit) for file viewing, not bash 'cat'. sed -n only when batching "
+        },
+        {
+          "file": "--home-nurmdrafi-.pi-agent--/2026-09-23T15-37-08-529Z_01a0cee9-deb0-7037-87d2-7034888c255a.jsonl",
+          "detail": "Token Economy (Reading): use the 'read' tool (offset/limit) for file viewing, not bash 'cat'. sed -n only when batching "
+        }
+      ],
+      "share_pct": 1.8
+    },
+    {
+      "bucket": "W5 unchanged-rerun",
+      "calls": 11,
+      "est_tokens": 336,
+      "examples": [
+        {
+          "file": "--home-nurmdrafi-.pi-agent--/2026-10-06T18-57-40-608Z_7750c4c5-fe049cc4-ad38a248-645e.jsonl",
+          "detail": "rerun w/o mutation: rg -o foo\\|bar package.json | head -3"
+        }
+      ],
+      "share_pct": 0.1
+    },
+    {
+      "bucket": "W6 speculative-check",
+      "calls": 1,
+      "est_tokens": 4,
+      "examples": [
+        {
+          "file": "--home-nurmdrafi-Desktop-Barikoi-react-bkoi-gl--/2026-08-26T09-46-26-671Z_01a03d76-bbee-7699-8509-b794f63530dc.jsonl",
+          "detail": "repeat #1 status cmd: git status --short"
+        }
+      ],
+      "share_pct": 0
+    },
+    {
+      "bucket": "W4 verbatim-resend",
+      "calls": 0,
+      "est_tokens": 0,
+      "examples": [],
+      "share_pct": 0
+    },
+    {
+      "bucket": "W7 needless-ask",
+      "calls": 0,
+      "est_tokens": 0,
+      "examples": [],
+      "share_pct": 0
+    }
+  ],
+  "blocks": {
+    "total": 86,
+    "families": {
+      "Token Economy (Reading)": 36,
+      "Token Economy (Extraction)": 6,
+      "Token Economy (Re-run)": 16,
+      "Token Economy (git reads)": 2,
+      "Anchor Guard": 13,
+      "Token Economy (Re-read)": 9,
+      "Token Economy (Command output)": 4
+    },
+    "oneShotRecoveryPct": 74.4
+  },
+  "sessions": {
+    "count": 120,
+    "topByWaste": [
+      {
+        "file": "--home-nurmdrafi-Desktop-Barikoi-barikoi-admin-nextjs--/2026-08-14T15-16-40-920Z_01a000d8-c358-74ca-b9ea-7f8f40d3f3c5.jsonl",
+        "calls": 120,
+        "resultTokens": 67245,
+        "wasteTokens": 32035,
+        "usage": {
+          "input": 468843,
+          "output": 92494,
+          "cacheRead": 4344896,
+          "total": 0,
+          "msgs": 98
+        }
+      },
+      {
+        "file": "--home-nurmdrafi-.pi-agent--/2026-08-21T15-41-03-102Z_01a024fb-96fe-7508-ab0d-f40f19b1c6e4.jsonl",
+        "calls": 121,
+        "resultTokens": 42569,
+        "wasteTokens": 24886,
+        "usage": {
+          "input": 178207,
+          "output": 38798,
+          "cacheRead": 6054336,
+          "total": 0,
+          "msgs": 104
+        }
+      },
+      {
+        "file": "--home-nurmdrafi-Desktop-Barikoi-dropx-merchant--/2026-08-09T18-04-34-500Z_019fe7b2-ad44-7a7a-9277-0f282f482280.jsonl",
+        "calls": 69,
+        "resultTokens": 36337,
+        "wasteTokens": 19776,
+        "usage": {
+          "input": 141437,
+          "output": 54709,
+          "cacheRead": 1922816,
+          "total": 0,
+          "msgs": 58
+        }
+      },
+      {
+        "file": "--home-nurmdrafi-.pi-agent--/2026-09-23T17-23-42-943Z_01a0cf4b-70de-70f8-94ce-812625f4cc0e.jsonl",
+        "calls": 50,
+        "resultTokens": 33926,
+        "wasteTokens": 18611,
+        "usage": {
+          "input": 79701,
+          "output": 38384,
+          "cacheRead": 2278400,
+          "total": 0,
+          "msgs": 49
+        }
+      },
+      {
+        "file": "--home-nurmdrafi-Desktop-Barikoi-react-bkoi-gl--/2026-08-30T14-30-07-159Z_01a05313-e237-74a9-b25c-66de12154716.jsonl",
+        "calls": 370,
+        "resultTokens": 97293,
+        "wasteTokens": 15291,
+        "usage": {
+          "input": 646296,
+          "output": 204545,
+          "cacheRead": 69960768,
+          "total": 0,
+          "msgs": 322
+        }
+      },
+      {
+        "file": "--home-nurmdrafi-Desktop-Barikoi-react-bkoi-gl--/2026-08-25T15-38-15-744Z_01a03992-7940-7f74-8499-d2b48162050e.jsonl",
+        "calls": 438,
+        "resultTokens": 82729,
+        "wasteTokens": 14667,
+        "usage": {
+          "input": 551887,
+          "output": 210709,
+          "cacheRead": 26972416,
+          "total": 0,
+          "msgs": 404
+        }
+      },
+      {
+        "file": "--home-nurmdrafi-Desktop-Barikoi-react-bkoi-gl--/2026-08-26T09-46-26-671Z_01a03d76-bbee-7699-8509-b794f63530dc.jsonl",
+        "calls": 435,
+        "resultTokens": 96274,
+        "wasteTokens": 14581,
+        "usage": {
+          "input": 1233187,
+          "output": 137519,
+          "cacheRead": 58326016,
+          "total": 0,
+          "msgs": 436
+        }
+      },
+      {
+        "file": "--home-nurmdrafi-Desktop-Barikoi-barikoi-admin-nextjs--/2026-08-14T19-27-39-497Z_01a001be-89e9-7e76-a3ea-7fbefa8edc13.jsonl",
+        "calls": 2,
+        "resultTokens": 12823,
+        "wasteTokens": 13557,
+        "usage": {
+          "input": 12217,
+          "output": 593,
+          "cacheRead": 9536,
+          "total": 0,
+          "msgs": 3
+        }
+      },
+      {
+        "file": "--home-nurmdrafi-.pi-agent--/2026-08-26T07-42-25-911Z_01a03d05-3277-76fd-b6a9-ab3ca6e4d954.jsonl",
+        "calls": 38,
+        "resultTokens": 47126,
+        "wasteTokens": 13527,
+        "usage": {
+          "input": 235254,
+          "output": 37834,
+          "cacheRead": 1787456,
+          "total": 0,
+          "msgs": 38
+        }
+      },
+      {
+        "file": "--home-nurmdrafi-.pi-agent--/2026-10-06T18-47-18-598Z_01a1128a-a544-77ea-afbe-a9a17bfd7c6f.jsonl",
+        "calls": 162,
+        "resultTokens": 32661,
+        "wasteTokens": 12440,
+        "usage": {
+          "input": 158700,
+          "output": 113964,
+          "cacheRead": 14282176,
+          "total": 0,
+          "msgs": 158
+        }
+      }
+    ]
+  },
+  "usageTotals": {
+    "input": 9798168,
+    "output": 3379257,
+    "cacheRead": 382978624,
+    "total": 0,
+    "msgs": 5923
+  }
+}

@@ -1,0 +1,10 @@
+# command<TAB>expected-family. These encode DESIRED behavior (brief §3/§5).
+# A leading `?<TAB>` marks a known-bug expectation (brief §5 B8–B21): the
+# brief says current gate behavior differs — failures here are the bug-fix backlog.
+# ` ## ` separates sequential steps; the LAST step must block with the family.
+# Trailing `# …` column is a comment (ignored).
+# 2026-10-08 B12/B13/B21 fixed: desired == current; markers dropped
+git commit -am "Bad msg"	Commitlint	# B12: -m\s+ regex missed -am — fixed
+git commit -m "a > b"	Commitlint	# B10 now: R8 gone, commitlint correctly rejects
+git commit -m"x"	Commitlint	# B12: -m"x" attached form — fixed
+git commit --message=y	Commitlint	# B12: --message=y form — fixed

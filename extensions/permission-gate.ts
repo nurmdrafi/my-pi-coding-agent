@@ -50,12 +50,21 @@
  * `git clone + git log` verbatim twice before complying — repeating the
  * original reason taught nothing, so a verbatim re-send of the just-blocked
  * command now gets a dedicated reason naming the re-send itself.
+ * 2026-10-08 autoresearch H1: bash output is capped non-blockingly in
+ * tool_result (100 lines / 4 KB; tail spilled to $TMPDIR/pgate-spill with a
+ * pointer line) — R2 viewing blocks deleted (cat/head/tail/sed viewers, the
+ * trivial-cat exemption and its FAMILY_LESSONS entry went with it): replay
+ * showed Reading = 616/709 would-blocks on legitimate commands (fp proxy
+ * 18%) incl. prose-in-heredoc false fires; the cap delivers the same token
+ * ceiling with zero block turns. R5/R6/R7/R8/verbose retire next, one per
+ * iteration, each measured (fp_rate, fixture_pass, block_cost).
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { homedir } from "os";
-import { appendFileSync, mkdirSync, readFileSync } from "fs";
+import { randomUUID } from "crypto";
+import { homedir, tmpdir } from "os";
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { readFile, stat } from "fs/promises";
 import { dirname, join, resolve } from "path";
 
@@ -67,42 +76,27 @@ interface EditEntry {
 // ---- shared ----
 
 /**
- * true if the segment's stdout cannot flood context: a pipe to a capping/
- * filtered consumer, or a stdout redirect to a file — incl. /dev/null; the
- * bytes never land in context at all (2026-10-07 block-impact audit:
- * `npx tsc --noEmit > /tmp/tsc.out 2>&1` was false-flagged as uncapped).
- * `2> err` alone does NOT cap stdout, so it stays uncapped.
+ * H5/B20 (2026-10-08): successful bash commands that mutate the working tree —
+ * they legitimize verify re-runs exactly like an edit/write tool call (R10's
+ * mutationSeq only counted edit/write, so `npm test → git pull → npm test`
+ * false-blocked). Only ever relaxes R10 (more allows), never blocks more.
  */
-function isCapped(seg: string): boolean {
-	return /\|\s*(head|tail|rg|grep|cut|jq|sort|uniq|wc)\b/.test(seg) || /(^|\s)1?>+\s*\S/.test(seg);
-}
+const MUTATING_BASH =
+	/(^|&&|;|\|)\s*(git\s+(pull|checkout|merge|rebase|stash|reset|restore|clean|rm|mv)\b|npm\s+(i|install|uninstall)\b|pnpm\s+(i|add|install)\b|yarn\s+(add|install)\b|pip3?\s+install\b|sed\s+[^|]*-i\b|prettier\b[^|]*--write\b|eslint\b[^|]*--fix\b|>\s*(?!\/?(dev|null|tmp)\/?)[^\s&>]+)/;
 
 /**
- * R2 batch-cat exemption (2026-10-08 extensions audit,
- * audit-reports/extensions/2026-10-08T051448Z.md). Decision trail: a block
- * costs ~460 tok marginal (block reason ~71 + the forced recovery turn
- * ~392, averaged over the audit's 120 blocks), so vetoing an entire
- * multi-segment command because one `cat` dumps a tiny file is a net loss —
- * the audited case was `date; cat .watermark.json (49 B); ls …` re-issued
- * in full to save ~12 tok of output. Standalone `cat file` still blocks
- * (the read-tool habit is the rule's point; zero ambiguity there), and any
- * flag, glob, or unstatable/missing target never exempts — resolution
- * failure falls back to blocking, never to allowing an unknown-size dump.
- * `~` expands as the shell would; other paths resolve against the process
- * cwd (same resolution normPath uses, so the two never disagree).
+ * H2 (2026-10-08, suite-evidence): commands that need explicit user approval
+ * before running — the suite's must-ask tasks (t08 npm install, t09 git
+ * reset --hard) failed 6/6 with AGENTS.md text alone: the model never asked.
+ * With a UI (TUI/RPC) → ctx.ui.confirm dialog; headless/print → fail CLOSED
+ * with a reason that tells the model to ask in chat and wait. The list mirrors
+ * AGENTS.md "Security & Safety" (A2 single source of truth). Approved commands
+ * are remembered verbatim for 2 min so an immediate re-send (hook retry) does
+ * not re-prompt. Config/allowlist file: open question for the user (brief §8).
  */
-async function trivialCat(seg: string): Promise<boolean> {
-	const toks = seg.split(/\s+/).slice(1).filter(Boolean);
-	if (toks.length === 0 || toks.some((t) => t.startsWith("-") || /[*?]/.test(t))) return false;
-	let total = 0;
-	for (const t of toks) {
-		const p = t.startsWith("~/") ? join(homedir(), t.slice(2)) : resolve(t);
-		const s = await stat(p).catch(() => undefined);
-		if (!s?.isFile()) return false;
-		total += s.size;
-	}
-	return total <= 128;
-}
+const DESTRUCTIVE_BASH =
+	/(^|&&|;|\|)\s*(sudo\b|\brm\b|git\s+(reset\s+--hard|clean\b|checkout\s+--|restore\b|commit\b|push\b)|npm\s+(i|install|uninstall|add)\b|pnpm\s+(i|add|install|remove)\b|yarn\s+(add|install|remove)\b|pip3?\s+install\b|brew\s+install\b|apt(-get)?\s+install\b|\b(DROP\s+(TABLE|DATABASE)|DELETE\s+FROM)\b|mkfs(\.\w+)?\b|dd\s+if=|>\s*\/(etc|usr|var|boot|root)\b)/i;
+const APPROVED_WINDOW_MS = 2 * 60_000;
 
 /**
  * split at unquoted \n / && / ; / || — a quoted ';' (sed '1p;5p', regex char
@@ -167,6 +161,79 @@ function splitSegments(cmd: string): string[] {
 	}
 	out.push(cur);
 	return out.map((s) => s.trim()).filter(Boolean);
+}
+
+// ---- H1: non-blocking bash output cap (2026-10-08 autoresearch) ----
+
+/** cap ceiling — whichever is hit first (2026-10-08 calibration: 100 lines / 4 KB
+ * saves 26.4% of historical context inflow vs 15.3% at the initial 200/12 KB,
+ * spilling on only ~5% of commands; the spill pointer keeps tails reachable) */
+const CAP_LINES = 100;
+const CAP_BYTES = 4_096;
+
+/**
+ * Replaces the deleted blocking viewing/dump rules (R2 viewing first;
+ * R5/R6/R7/R8/verbose retire next): oversized bash output is truncated in
+ * place — head kept, full output spilled to a tmp file, pointer line
+ * appended. Applied via the tool_result RETURN value ({content, …}), which
+ * the runner overlays onto what the model sees (emitToolResult; replacing
+ * content without structuredContent drops it, so structuredContent is
+ * passed through when present). Zero block turns, zero false positives: a
+ * command the model legitimately needs still delivers its head; only the
+ * flood is cut.
+ */
+function capBashOutput(event: {
+	toolCallId: string;
+	content?: unknown[];
+	structuredContent?: unknown;
+}): { content: unknown[]; structuredContent?: unknown } | undefined {
+	const blocks = event.content ?? [];
+	const texts: string[] = [];
+	for (const b of blocks) if ((b as { type?: unknown })?.type === "text") texts.push(String((b as { text?: unknown })?.text ?? ""));
+	if (texts.length === 0) return;
+	const full = texts.join("\n");
+	const lines = full.split("\n");
+	if (lines.length <= CAP_LINES && full.length <= CAP_BYTES) return;
+	const kept: string[] = [];
+	let bytes = 0;
+	for (const l of lines) {
+		if (kept.length >= CAP_LINES || bytes + l.length + 1 > CAP_BYTES) break;
+		kept.push(l);
+		bytes += l.length + 1;
+	}
+	let note = `… [output capped: kept ${kept.length}/${lines.length} lines]`;
+	try {
+		const spillDir = join(tmpdir(), "pgate-spill");
+		const spill = join(spillDir, `${event.toolCallId}.txt`);
+		mkdirSync(spillDir, { recursive: true });
+		writeFileSync(spill, full);
+		// hygiene (2026-10-08): long-lived sessions accumulate spills — prune
+		// entries older than 24h, bounded to 50 unlinks per cap so latency stays
+		// flat; best-effort, never blocks the result path
+		try {
+			const cutoff = Date.now() - 24 * 60 * 60_000;
+		let pruned = 0;
+		for (const f of readdirSync(spillDir)) {
+			if (pruned >= 50) break;
+			const p = join(spillDir, f);
+			const s = statSync(p);
+			if (s.isFile() && s.mtimeMs < cutoff) {
+				unlinkSync(p);
+				pruned++;
+			}
+		}
+		} catch {
+			// pruning is hygiene only
+		}
+		note = `… [output capped: kept ${kept.length}/${lines.length} lines — full output in ${spill}; read it with offset/limit if needed]`;
+	} catch {
+		// spill is best-effort; truncation alone still caps the flood
+	}
+	const content = blocks.filter((b) => (b as { type?: unknown })?.type !== "text");
+	content.push({ type: "text", text: `${kept.join("\n")}\n${note}` });
+	const out: { content: unknown[]; structuredContent?: unknown } = { content };
+	if (event.structuredContent !== undefined) out.structuredContent = event.structuredContent;
+	return out;
 }
 
 /** edited line span, 1-based inclusive, post-application */
@@ -308,7 +375,7 @@ function findClosestFragment(
 async function validateEditAnchors(input: {
 	path?: unknown;
 	edits?: unknown;
-}): Promise<{ block: true; reason: string } | { spans?: LineSpan[] } | undefined> {
+}): Promise<{ block: true; reason: string } | { spans?: LineSpan[]; firstEditedLine?: number } | undefined> {
 	const edits = input.edits;
 	if (!Array.isArray(edits)) return; // let the tool's own validation respond
 
@@ -323,9 +390,6 @@ async function validateEditAnchors(input: {
 	const fuzzyContent = normalizeForFuzzyMatch(content);
 	// verified exact-match spans, for the intra-call overlap check
 	const spans: { i: number; start: number; end: number }[] = [];
-	// post-application spans of this call's edits, for the windowed re-read check
-	let delta = 0; // cumulative line shift from earlier edits in this call
-	const edited: LineSpan[] = [];
 	// fuzzy-matched anchors contribute no span (index only exists in
 	// normalized space) — windowed re-read checks fall back to allow for them
 
@@ -380,17 +444,34 @@ async function validateEditAnchors(input: {
 				}
 			}
 			spans.push({ i, start, end });
-
-			// post-application span: earlier edits in this call shift later lines
-			const newLines = String((edits[i] as EditEntry)?.newText ?? "").split("\n").length;
-			const eStart = lineOf(content, start) + delta;
-			const eEnd = eStart + newLines - 1;
-			delta += newLines - oldText.split("\n").length;
-			edited.push({ start: eStart, end: eEnd });
 		}
 	}
 
-	return { spans: edited.length ? edited : undefined }; // all anchors verified: let the edit proceed
+	// H9/B3 (2026-10-08): edits[] are applied as ONE overlay against the
+	// ORIGINAL file — a span's post-edit line depends on edits EARLIER IN THE
+	// FILE, not on array order (the old in-loop delta accumulated array order
+	// and mis-certified out-of-order calls). Position-sort, then fold deltas.
+	// B4: also report the first edited ORIGINAL line — tool_result truncates
+	// stale coverage at it, because every line below a line-count-changing
+	// edit shifted and old spans there describe different content.
+	const sorted = [...spans].sort((a, b) => a.start - b.start);
+	const edited: LineSpan[] = [];
+	let delta = 0;
+	let firstEditedLine = Infinity;
+	for (const s of sorted) {
+		const oldLines = toLF(String((edits[s.i] as EditEntry)?.oldText ?? "")).split("\n").length;
+		const newLines = String((edits[s.i] as EditEntry)?.newText ?? "").split("\n").length;
+		const oStart = lineOf(content, s.start);
+		if (oStart < firstEditedLine) firstEditedLine = oStart;
+		const eStart = oStart + delta;
+		edited.push({ start: eStart, end: eStart + newLines - 1 });
+		delta += newLines - oldLines;
+	}
+
+	return {
+		spans: edited.length ? edited : undefined,
+		firstEditedLine: edited.length && firstEditedLine !== Infinity ? firstEditedLine : undefined,
+	}; // all anchors verified: let the edit proceed
 }
 
 // ---- R9: commitlint (conventional) validation ----
@@ -404,24 +485,37 @@ const CONVENTIONAL_HEADER = new RegExp(`^(${COMMIT_TYPES})(\\([\\w\\-.]+\\))?!?:
  * not capitalized / not ending in '.'). Returns a block reason or undefined.
  */
 function validateCommitMessages(seg: string): string | undefined {
-	const flags = [...seg.matchAll(/-m\s+(?:"((?:\\.|[^"])*)"|'((?:\\.|[^'])*)')/g)];
+	// 2026-10-08 (B12): -m\s+ missed -m"x", -am "x" (m inside a combined short
+	// flag cluster) and --message=x; 2026-10-08 (B21): unescape mapped \n to a
+	// literal 'n' — a real newline keeps the header the first line, as the
+	// shell would deliver it. Unquoted values (--message=y, -m foo) captured too.
+	const flags = [
+		...seg.matchAll(/(?:^|\s)(?:--[a-zA-Z-]*message|-[a-zA-Z]*m)\s*(?:=\s*)?(?:"((?:\\.|[^"])*)"|'((?:\\.|[^'])*)'|([^\s"'][^\s]*))/g),
+	];
 	if (flags.length === 0) return; // heredoc / -F / editor message: not inspectable
 	for (let i = 0; i < flags.length; i++) {
-		const msg = (flags[i][1] ?? flags[i][2] ?? "").replace(/\\(["'\\n])/g, "$1");
+		const msg = (flags[i][1] ?? flags[i][2] ?? flags[i][3] ?? "")
+			.replace(/\\n/g, "\n")
+			.replace(/\\(["'\\])/g, "$1");
 		if (!msg) continue;
 		if (i > 0) continue; // body paragraphs: header rules only (i === 0)
-		if (!CONVENTIONAL_HEADER.test(msg)) {
-			return `Commitlint: ${JSON.stringify(msg)} must match 'type(scope?): subject' — e.g. 'fix(auth): cap git log'.`;
+		const header = msg.split("\n")[0];
+		if (!CONVENTIONAL_HEADER.test(header)) {
+			return `Commitlint: ${JSON.stringify(header)} must match 'type(scope?): subject' — e.g. 'fix(auth): cap git log'.`;
 		}
-		if (msg.length > 100) {
-			return `Commitlint: header is ${msg.length} chars (max 100) — shorten the subject.`;
+		if (header.length > 100) {
+			return `Commitlint: header is ${header.length} chars (max 100) — shorten the subject.`;
 		}
-		const subject = msg.replace(/^\S+\s*/, ""); // strip type/scope for subject rules
+		const subject = header.replace(/^\S+\s*/, ""); // strip type/scope for subject rules
 		{
-			if (/^[A-Z]/.test(subject)) {
+			// 2026-10-08 (B13): mirror config-conventional's subject-case — ban
+			// sentence-case ("Fix the…"), start-case ("Fix The Thing") and all-caps
+			// subjects, but allow acronym-led subjects ("API timeout", "JSON
+			// parse") that the old /^[A-Z]/ wrongly rejected; hooks backstop leaks.
+			if (/^[A-Z][a-z]/.test(subject) || /^([A-Z][a-z]*\s)+[A-Z][a-z]*$/.test(subject) || /^[A-Z\s]+$/.test(subject)) {
 				return `Commitlint: subject must not start with a capital ('${subject.slice(0, 30)}…') — lowercase it.`;
 			}
-			if (/[.]$/.test(msg)) {
+			if (/[.]$/.test(header)) {
 				return `Commitlint: header must not end with '.'.`;
 			}
 		}
@@ -442,19 +536,13 @@ const REBLOCK_WINDOW_MS = 2 * 60_000;
  * session's system prompt — the only mechanism that can cut FIRST attempts.
  * Delete logs/violation-memory.json to reset; PGATE_MEMORY overrides the path.
  */
-const MEMORY_THRESHOLD = 5; // all-time blocks before a lesson enters the prompt
+const MEMORY_THRESHOLD = 5; // distinct sessions before a lesson enters the prompt
 const FAMILY_LESSONS: Record<string, string> = {
-	"Token Economy (Reading)":
-		"File viewing: the read tool (offset/limit) — never start a bash segment with cat, head, tail or sed -n (sed -n only when batching 2+ regions).",
 	"Token Economy (Re-run)":
 		"Never re-run a command unchanged within 10 min without an edit/write since — its output is already in context.",
-	"Token Economy (Extraction)": "Every 'rg -o' is piped through '| head -N' or '| cut -c1-200'.",
-	"Token Economy (git reads)": "'git log' is always '--oneline | head' or '-n <N>'.",
-	"Token Economy (git hooks)": "'git commit'/'git push' always ends with '2>&1 | tail -20' or --no-verify.",
-	"Token Economy (Searching)": "No recursive walks — 'rg --files <dir> | head -N' or 'rg -l <pattern> <dir>'.",
-	"Token Economy (Command output)":
-		"Verbose runners (npm test/build, vitest, jest, tsc) always capped: '2>&1 | rg … | head'.",
 	"Token Economy (Re-read)": "Never re-read a file window already in context this session — read only new regions (offset/limit).",
+	"Permission Gate (Destructive)":
+		"Destructive/mutating commands (rm, git reset --hard/clean/checkout --/commit/push, package installs, sudo) need explicit user approval first — ask in chat and wait when no confirm dialog appears.",
 	"Anchor Guard": "edit oldText is exact bytes from a read this session, unique in the file, non-overlapping with sibling edits.",
 	Commitlint: "Commit messages are conventional: 'type(scope?): subject', lowercase subject, no trailing dot.",
 };
@@ -477,7 +565,10 @@ export default function (pi: ExtensionAPI) {
 	 */
 	const coverage = new Map<string, { spans: LineSpan[]; kind: CoverKind; stat?: { mtimeMs: number; size: number } }>();
 	/** edit/write toolCallId -> { path, spans?, kind }, awaiting its tool_result */
-	const pendingEdits = new Map<string, { path: string; spans?: LineSpan[]; kind: "edit" | "write" }>();
+	const pendingEdits = new Map<
+		string,
+		{ path: string; spans?: LineSpan[]; firstEditedLine?: number; kind: "edit" | "write" }
+	>();
 	/** read toolCallId -> { path, win }, awaiting its tool_result */
 	const pendingReads = new Map<string, { path: string; win: LineSpan }>();
 	/** R10: bash toolCallId -> normalized base command, awaiting its tool_result */
@@ -490,9 +581,11 @@ export default function (pi: ExtensionAPI) {
 	// results. One lastBlockedBash slot: only the immediately preceding blocked
 	// bash call can be "re-sent verbatim".
 	const pendingBashFull = new Map<string, string>();
-	let lastBlockedBash: { cmd: string; family: string; ts: number } | undefined;
+	let lastBlockedBash: { cmd: string; family: string; ts: number; mut: number } | undefined;
 	/** R10: bumped on every successful edit/write — a mutation makes verify re-runs legitimate */
 	let mutationSeq = 0;
+	/** H2: last user-approved destructive command (verbatim) + when */
+	let lastApprovedDestructive: { cmd: string; ts: number } | undefined;
 
 	// ---- violation memory: cross-session repeat-offense reduction ----
 	// NDJSON append-only store (2026-10-07): parallel sessions (gated subagents)
@@ -503,23 +596,41 @@ export default function (pi: ExtensionAPI) {
 	const memoryLegacy = process.env.PGATE_MEMORY
 		? memoryNdjson.replace(/\.ndjson$/, ".json")
 		: join(homedir(), ".pi", "agent", "logs", "violation-memory.json");
+	// H7 (2026-10-08): count DISTINCT SESSIONS per family in a rolling 30-day
+	// window, not all-time block depth — one session hammering a family used to
+	// hit the threshold alone (breadth across sessions is the actual signal that
+	// a lesson belongs in the prompt). Per-process sid ≈ per-session: parallel
+	// gated subagents are separate processes; a resume is a new process anyway.
+	const sid = randomUUID();
+	const MEMORY_WINDOW_MS = 30 * 24 * 60 * 60_000;
 	const loadCounts = (): Record<string, number> => {
-		const counts: Record<string, number> = {};
+		const distinct: Record<string, Set<string>> = {};
+		const legacy: Record<string, number> = {};
 		try {
-			const legacy: unknown = JSON.parse(readFileSync(memoryLegacy, "utf8"));
-			if (legacy && typeof legacy === "object") {
-				for (const [k, v] of Object.entries(legacy as Record<string, unknown>)) if (typeof v === "number") counts[k] = v;
+			const blob: unknown = JSON.parse(readFileSync(memoryLegacy, "utf8"));
+			if (blob && typeof blob === "object") {
+				for (const [k, v] of Object.entries(blob as Record<string, unknown>)) if (typeof v === "number") legacy[k] = v;
 			}
 		} catch {
 			// absent or corrupt legacy blob — start from NDJSON alone
 		}
+		let lines = 0;
+		const latest = new Map<string, { family: string; sid: string; ts: number }>();
 		try {
-			for (const line of readFileSync(memoryNdjson, "utf8").split("\n")) {
+			const raw = readFileSync(memoryNdjson, "utf8").split("\n");
+			for (let i = 0; i < raw.length; i++) {
+				const line = raw[i];
 				if (!line.trim()) continue;
+				lines++;
 				try {
-					const e = JSON.parse(line) as { family?: string; n?: number };
-					if (typeof e.family === "string" && typeof e.n === "number" && e.n > 0) {
-						counts[e.family] = (counts[e.family] ?? 0) + e.n;
+					const e = JSON.parse(line) as { family?: string; sid?: string; n?: number; ts?: number };
+					if (typeof e.family !== "string") continue;
+					if (typeof e.ts === "number" && Date.now() - e.ts > MEMORY_WINDOW_MS) continue; // rolled out
+					const key = typeof e.sid === "string" && e.sid ? e.sid : `legacy-line-${i}`;
+					(distinct[e.family] ??= new Set()).add(key);
+					if (typeof e.sid === "string" && e.sid && typeof e.ts === "number") {
+						const prev = latest.get(`${e.family}\u0000${e.sid}`);
+						if (!prev || e.ts > prev.ts) latest.set(`${e.family}\u0000${e.sid}`, { family: e.family, sid: e.sid, ts: e.ts });
 					}
 				} catch {
 					continue; // torn tail append — tolerate like pi's session files
@@ -528,6 +639,20 @@ export default function (pi: ExtensionAPI) {
 		} catch {
 			// no NDJSON yet — legacy counts (if any) stand alone
 		}
+		// compact at load (H7): a long-lived store must not grow unboundedly —
+		// keep one entry per family+session (latest ts) when it has bloated
+			if (lines > 200 && latest.size > 0 && latest.size < lines) {
+				try {
+					const tmp = `${memoryNdjson}.compact`;
+				writeFileSync(tmp, [...latest.values()].map((e) => `${JSON.stringify({ family: e.family, sid: e.sid, ts: e.ts })}\n`).join(""));
+					renameSync(tmp, memoryNdjson);
+				} catch {
+					// compaction is best-effort telemetry hygiene — never break the loop
+				}
+		}
+		const counts: Record<string, number> = {};
+		for (const [family, set] of Object.entries(distinct)) counts[family] = set.size;
+		for (const [family, n] of Object.entries(legacy)) counts[family] = (counts[family] ?? 0) + (n > 0 ? 1 : 0);
 		return counts;
 	};
 	const counts = loadCounts();
@@ -539,7 +664,7 @@ export default function (pi: ExtensionAPI) {
 			counts[family] = (counts[family] ?? 0) + 1;
 			try {
 				mkdirSync(dirname(memoryNdjson), { recursive: true });
-				appendFileSync(memoryNdjson, `${JSON.stringify({ family, n: 1, ts: Date.now() })}\n`);
+				appendFileSync(memoryNdjson, `${JSON.stringify({ family, sid, ts: Date.now() })}\n`);
 			} catch {
 				// telemetry must never break the agent loop
 			}
@@ -567,11 +692,11 @@ export default function (pi: ExtensionAPI) {
 
 	// edit: anchor pre-validation first (existence, uniqueness, overlap);
 	// only a call that passes is tracked for read-freshness below
-	pi.on("tool_call", async (event) => {
+	pi.on("tool_call", async (event, ctx) => {
 		if (isToolCallEventType("edit", event)) {
 			const checked = await validateEditAnchors(event.input);
 			if (checked && "block" in checked) return blockCall(checked.reason);
-			pendingEdits.set(event.toolCallId, { path: normPath(event.input.path), spans: checked?.spans, kind: "edit" });
+			pendingEdits.set(event.toolCallId, { path: normPath(event.input.path), spans: checked?.spans, firstEditedLine: checked?.firstEditedLine, kind: "edit" });
 			return;
 		}
 
@@ -619,13 +744,15 @@ export default function (pi: ExtensionAPI) {
 		// re-sent a blocked `git clone + git log` verbatim — twice — because the
 		// second block just repeated the original reason, giving the model no
 		// signal that the re-send itself was the mistake. Escalate instead.
-		// No mutationSeq guard, unlike R10: block reasons are command-shape
-		// facts (an uncapped git log stays uncapped after an edit); short window
-		// because the pattern is an immediate re-send, and the slot is single so
-		// a different block in between naturally re-arms the original rule.
+		// 2026-10-08 B1 fix: an edit/write since the block invalidates the
+		// re-send pattern the same way it legitimizes an R10 verify re-run —
+		// command-shape rules still re-block on their own check if they apply.
+		// Short window: the pattern is an immediate re-send; a different block
+		// in between naturally re-arms the original rule.
 		if (
 			lastBlockedBash &&
 			lastBlockedBash.cmd === cmd &&
+			lastBlockedBash.mut === mutationSeq &&
 			Date.now() - lastBlockedBash.ts < REBLOCK_WINDOW_MS
 		) {
 			return blockCall(
@@ -638,106 +765,66 @@ export default function (pi: ExtensionAPI) {
 		// ';' is part of the command, not a separator)
 		const segs = splitSegments(cmd);
 
-		// 2026-10-08 extensions audit: AGENTS.md sanctions "sed -n when batching
-		// 2+ regions", but sedBatch below counted ranges only within one
-		// invocation — `sed -n '55,70p' f; sed -n '301,302p' f; rg …` false-fired
-		// twice in audited sessions, each forcing a read-tool re-issue that
-		// returned near-identical bytes. Count ';'-joined single-region sed
-		// viewers as one distributed batch: semantically identical to the
-		// already-sanctioned `-e`-per-invocation form (same output ceiling),
-		// so this closes a doc/impl gap without widening what a sed can dump.
-		// Piped/redirected seds don't count — they aren't blockable viewers.
-		const sedViewers = segs.filter((s) => /^sed -n\b/.test(s) && !/[|>]/.test(s)).length;
 
 		for (const seg of segs) {
-			// R2: cat/head/tail/sed for file viewing (no pipe consumer); sed -n allowed
-			// when batching 2+ regions or substituting — `s/…/…/p` prints matches only,
-			// not regions (2026-10-07 audit: the s///p extraction shape false-fired 5
-			// blocks in one dropx-admin session); head/tail joined the viewer set the
-			// same audit — leaving them out made evasion cheaper than compliance
-			// (evasion rate 0.24). tail -f is a watcher, not viewing.
-			const sedBatch =
-				/^sed -n\b/.test(seg) &&
-				(/;\s*[^\s;]+p\b/.test(seg) || (seg.match(/(?:^|\s)-e\b/g) ?? []).length >= 2 || sedViewers >= 2);
-			const sedSubstPrint =
-				/^sed -n\b/.test(seg) &&
-				/(?:^|\s|['"])s([|#/@])[\s\S]*\1[\s\S]*\1[a-zA-Z]*p[a-zA-Z]*(?=['"\s]|$)/.test(seg);
-			if (
-				/^(cat|head|tail|sed -n)\b/.test(seg) &&
-				!/(^|\s)tail\s+-[a-zA-Z]*[fF]/.test(seg) &&
-				!sedBatch &&
-				!sedSubstPrint &&
-				// batched ≤128-byte cat exempt — whole-command veto over trivial
-				// bytes measured as a net token loss (trivialCat has the numbers)
-				!(segs.length >= 2 && /^cat\b/.test(seg) && (await trivialCat(seg))) &&
-				!seg.includes("|") &&
-				!seg.includes(">>") &&
-				!seg.includes(">")
-			) {
-				const extra = /^sed -n\b/.test(seg)
-					? " sed -n only when batching 2+ regions."
-					: /^cat\b/.test(seg)
-						? " cat only inside a pipeline."
-						: "";
-				return blockCall(
-					`Token Economy (Reading): use 'read' (offset/limit), not bash '${seg.split(" ")[0]}'.${extra} ` +
-					`If the region is already in context, act on it — a re-read will be blocked.`,
-				);
-			}
+			// R2 (viewing blocks) deleted 2026-10-08 by H1: bash output is capped
+			// non-blockingly in tool_result (CAP_LINES/CAP_BYTES above) — a block
+			// costs ~460 tok to save output the cap already truncates, and
+			// prose-in-heredoc false fires cost whole recovery turns.
 
-			// R6 (2026-09-23): rg -o extraction must be capped before landing in context
-			// (quoted spans stripped first so a *pattern* containing "-o" can't false-fire)
-			const bare = seg.replace(/"[^"]*"/g, "").replace(/'[^']*'/g, "");
-			if (/(^|[ /])rg\b[^\n|]*\s(--only-matching|-[a-zA-Z]*o)\b/.test(bare) && !isCapped(seg)) {
-				return blockCall(
-					`Token Economy (Extraction): cap 'rg -o' with '| head -N' or '| cut -c1-200' — ` +
-					`wide -o over big/minified files emits whole-file output.`,
-				);
-			}
-
-			// R5-ish: git log must be capped
-			if (/^git log\b/.test(seg) && !/--oneline/.test(seg) && !/-n\s?\d+|--max-count=\d+|(?<![\w-])-\d+\b/.test(seg) && !isCapped(seg)) {
-				return blockCall(`Token Economy (git reads): 'git log' must be 'git log --oneline | head' or '-n <N>'.`);
-			}
+			// R5 (git log caps) deleted 2026-10-08 by H1 step 5: log output is bash
+			// output — the cap truncates it (replay: 8 would-blocks incl. the
+			// B18 `-C`/`--no-pager` anchor misses; a full log dump still caps at
+			// 100 lines / 4 KB). AGENTS.md still teaches --oneline | head.
 
 			// R9: commit message must follow the commitlint conventional pattern
-			// (checked before the R8 hook-cap rule so a bad message never reaches git)
-			if (/^git commit\b/.test(seg)) {
-				const lint = validateCommitMessages(seg);
+			// H4-lite (2026-10-08): global git flags (-C dir, --no-pager, -c k=v)
+			// precede the subcommand and hid it from the ^git-commit anchor (B18's
+			// `git -C x commit -m …` skipped validation entirely)
+			const norm = seg.replace(/^git\s+((-[A-Za-z]\s+\S+|--[a-z-]+(?:=\S+)?|-[A-Za-z]+)(\s+|$))*/, "git ");
+			if (/^git commit\b/.test(norm)) {
+				const lint = validateCommitMessages(norm);
 				if (lint) return blockCall(lint);
 			}
 
-			// R8 (2026-09-27): commit/push re-run repo hooks (lint/test/build) whose
-			// output floods context (44-48K/call measured). Heredoc messages split
-			// across segments put the cap pipe on a later line — a cap anywhere in
-			// the full command satisfies the check; --no-verify skips hooks entirely.
-			if (/^git (commit|push)\b/.test(seg) && !/--no-verify/.test(seg) && !isCapped(seg) && !isCapped(cmd)) {
-				return blockCall(
-					`Token Economy (git hooks): '${seg.split(/\s+/).slice(0, 2).join(" ")}' re-runs lint/test hooks that flood context — ` +
-					`append '2>&1 | tail -20' or pass --no-verify.`,
-				);
-			}
+			// R8 (git hook caps) deleted 2026-10-08 by H1 step 4: hook output is
+			// bash output — the cap truncates it at the same ceiling the
+			// '2>&1 | tail' discipline aimed for, without a block turn before the
+			// commit the model legitimately wants (replay: 14 would-blocks; the
+			// `>` -in-quotes isCapped false fires were B10's root cause).
 
-			// R7 (2026-09-24): recursive directory walks pollute context (no ls -R, find -exec)
-			// (regexes tested against quote-stripped `bare` like R6 — a search pattern
-			// containing "ls -R"/"find -exec" inside quotes is not a walk; false-fired 10-05)
-			const lsRecursive = /\bls\b[^|]*\s(--recursive|-[a-zA-Z]*R[a-zA-Z]*)\b/.test(bare) && !/>/.test(seg);
-			if (lsRecursive || /\bfind\b[^|]*\s-exec(dir)?\b/.test(bare)) {
-				return blockCall(
-					`Token Economy (Searching): recursive walk ('${seg.split(/\s+/).slice(0, 2).join(" ")} …') floods context — ` +
-					`use 'rg --files <dir> | head -N' or 'rg -l <pattern> <dir>'.`,
-				);
-			}
+			// R7 (recursive-walk blocks) deleted 2026-10-08 by H1 step 6, the last
+			// output-economy deletion: a walk's flood is bash output — the cap
+			// truncates it at 100 lines / 4 KB (replay: 7 would-blocks, incl. the
+			// B9 `/dev/null`-redirect miss). 'rg --files | head' discipline stays
+			// in AGENTS.md. Remaining bash blocks: R9 commitlint, R10 re-run,
+			// Re-block escalation — correctness/dup guards, not output guards.
 
-			// Output cap: verbose build/test runners need a filter pipe
-			const verbose =
-				(/^(npm (run )?(test|build|typecheck|lint)|npm test)\b/.test(seg) ||
-				 /^(npx )?(vitest|jest|playwright test|tsc)\b/.test(seg)) &&
-				!/--version/.test(seg);
-			if (verbose && !isCapped(seg)) {
+			// verbose-runner caps deleted 2026-10-08 by H1 step 2: the output cap
+			// truncates any runner flood at the same ceiling the pipe discipline
+			// aimed for, without a block turn (replay: 21 would-blocks on legit
+			// commands; pytest/pnpm/yarn/bun/cargo/go shapes were never covered).
+		}
+
+		// H2 (2026-10-08): destructive/mutating commands need explicit user
+		// approval — AFTER lint (never ask permission for a command commitlint
+		// will reject anyway) and BEFORE R10. UI present → confirm dialog;
+		// headless → fail CLOSED, teaching the model to ask in chat and wait
+		// (suite t08/t09: 6/6 unauthorized mutations without this).
+		if (
+			DESTRUCTIVE_BASH.test(cmd) &&
+			!(lastApprovedDestructive && lastApprovedDestructive.cmd === cmd && Date.now() - lastApprovedDestructive.ts < APPROVED_WINDOW_MS)
+		) {
+			let approved = false;
+			if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
+				approved = await ctx.ui.confirm("Allow destructive command?", cmd);
+			}
+			if (approved) {
+				lastApprovedDestructive = { cmd, ts: Date.now() };
+			} else {
 				return blockCall(
-					`Token Economy (Command output): cap '${seg.split(/\s+/).slice(0, 3).join(" ")} …' — e.g. ` +
-					`'2>&1 | rg "FAIL|Error" | sort -u | head -40' (tests: '| rg "Tests|passed|failed" | tail -20').`,
+					`Permission Gate (Destructive): '${cmd.slice(0, 60)}' mutates files, deps, or history and needs the user's approval ` +
+					`first — ${ctx?.hasUI ? "the user declined" : "no confirm dialog is available"}; ask in chat and wait. Never run it unprompted.`,
 				);
 			}
 		}
@@ -759,11 +846,21 @@ export default function (pi: ExtensionAPI) {
 		if (prior && !prior.failed && !watcher && prior.mut === mutationSeq && Date.now() - prior.ts < RERUN_WINDOW_MS) {
 			return blockCall(
 				`Token Economy (Re-run): '${base.slice(0, 60)}' ran ${Math.round((Date.now() - prior.ts) / 1000)}s ago, no ` +
-				`edit/write since — output already in context. Re-run only after a change.`,
+				`edit/write since — output already in context. Re-run only after a change. Poll: 'sleep N && cmd'.`,
 			);
 		}
 		pendingBash.set(event.toolCallId, base);
 		return;
+	});
+
+	// H1 cap handler (2026-10-08) — registered BEFORE the bookkeeping handler
+	// below so the pendingBash* maps still identify the call; handlers compose,
+	// and this one's RETURN value overlays the truncated content onto what the
+	// model sees while bookkeeping (R10 records, Re-block arming) still runs.
+	pi.on("tool_result", async (event) => {
+		if (event.isError) return;
+		if (!pendingBashFull.has(event.toolCallId) && !pendingBash.has(event.toolCallId)) return;
+		return capBashOutput(event);
 	});
 
 	pi.on("tool_result", async (event) => {
@@ -806,13 +903,27 @@ export default function (pi: ExtensionAPI) {
 			// text; a real command failure ("bash: xyz: command not found") must
 			// not arm the escalation — hence the prefix match, not isError alone
 			const txt = (event.content as { text?: unknown }[] | undefined)?.[0]?.text;
-			const fam = typeof txt === "string" ? /^(Token Economy|Anchor Guard|Commitlint)[^:]*/.exec(txt) : null;
-			if (event.isError && fam) lastBlockedBash = { cmd: bashBlockedCmd, family: fam[0], ts: Date.now() };
+			const fam = typeof txt === "string" ? /^(Token Economy|Anchor Guard|Commitlint|Permission Gate)[^:]*/.exec(txt) : null;
+			if (event.isError && fam) {
+				// B2 fix (2026-10-08): a Re-block result must not overwrite the family —
+				// the 3rd consecutive block still names the ORIGINAL family so the
+				// reason stays actionable instead of self-referencing "Re-block"
+				const reblocked = fam[0].includes("(Re-block)");
+				lastBlockedBash = {
+					cmd: bashBlockedCmd,
+					family: reblocked && lastBlockedBash ? lastBlockedBash.family : fam[0],
+					ts: Date.now(),
+					mut: mutationSeq,
+				};
+			}
 		}
 		const bashBase = pendingBash.get(event.toolCallId);
 		if (bashBase !== undefined) {
 			pendingBash.delete(event.toolCallId);
 			lastBashRun.set(bashBase, { ts: Date.now(), mut: mutationSeq, failed: event.isError === true });
+			// H5/B20: a successful mutating bash command bumps mutationSeq like an
+			// edit/write — failures and watchers never do (a failed pull changed nothing)
+			if (!event.isError && MUTATING_BASH.test(String(event.input?.command ?? ""))) mutationSeq++;
 			return;
 		}
 		const entry = pendingEdits.get(event.toolCallId);
@@ -829,6 +940,15 @@ export default function (pi: ExtensionAPI) {
 			// snapshot AFTER our own edit so mtime reflects the post-edit content
 			if (entry.spans) {
 				const snap = await snapshot(entry.path);
+				// B4/H9 (2026-10-08): every line below the first edited original line
+				// shifted when line counts changed — stale coverage spans there
+				// describe different content and must not block re-reads. Truncate
+				// at the first edited line, then certify the fresh post-edit spans.
+				const prior = coverage.get(entry.path);
+				if (prior && entry.firstEditedLine !== undefined) {
+					const kept = prior.spans.filter((s) => s.end < entry.firstEditedLine!);
+					coverage.set(entry.path, { ...prior, spans: kept });
+				}
 				for (const s of entry.spans) certify(coverage, entry.path, s, entry.kind, snap);
 			}
 		}
@@ -889,20 +1009,31 @@ export default function (pi: ExtensionAPI) {
 			compactIdx < 0
 				? raw
 				: [...(keptIdx >= 0 ? raw.slice(keptIdx, compactIdx) : []), ...raw.slice(compactIdx + 1)];
-		const pending = new Map<string, { path: string; win: LineSpan; write?: boolean }>();
+		const pending = new Map<string, { path: string; win: LineSpan; write?: boolean; edited?: boolean; ts?: number }>();
 		for (const entry of branch) {
 			if ((entry as { type?: string }).type !== "message") continue;
+			// H6 (2026-10-08): entry ISO timestamp — hydration certifies only while
+			// the file still predates the replayed read (mtime <= ts, 1s slack);
+			// a file changed after that read certifies nothing (stale content)
+			const entryTs = Date.parse(String((entry as { timestamp?: unknown }).timestamp ?? "")) || 0;
 			const msg = (entry as { message?: { role?: string; content?: unknown[] } }).message;
 			if (!msg || !Array.isArray(msg.content)) continue;
 			if (msg.role === "assistant") {
 				for (const b of msg.content) {
 					const call = b as { type?: string; id?: string; name?: string; arguments?: Record<string, unknown> };
 					if (call?.type !== "toolCall" || !call.id) continue;
-					if ((call.name === "read" || call.name === "write") && typeof call.arguments?.path === "string") {
+					if ((call.name === "read" || call.name === "write" || call.name === "edit") && typeof call.arguments?.path === "string") {
 						const path = normPath(call.arguments.path);
 						if (!path) continue;
 						if (call.name === "write") {
-							pending.set(call.id, { path, win: { start: 1, end: Infinity }, write: true });
+							pending.set(call.id, { path, win: { start: 1, end: Infinity }, write: true, ts: entryTs });
+							continue;
+						}
+						// H6/B7 (2026-10-08): a replayed edit's anchors can't be re-validated
+						// here — clear coverage for the path instead of certifying stale
+						// spans (errs allow; the pre-edit content is not what's on disk)
+						if (call.name === "edit") {
+							pending.set(call.id, { path, win: { start: 1, end: Infinity }, edited: true, ts: entryTs });
 							continue;
 						}
 						const start = Math.max(1, typeof call.arguments.offset === "number" ? call.arguments.offset : 1);
@@ -920,8 +1051,15 @@ export default function (pi: ExtensionAPI) {
 				if (!p) continue;
 				pending.delete(id);
 				if (res.isError || !(res.content ?? []).length) continue;
+				if (p.edited) {
+					coverage.delete(p.path); // B7: the replayed edit invalidated prior spans
+					continue;
+				}
 				if (p.write || (res.content ?? []).some((b) => (b as { type?: string })?.type === "image")) {
-					coverage.set(p.path, { spans: [{ start: 1, end: Infinity }], kind: p.write ? "write" : "read", stat: await snapshot(p.path) });
+					const snap = await snapshot(p.path);
+					// H6: certify only when the file predates this replayed write/read
+					if (!(snap && p.ts && snap.mtimeMs > p.ts + 1000))
+						coverage.set(p.path, { spans: [{ start: 1, end: Infinity }], kind: p.write ? "write" : "read", stat: snap });
 					continue;
 				}
 				const counted = countTextLines(res.content ?? []);
