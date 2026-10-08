@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const env = { ...process.env, PGATE_MEMORY: join(mkdtempSync(join(tmpdir(), 'gate-eval-')), 'vmem.ndjson') };
+const env = { ...process.env, PGATE_MEMORY: join(mkdtempSync(join(tmpdir(), 'gate-eval-')), 'vmem.ndjson'), PGATE_ALLOWLIST: join(tmpdir(), 'pgate-no-allowlist.json') };
 writeFileSync(env.PGATE_MEMORY, '');
 
 const run = (script, args = []) =>

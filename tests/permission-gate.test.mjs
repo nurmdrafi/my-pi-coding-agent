@@ -142,6 +142,10 @@ writeFileSync(bigFile, `${'x'.repeat(199)}\n`); // 200 B — over the 128 B exem
 // violation-memory isolation: never touch the real ~/.pi/agent/logs telemetry
 process.env.PGATE_MEMORY = join(tmp, 'vmem.ndjson');
 writeFileSync(process.env.PGATE_MEMORY, '');
+// H2 allowlist isolation: point at a nonexistent file — default cases must
+// confirm ([]) and never read the user's real extensions/ allowlist
+const allowlistDefault = join(tmp, 'no-allowlist.json');
+process.env.PGATE_ALLOWLIST = allowlistDefault;
 
 // ---- cases: [name, expectation, async fn -> {blocked}] ----
 
@@ -476,6 +480,136 @@ const cases = [
     await bash(pi, 'git pull', ctx);
     await bash(pi, 'ls -la src', ctx);
     return asks === 0 ? { blocked: false } : { blocked: true, reason: `confirmed ${asks}× on non-destructive` };
+  }],
+  // ---- H2 allowlist (2026-10-08, user-approved): per-path auto-approve rules ----
+  ['H2 allowlist: rm inside the allowed dir skips the confirm', 'pass', async (pi) => {
+    mkdirSync(join(tmp, 'spill'), { recursive: true });
+    const f = join(tmp, 'allow-rm.json');
+    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
+    process.env.PGATE_ALLOWLIST = f;
+    try {
+      let asks = 0;
+      const ctx = { hasUI: true, mode: 'tui', ui: { confirm: async () => { asks++; return false; } } };
+      const r = await bash(pi, `rm -rf ${tmp}/spill/*`, ctx);
+      return !r.blocked && asks === 0 ? { blocked: false } : { blocked: true, reason: `asks=${asks} r=${JSON.stringify(r).slice(0, 80)}` };
+    } finally {
+      process.env.PGATE_ALLOWLIST = allowlistDefault;
+    }
+  }],
+  ['H2 allowlist: rm outside the allowed dir still confirms', 'blocked', async (pi) => {
+    const f = join(tmp, 'allow-rm.json');
+    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
+    process.env.PGATE_ALLOWLIST = f;
+    try {
+      return bash(pi, 'rm -rf /etc', { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
+    } finally {
+      process.env.PGATE_ALLOWLIST = allowlistDefault;
+    }
+  }],
+  ['H2 allowlist: one arg outside the allowed dir still confirms', 'blocked', async (pi) => {
+    mkdirSync(join(tmp, 'a'), { recursive: true });
+    const f = join(tmp, 'allow-rm.json');
+    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
+    process.env.PGATE_ALLOWLIST = f;
+    try {
+      return bash(pi, `rm -rf ${tmp}/a /etc`, { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
+    } finally {
+      process.env.PGATE_ALLOWLIST = allowlistDefault;
+    }
+  }],
+  ['H2 allowlist: uncovered destructive segment blocks the whole command', 'blocked', async (pi) => {
+    mkdirSync(join(tmp, 'a'), { recursive: true });
+    const f = join(tmp, 'allow-rm.json');
+    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
+    process.env.PGATE_ALLOWLIST = f;
+    try {
+      return bash(pi, `rm -rf ${tmp}/a && npm install left-pad`, { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
+    } finally {
+      process.env.PGATE_ALLOWLIST = allowlistDefault;
+    }
+  }],
+  ['H2 allowlist: all-covered compound auto-passes', 'pass', async (pi) => {
+    writeFileSync(join(tmp, 'b'), '');
+    writeFileSync(join(tmp, 'c'), '');
+    const f = join(tmp, 'allow-rm.json');
+    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
+    process.env.PGATE_ALLOWLIST = f;
+    try {
+      let asks = 0;
+      const ctx = { hasUI: true, mode: 'tui', ui: { confirm: async () => { asks++; return false; } } };
+      const r = await bash(pi, `rm -f ${tmp}/b && rm -f ${tmp}/c`, ctx);
+      return !r.blocked && asks === 0 ? { blocked: false } : { blocked: true, reason: `asks=${asks} r=${JSON.stringify(r).slice(0, 80)}` };
+    } finally {
+      process.env.PGATE_ALLOWLIST = allowlistDefault;
+    }
+  }],
+  ['H2 allowlist: git commit under a PGATE_TRUST marker auto-passes', 'pass', async (pi) => {
+    const repo = mkdtempSync(join(tmpdir(), 'pgate-trust-'));
+    writeFileSync(join(repo, 'PGATE_TRUST'), '');
+    const f = join(tmp, 'allow-trust.json');
+    writeFileSync(f, JSON.stringify({ rules: [{ match: 'git commit', trustMarker: 'PGATE_TRUST' }] }));
+    const prevWd = process.cwd();
+    process.env.PGATE_ALLOWLIST = f;
+    process.chdir(repo);
+    try {
+      let asks = 0;
+      const ctx = { hasUI: true, mode: 'tui', ui: { confirm: async () => { asks++; return false; } } };
+      const r = await bash(pi, 'git commit -m "fix: allowlisted via marker"', ctx);
+      return !r.blocked && asks === 0 ? { blocked: false } : { blocked: true, reason: `asks=${asks} r=${JSON.stringify(r).slice(0, 80)}` };
+    } finally {
+      process.chdir(prevWd);
+      process.env.PGATE_ALLOWLIST = allowlistDefault;
+    }
+  }],
+  ['H2 allowlist: git commit without the marker still confirms', 'blocked', async (pi) => {
+    const repo = mkdtempSync(join(tmpdir(), 'pgate-notrust-'));
+    const f = join(tmp, 'allow-trust.json');
+    writeFileSync(f, JSON.stringify({ rules: [{ match: 'git commit', trustMarker: 'PGATE_TRUST' }] }));
+    const prevWd = process.cwd();
+    process.env.PGATE_ALLOWLIST = f;
+    process.chdir(repo);
+    try {
+      return bash(pi, 'git commit -m "fix: no marker here"', { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
+    } finally {
+      process.chdir(prevWd);
+      process.env.PGATE_ALLOWLIST = allowlistDefault;
+    }
+  }],
+  ['H2 allowlist: commitlint still gates allowlisted commits', 'blocked', async (pi) => {
+    const repo = mkdtempSync(join(tmpdir(), 'pgate-trust2-'));
+    writeFileSync(join(repo, 'PGATE_TRUST'), '');
+    const f = join(tmp, 'allow-trust.json');
+    writeFileSync(f, JSON.stringify({ rules: [{ match: 'git commit', trustMarker: 'PGATE_TRUST' }] }));
+    const prevWd = process.cwd();
+    process.env.PGATE_ALLOWLIST = f;
+    process.chdir(repo);
+    try {
+      const r = await bash(pi, 'git commit -m "Fix the thing"', { hasUI: true, mode: 'tui', ui: { confirm: async () => true } });
+      return r.blocked && r.reason.startsWith('Commitlint') ? r : { blocked: false };
+    } finally {
+      process.chdir(prevWd);
+      process.env.PGATE_ALLOWLIST = allowlistDefault;
+    }
+  }],
+  ['H2 allowlist: corrupt allowlist fails closed', 'blocked', async (pi) => {
+    const f = join(tmp, 'allow-broken.json');
+    writeFileSync(f, '{ not json');
+    process.env.PGATE_ALLOWLIST = f;
+    try {
+      return bash(pi, `rm -rf ${tmp}/x`, { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
+    } finally {
+      process.env.PGATE_ALLOWLIST = allowlistDefault;
+    }
+  }],
+  ['H2 allowlist: nonexistent target inside allowed base still confirms', 'blocked', async (pi) => {
+    const f = join(tmp, 'allow-rm.json');
+    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
+    process.env.PGATE_ALLOWLIST = f;
+    try {
+      return bash(pi, `rm -rf ${tmp}/no-such-dir/*`, { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
+    } finally {
+      process.env.PGATE_ALLOWLIST = allowlistDefault;
+    }
   }],
   ['conventional capped commit passes', 'pass', async (pi) => bash(pi, 'git commit -m "fix: cap git log output" 2>&1 | tail -20')],
   // ---- runner caps ----

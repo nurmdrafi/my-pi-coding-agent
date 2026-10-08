@@ -64,9 +64,9 @@ import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "crypto";
 import { homedir, tmpdir } from "os";
-import { appendFileSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { readFile, stat } from "fs/promises";
-import { dirname, join, resolve } from "path";
+import { dirname, join, resolve, sep } from "path";
 
 interface EditEntry {
 	oldText: string;
@@ -92,11 +92,111 @@ const MUTATING_BASH =
  * with a reason that tells the model to ask in chat and wait. The list mirrors
  * AGENTS.md "Security & Safety" (A2 single source of truth). Approved commands
  * are remembered verbatim for 2 min so an immediate re-send (hook retry) does
- * not re-prompt. Config/allowlist file: open question for the user (brief §8).
+ * not re-prompt. Allowlist: per-command auto-approve rules — AllowRule below
+ * (user-approved 2026-10-08; open question §8 closed).
  */
 const DESTRUCTIVE_BASH =
 	/(^|&&|;|\|)\s*(sudo\b|\brm\b|git\s+(reset\s+--hard|clean\b|checkout\s+--|restore\b|commit\b|push\b)|npm\s+(i|install|uninstall|add)\b|pnpm\s+(i|add|install|remove)\b|yarn\s+(add|install|remove)\b|pip3?\s+install\b|brew\s+install\b|apt(-get)?\s+install\b|\b(DROP\s+(TABLE|DATABASE)|DELETE\s+FROM)\b|mkfs(\.\w+)?\b|dd\s+if=|>\s*\/(etc|usr|var|boot|root)\b)/i;
 const APPROVED_WINDOW_MS = 2 * 60_000;
+
+/**
+ * H2 allowlist (2026-10-08, user-approved follow-up): per-command auto-approve
+ * rules for the confirm above, read FRESH from a JSON file next to the
+ * extension on every destructive command (env PGATE_ALLOWLIST overrides — the
+ * PGATE_MEMORY isolation pattern) so edits take effect without restarting pi.
+ * Fail-closed: absent/corrupt/wrong-schema file → no rules → everything still
+ * confirms. Shipped default (extensions/permission-gate.allowlist.json):
+ * rm inside $TMPDIR + `git commit` under a PGATE_TRUST marker. Schema:
+ *   { "rules": [ { "match": "rm", "within": "$TMPDIR" },
+ *                { "match": "git commit", "trustMarker": "PGATE_TRUST" } ] }
+ *   - match: prefix at a word boundary from the segment start (&&/;/\n split)
+ *   - within: EVERY non-flag argument must resolve (after ~/$HOME/$TMPDIR
+ *     expansion, realpath'd — symlink and .. escapes stay caught) inside it
+ *   - trustMarker: a marker file must exist at/above the working directory —
+ *     opting a repo into un-prompted commits is a deliberate physical act
+ *   - neither: unconditional prefix auto-approve (explicit config opt-in)
+ * A compound command is auto-approved only when EVERY destructive segment is
+ * covered by a rule; pipes and deeper composition stay fail-closed (the match
+ * anchors at segment start). Commitlint still runs first, so an allowlisted
+ * `git commit` with a bad message is still blocked.
+ */
+interface AllowRule {
+	match: string;
+	within?: string;
+	trustMarker?: string;
+}
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function readAllowlist(): AllowRule[] {
+	try {
+		const parsed: unknown = JSON.parse(
+			readFileSync(process.env.PGATE_ALLOWLIST ?? join(homedir(), ".pi", "agent", "extensions", "permission-gate.allowlist.json"), "utf8"),
+		);
+		const rules = (parsed as { rules?: unknown }).rules;
+		if (!Array.isArray(rules)) return [];
+		return rules.filter(
+			(r): r is AllowRule =>
+				!!r &&
+				typeof r === "object" &&
+				typeof (r as AllowRule).match === "string" &&
+				(r as AllowRule).match.length > 0 &&
+				((r as AllowRule).within === undefined || typeof (r as AllowRule).within === "string") &&
+				((r as AllowRule).trustMarker === undefined || typeof (r as AllowRule).trustMarker === "string"),
+		);
+	} catch {
+		return []; // absent/corrupt → fail closed: every destructive command still confirms
+	}
+}
+
+/** expand ~/$HOME/$TMPDIR so `rm $TMPDIR/x` is judged on its real target */
+const expandShellPath = (p: string) =>
+	p.replace(/^~(?=\/|$)/, homedir()).replace(/\$\{?TMPDIR\}?/g, tmpdir()).replace(/\$\{?HOME\}?/g, homedir());
+
+function ruleAllows(rule: AllowRule, seg: string, cwd: string): boolean {
+	if (!new RegExp(`^${escapeRe(rule.match)}(?=\\s|$)`).test(seg)) return false;
+	if (rule.within !== undefined) {
+		let base: string;
+		try {
+			base = realpathSync(expandShellPath(rule.within));
+		} catch {
+			return false; // base dir doesn't exist → nothing can be inside it
+		}
+		const args = seg.split(/\s+/).slice(1).filter((t) => t && !t.startsWith("-"));
+		if (args.length === 0) return false;
+		return args.every((t) => {
+			const gi = t.search(/[*?]/);
+			const stem = gi === -1 ? t : t.slice(0, gi); // glob tail: judge the existing prefix
+			if (!stem) return false; // bare glob carries no path info — confirm
+			try {
+				const p = realpathSync(resolve(cwd, expandShellPath(stem)));
+				return p === base || p.startsWith(base + sep);
+			} catch {
+				return false; // nonexistent target → confirm, never assume
+			}
+		});
+	}
+	if (rule.trustMarker !== undefined) {
+		let dir = resolve(cwd);
+		for (let i = 0; i < 64; i++) {
+			if (existsSync(join(dir, rule.trustMarker))) return true;
+			const up = dirname(dir);
+			if (up === dir) return false;
+			dir = up;
+		}
+		return false;
+	}
+	return true; // unconditional prefix rule — explicit opt-in in the user's own config
+}
+
+/** every destructive segment (&&/;/\n split) covered by some rule — else confirm */
+function cmdAllowlisted(cmd: string, cwd: string): boolean {
+	const rules = readAllowlist();
+	if (rules.length === 0) return false;
+	const segs = splitSegments(cmd)
+		.map((s) => s.trim())
+		.filter((s) => DESTRUCTIVE_BASH.test(s));
+	return segs.length > 0 && segs.every((s) => rules.some((r) => ruleAllows(r, s, cwd)));
+}
 
 /**
  * split at unquoted \n / && / ; / || — a quoted ';' (sed '1p;5p', regex char
@@ -811,8 +911,11 @@ export default function (pi: ExtensionAPI) {
 		// will reject anyway) and BEFORE R10. UI present → confirm dialog;
 		// headless → fail CLOSED, teaching the model to ask in chat and wait
 		// (suite t08/t09: 6/6 unauthorized mutations without this).
+		const wdRaw = (event.input as { cwd?: unknown }).cwd;
+		const wd = typeof wdRaw === "string" ? resolve(wdRaw) : process.cwd();
 		if (
 			DESTRUCTIVE_BASH.test(cmd) &&
+			!cmdAllowlisted(cmd, wd) &&
 			!(lastApprovedDestructive && lastApprovedDestructive.cmd === cmd && Date.now() - lastApprovedDestructive.ts < APPROVED_WINDOW_MS)
 		) {
 			let approved = false;
