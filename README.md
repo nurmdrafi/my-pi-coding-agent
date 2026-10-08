@@ -1,22 +1,23 @@
 # pi agent harness
 
-[![release CI](https://img.shields.io/github/actions/workflow/status/nurmdrafi/my-pi-coding-agent/release.yml?label=release%20CI&logo=githubactions&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/actions/workflows/release.yml)
+[![release CI](https://img.shields.io/github/actions/workflow/status/nurmdrafi/my-pi-coding-agent/release.yml?label=release%20CI&logo=githubactions&logoColor=2088FF&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/actions/workflows/release.yml)
 [![release](https://img.shields.io/github/v/release/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/releases)
-[![license](https://img.shields.io/github/license/nurmdrafi/my-pi-coding-agent?logo=opensourceinitiative&logoColor=white&labelColor=24292f&style=flat-square)](LICENSE)
+[![license](https://img.shields.io/badge/license-MIT-2ea44f?logo=opensourceinitiative&logoColor=white&labelColor=24292f&style=flat-square)](LICENSE)
 [![pi coding agent](https://img.shields.io/badge/pi-coding_agent-8A2BE2?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/earendil-works/pi-coding-agent)
 <br>
 [![stars](https://img.shields.io/github/stars/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/stargazers)
 [![forks](https://img.shields.io/github/forks/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/forks)
 [![contributors](https://img.shields.io/github/contributors/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/graphs/contributors)
 [![issues](https://img.shields.io/github/issues/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/issues)
-[![commits/month](https://img.shields.io/github/commit-activity/m/nurmdrafi/my-pi-coding-agent?logo=git&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/commits)
-[![last commit](https://img.shields.io/github/last-commit/nurmdrafi/my-pi-coding-agent?logo=git&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/commits)
+[![commits/month](https://img.shields.io/github/commit-activity/m/nurmdrafi/my-pi-coding-agent?logo=git&logoColor=F05032&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/commits)
+[![last commit](https://img.shields.io/github/last-commit/nurmdrafi/my-pi-coding-agent?logo=git&logoColor=F05032&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/commits)
 [![repo size](https://img.shields.io/github/repo-size/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent)
 <br>
-[![node](https://img.shields.io/badge/node_%E2%A5%BC_22.19_%C2%B7_.nvmrc_24-339933?logo=nodedotjs&logoColor=white&labelColor=24292f&style=flat-square)](#requirements)
-[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-6e7681?logo=linux&logoColor=white&labelColor=24292f&style=flat-square)](#portability)
-[![tmux](https://img.shields.io/badge/tmux-optional-6e7681?logo=tmux&logoColor=white&labelColor=24292f&style=flat-square)](#subagents)
-[![skills](https://img.shields.io/badge/skills-20-2563eb?logo=readthedocs&logoColor=white&labelColor=24292f&style=flat-square)](#skills)
+[![node](https://img.shields.io/badge/node_%E2%A5%BC_22.19_%C2%B7_.nvmrc_24-339933?logo=nodedotjs&logoColor=5FA04E&labelColor=24292f&style=flat-square)](#requirements)
+[![macOS](https://img.shields.io/badge/macOS-6e7681?logo=apple&logoColor=A2AAAD&labelColor=24292f&style=flat-square)](#portability)[![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=FCC624&labelColor=24292f&style=flat-square)](#portability)
+[![language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white&labelColor=24292f&style=flat-square)](#extensions)
+[![tmux](https://img.shields.io/badge/tmux-optional-6e7681?logo=tmux&logoColor=1BB91F&labelColor=24292f&style=flat-square)](#subagents)
+[![skills](https://img.shields.io/badge/skills-20-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
 [![extensions](https://img.shields.io/badge/extensions-2-2563eb?labelColor=24292f&style=flat-square)](#extensions)
 [![token floor](https://img.shields.io/badge/token_floor-%E2%89%88_0.7K-2ea44f?labelColor=24292f&style=flat-square)](#always-on-token-budget)
 
