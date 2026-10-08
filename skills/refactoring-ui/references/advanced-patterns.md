@@ -24,8 +24,8 @@ Empty states are opportunities, not afterthoughts.
 - Optional secondary actions
 
 ```
-❌ "No items"
-✅ "No projects yet. Create your first project to get started."
+✗ "No items"
+✓ "No projects yet. Create your first project to get started."
    [+ Create Project]
 ```
 
@@ -309,7 +309,7 @@ xl:  1280px (desktops)
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Title                              ✕ Close │
+│  Title                              ✗ Close │
 ├─────────────────────────────────────────────┤
 │                                             │
 │  Modal content here                         │

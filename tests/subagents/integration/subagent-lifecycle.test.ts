@@ -37,7 +37,7 @@ import {
 const backends = getAvailableBackends();
 
 if (backends.length === 0) {
-  console.log("⚠️  tmux is not available — skipping subagent lifecycle integration tests");
+  console.log("WARNING: tmux is not available — skipping subagent lifecycle integration tests");
   console.log("   Run inside tmux to enable these tests.");
 }
 

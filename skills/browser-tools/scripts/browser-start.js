@@ -84,7 +84,7 @@ try {
 if (useProfile) {
 	const src = defaultProfileDir();
 	if (!fs.existsSync(src)) {
-		console.log(`⚠ No Chrome profile found at ${src} — starting fresh`);
+		console.log(`WARNING: No Chrome profile found at ${src} — starting fresh`);
 	} else {
 		console.log("Syncing profile...");
 		if (commandExists("rsync")) {

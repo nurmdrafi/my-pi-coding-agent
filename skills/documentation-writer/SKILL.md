@@ -62,7 +62,7 @@ When asked to validate, review, or audit existing docs ("review the README", "au
 2. **Check against DX RULES:** runnable code blocks, pinned versions, expected output present, no elisions in quickstarts, links resolve to real relative paths.
 3. **Verify against source:** code snippets, options, and API shapes must match the current code — read it, flag stale or invented contracts.
 4. **Structure check:** README order and CONTRIBUTING coverage per DX ARTIFACTS.
-5. **Report only — do not rewrite unless asked.** Findings as one line each: `path:line [blocker|warn|nit] issue (expected: ...)`. End with a one-line summary: X blockers, Y warnings, Z nits.
+5. **Report only — do not rewrite unless asked.** Findings as one line each: `path:line [BLOCKER|WARN|NIT] issue (expected: ...)`. End with a one-line summary: X blockers, Y warnings, Z nits.
 
 ## WORKFLOW
 

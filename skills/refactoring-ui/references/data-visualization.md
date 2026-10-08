@@ -40,8 +40,8 @@ Sometimes a simple number is better:
 - Very few data points → Table might be clearer
 
 ```
-❌ Pie chart with 2 slices (73% vs 27%)
-✅ "73% of users completed onboarding"
+✗ Pie chart with 2 slices (73% vs 27%)
+✓ "73% of users completed onboarding"
 ```
 
 ---
@@ -241,8 +241,8 @@ Widget Pro Max
 
 **3. Use consistent precision**
 ```
-❌  $1234, $567.89, $2.5k
-✅  $1,234.00, $567.89, $2,500.00
+✗  $1234, $567.89, $2.5k
+✓  $1,234.00, $567.89, $2,500.00
 ```
 
 **4. Minimize borders**
@@ -382,7 +382,7 @@ Revenue ──────────────────────
 **Callout boxes:**
 ```
 ┌──────────────────────────┐
-│ 📈 Best month ever!      │
+│ + Best month ever!      │
 │ +47% vs. last year       │
 └─────────────┬────────────┘
               │

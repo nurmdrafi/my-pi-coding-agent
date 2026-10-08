@@ -14,7 +14,7 @@ fi
 POLLUTION_CHECK="$1"
 TEST_PATTERN="$2"
 
-echo "🔍 Searching for test that creates: $POLLUTION_CHECK"
+echo "Searching for test that creates: $POLLUTION_CHECK"
 echo "Test pattern: $TEST_PATTERN"
 echo ""
 
@@ -41,7 +41,7 @@ while IFS= read -r TEST_FILE; do
 
   # Skip if pollution already exists
   if [ -e "$POLLUTION_CHECK" ]; then
-    echo "⚠️  Pollution already exists before test $COUNT/$TOTAL"
+    echo "WARNING: Pollution already exists before test $COUNT/$TOTAL"
     echo "   Skipping: $TEST_FILE"
     continue
   fi
@@ -54,7 +54,7 @@ while IFS= read -r TEST_FILE; do
   # Check if pollution appeared
   if [ -e "$POLLUTION_CHECK" ]; then
     echo ""
-    echo "🎯 FOUND POLLUTER!"
+    echo "FOUND POLLUTER!"
     echo "   Test: $TEST_FILE"
     echo "   Created: $POLLUTION_CHECK"
     echo ""
@@ -69,5 +69,5 @@ while IFS= read -r TEST_FILE; do
 done <<< "$TEST_FILES"
 
 echo ""
-echo "✅ No polluter found - all tests clean!"
+echo "✓ No polluter found - all tests clean!"
 exit 0

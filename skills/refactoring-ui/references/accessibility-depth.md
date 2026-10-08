@@ -143,7 +143,7 @@ Users must be able to perceive content.
 <!-- Good: color + icon + text -->
 <input class="border-red-500" aria-invalid="true" aria-describedby="error">
 <p id="error" class="text-red-600">
-  <svg aria-hidden="true">⚠️</svg>
+  <svg aria-hidden="true">WARNING:</svg>
   Email is required
 </p>
 ```
@@ -177,7 +177,7 @@ Users must be able to operate the interface.
 ```css
 /* Don't remove focus outlines */
 :focus {
-  outline: none; /* ❌ Never do this without replacement */
+  outline: none; /* ✗ Never do this without replacement */
 }
 
 /* Do provide visible focus */

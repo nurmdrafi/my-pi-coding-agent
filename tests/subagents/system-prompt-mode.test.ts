@@ -11,10 +11,10 @@ let failed = 0;
 
 function assert(condition: boolean, msg: string) {
   if (condition) {
-    console.log(`  ✅ ${msg}`);
+    console.log(`  ✓ ${msg}`);
     passed++;
   } else {
-    console.log(`  ❌ ${msg}`);
+    console.log(`  ✗ ${msg}`);
     failed++;
   }
 }
@@ -85,7 +85,7 @@ system-prompt: foobar
 Body here.`;
 
 // --- Test 1: Frontmatter parsing ---
-console.log("\n🧪 Frontmatter parsing of system-prompt field");
+console.log("\nFrontmatter parsing of system-prompt field");
 
 const r1 = parseFrontmatter(AGENT_REPLACE)!;
 assert(r1.systemPromptMode === "replace", "system-prompt: replace → mode is 'replace'");
@@ -101,7 +101,7 @@ const r4 = parseFrontmatter(AGENT_INVALID)!;
 assert(r4.systemPromptMode === undefined, "system-prompt: foobar → mode is undefined (ignored)");
 
 // --- Test 2: Identity routing ---
-console.log("\n🧪 Identity routing (system prompt vs user message)");
+console.log("\nIdentity routing (system prompt vs user message)");
 
 const s1 = simulateRouting("You are X.", "replace", undefined);
 assert(s1.roleBlock === "", "replace mode: roleBlock empty (not in task)");
@@ -128,7 +128,7 @@ assert(s6.cliFlag === "--system-prompt", "mode + param systemPrompt: uses CLI fl
 assert(s6.roleBlock === "", "mode + param systemPrompt: roleBlock empty");
 
 // --- Test 3: End-to-end with temp agent files ---
-console.log("\n🧪 End-to-end with temp agent files");
+console.log("\nEnd-to-end with temp agent files");
 
 const tmpDir = mkdtempSync(join(tmpdir(), "pi-test-spm-"));
 const agentsDir = join(tmpDir, ".pi", "agents");
@@ -160,4 +160,4 @@ rmSync(tmpDir, { recursive: true });
 console.log(`\n${"=".repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
-console.log("All tests passed! ✅\n");
+console.log("All tests passed! ✓\n");

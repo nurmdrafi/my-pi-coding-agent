@@ -7,6 +7,19 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] - 10-09-2026
+
+### Changed
+
+- **`skills/grilling` renamed to `skills/grill-me`** — same body, `/skill:grill-me` invocation; only README row and frontmatter `name` touched.
+- **`agents/researcher.md` absorbs `skills/research`**: primary-sources-only rule + findings-file persistence step (single Markdown file, each claim cited, saved per repo convention) moved in; `write` added to its tools.
+
+- **Emoji purge (repo-wide)**: emoji glyphs removed from all tracked files except `CHANGELOG.md` (historical; changelogen token map is functional data) and `audit-reports/` (immutable evidence). Plain chars kept: ✓/✗; mapped: ✅→✓, ❌→✗, ⚠️→`WARNING:`, ➡️→→, 🔥→`!!`, ❓/🔍/🎯/🧪 dropped. Syntax checks pass: py_compile, bash -n, node --check.
+
+### Removed
+
+- **Skill count 23 → 20**: `wayfinder` (map-of-decision-tickets planning), `prototype` (throwaway UI/logic artifact), `research` (delegated reading legwork — content now lives in the researcher agent). No other references existed outside wayfinder itself.
+
 ## [1.30.0] - 10-09-2026
 
 ### Changed

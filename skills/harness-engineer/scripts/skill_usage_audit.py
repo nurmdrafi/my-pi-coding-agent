@@ -47,7 +47,7 @@ def count_skill_invocations(sessions_dir: str) -> Counter:
     sessions_path = Path(sessions_dir)
 
     if not sessions_path.is_dir():
-        print(f"⚠  Session directory not found: {sessions_dir}")
+        print(f"WARNING: Session directory not found: {sessions_dir}")
         return counter
 
     for dir_entry in sorted(sessions_path.iterdir()):
@@ -89,7 +89,7 @@ def count_skill_invocations(sessions_dir: str) -> Counter:
                                     if m:
                                         counter[m.group(1)] += 1
             except (OSError, UnicodeDecodeError) as e:
-                print(f"⚠  Error reading {file_entry}: {e}")
+                print(f"WARNING: Error reading {file_entry}: {e}")
 
     return counter
 
@@ -98,7 +98,7 @@ def get_installed_skills(skills_dir: str) -> list[str]:
     """List all skill directories in the global install location."""
     skills_path = Path(skills_dir)
     if not skills_path.is_dir():
-        print(f"⚠  Skills directory not found: {skills_dir}")
+        print(f"WARNING: Skills directory not found: {skills_dir}")
         return []
     return sorted(
         d.name for d in skills_path.iterdir() if d.is_dir() and not d.name.startswith(".")
@@ -149,10 +149,10 @@ def print_report(
     print()
 
     for tier_name, tier_label, tier_icon in [
-        ("high", "🔥  HIGH USAGE (>= 10)", "🔥"),
-        ("medium", "✅  MEDIUM USAGE (3-9)", "✅"),
-        ("low", "⚠️  LOW USAGE (1-2)", "⚠️"),
-        ("unused", "❌  UNUSED (0)", "❌"),
+        ("high", "!!  HIGH USAGE (>= 10)", "!!"),
+        ("medium", "✓  MEDIUM USAGE (3-9)", "✓"),
+        ("low", "WARNING:  LOW USAGE (1-2)", "WARNING:"),
+        ("unused", "✗  UNUSED (0)", "✗"),
     ]:
         items = categorized[tier_name]
         if not items:
@@ -177,7 +177,7 @@ def print_report(
 
 def main():
     sessions_dir, skills_dir = parse_args()
-    print(f"🔍  Scanning sessions: {sessions_dir}")
+    print(f" Scanning sessions: {sessions_dir}")
     counts = count_skill_invocations(sessions_dir)
     installed = get_installed_skills(skills_dir)
 
