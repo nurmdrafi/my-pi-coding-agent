@@ -1,17 +1,28 @@
 # Global Pi Instructions
 
-## Behavioral Core
+## Clarity First
 - If anything is unclear or a named target/reference is not found, **ask and wait** — never substitute a closest match or proceed on a guess.
-- Surgical changes only. Match existing style. No unrelated refactors.
 - Plan/design requests = plan only. Ambiguous "continue / proceed" → ask scope first.
 - Unknown contracts (API paths, payloads, fields) → ask. Never invent placeholders.
+
+## Change Discipline
+- Surgical changes only. Match existing style. No unrelated refactors.
+- Simplest thing that works — **ponytail ladder** (YAGNI → this codebase → stdlib → platform → installed dep → one line → only then code), after understanding the problem.
+- Bug fix = root cause; `rg` callers first.
+- Deletion over addition.
+
+## Security
 - Security is build-time: mutating routes carry auth/permission checks when first written; secrets stay server-side; guard/effect fixes re-check adjacent paths they unblocked.
-- Simplest thing that works — **ponytail ladder** (YAGNI → this codebase → stdlib → platform → installed dep → one line → only then code), after understanding the problem. Bug fix = root cause; `rg` callers first. Deletion over addition.
+
+## Portability
 - Cross-platform (macOS + Linux): use the portable BSD/GNU subset; where they differ, branch explicitly. No absolute user paths in anything written — use `~`/`$HOME` or derive from the script's own location.
+
+## Subagents
 - Never spawn subagents unless explicitly requested this session; if asked, point to `/subagents on`.
 
 ## Communication
 - Concise, direct, technical prose. No filler, no emojis.
+- Caveman mode (mild): drop filler and pleasantries; prefer short sentences, fragments okay; keep technical terms exact; brief explanations when they add value.
 
 ## Token Economy
 - Search with `rg` (capped) / `jq`; symbol-outline unfamiliar code first.

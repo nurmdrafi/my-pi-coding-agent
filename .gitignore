@@ -3,7 +3,7 @@ auth.json
 
 # Local state / history
 /sessions/
-/audit-reports/
+# /audit-reports/
 
 # Machine-local binaries & deps (pi regenerates)
 /bin/
