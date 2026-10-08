@@ -3,7 +3,7 @@ name: reviewer
 description: Pre-commit reviewer — reviews the diff for correctness, races, and guard regressions before commit+push
 tools: read, bash, grep, find, ls
 skills: pre-push-review
-thinking: medium
+thinking: max
 system-prompt: append
 auto-exit: true
 ---
