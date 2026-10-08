@@ -33,3 +33,5 @@ tavily/config.json
 tavily/session.json
 # Machine-local gate telemetry (violation-memory counts)
 logs/
+# Autoresearch per-session scratch (workingDir pointer, rewritten each run)
+.auto/
