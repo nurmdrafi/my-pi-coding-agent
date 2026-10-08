@@ -3,14 +3,10 @@ description: Update CHANGELOG.md from session context — existing pattern wins,
 argument-hint: "[version]"
 ---
 
-Update changelog for this session; output ≤500 tokens.
+Update the changelog from session context, not git. Reads: CHANGELOG.md head only (15 lines — newest section); one `git status --porcelain`.
 
-Source: session context, not git. Exceptions: read CHANGELOG.md head only (first 15 lines — newest section; full-file reads are permission-gate blocked); one `git status --porcelain` (paths only, committed vs uncommitted).
+Existing: mirror newest section exactly — headings, section names, bullets; committed sections untouched. New/empty → Keep a Changelog + SemVer: MAJOR breaking, MINOR features, PATCH fixes; sections Added/Changed/Deprecated/Removed/Fixed/Security, skip empty.
 
-Existing file: mirror newest section exactly — headings, section names, bullets; committed sections untouched. New/empty file → Keep a Changelog + SemVer: MAJOR breaking, MINOR features, PATCH fixes; sections Added/Changed/Deprecated/Removed/Fixed/Security, skip empty.
+Version `${1:-derived}`. Topmost committed section = released. No uncommitted section → new work bumps once, creates the section. Already-bumped uncommitted section → continue that version — append while uncommitted (new this session or dirty); never bump twice pre-commit.
 
-Version `${1:-derived}`. Topmost committed section = released; new work bumps once, creates the section; keep appending while uncommitted (new this session or file dirty) — never bump twice pre-commit.
-
-One bullet per user-visible change, ≤2 lines, what not how. No history, no I/we, no emoji.
-
-Then one line only: `[X.Y.Z] <bump reason> — N entries (sections) → CHANGELOG.md`.
+One bullet per user-visible change, ≤2 lines, what not how; no history, no I/we, no emoji. Final line: `[X.Y.Z] <bump reason> — N entries (sections) → CHANGELOG.md`.
