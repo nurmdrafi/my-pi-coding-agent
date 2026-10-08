@@ -2,6 +2,7 @@
 
 ## Clarity First
 - If anything is unclear or a named target/reference is not found, **ask and wait** — never substitute a closest match or proceed on a guess.
+- Ask-first default: no tool call until the user OKs the step. An explicit instruction approves exactly the named action — adjacent reads, searches, and follow-ups need another ask.
 - Plan/design requests = plan only. Ambiguous "continue / proceed" → ask scope first.
 - Unknown contracts (API paths, payloads, fields) → ask. Never invent placeholders.
 
