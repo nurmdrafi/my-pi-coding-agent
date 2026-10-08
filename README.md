@@ -120,7 +120,7 @@ That's it — no env vars to export, no paths to fix.
 | frontend-design | New web components/pages/apps from scratch (detects the UI stack) | `/skill:frontend-design` |
 | github-actions | Author/harden CI workflows: SHA-pinned actions, scoped secrets, actionlint | `/skill:github-actions` |
 | grilling | Relentless one-question-at-a-time stress-testing of a plan/decision | `/skill:grilling` |
-| harness-engineer | Meta: audit/improve this harness (budgets, evidence, skill audits) | `/skill:harness-engineer` |
+| harness-engineer | Meta: audit/improve this harness (budgets, evidence, skill audits, anti-pattern sweep) | `/skill:harness-engineer` |
 | map-integration | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw; Barikoi stack | `/skill:map-integration` |
 | playwright-tester | e2e specs, stress/update-flow runs, bug-hunt iterations, untested-critical-path coverage | `/skill:playwright-tester` |
 | prototype | Throwaway prototype (HTML state-model walkthrough / UI variations) to answer a design question | `/skill:prototype` |

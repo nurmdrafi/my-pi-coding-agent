@@ -8,21 +8,11 @@ disable-model-invocation: false
 
 ## Overview
 
-**Core principle:** ALWAYS find root cause before attempting fixes. Symptom fixes are failure.
-
-**Violating the letter of this process is violating the spirit of debugging.**
-
-## The Iron Law
-
-```
-NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
-```
-
-If you haven't completed Phase 1, you cannot propose fixes.
+**Core principle:** Find the root cause before attempting fixes — a symptom fix leaves the cause in place, which is why the same error keeps coming back. Proposing fixes before Phase 1 completes is guessing.
 
 ## When to Use
 
-Use for ANY technical issue:
+Use for any technical issue:
 - Test failures
 - Bugs in production
 - Unexpected behavior
@@ -30,11 +20,12 @@ Use for ANY technical issue:
 - Build failures
 - Integration issues
 
-**Use this ESPECIALLY when:**
+**Reach for this especially when:**
 - Under time pressure (emergencies make guessing tempting)
 - "Just one quick fix" seems obvious
 - You've already tried multiple fixes
 - Previous fix didn't work
+- You don't fully understand the issue
 
 ## The Error-Class Loop
 
@@ -49,7 +40,6 @@ two fixes means the fixes targeted instances, not the cause.
    module name).
 3. Run the narrow check once (`tsc --noEmit` / the single failing test file)
    and confirm zero occurrences — not one-turn-per-instance.
-- You don't fully understand the issue
 
 **Don't skip when:**
 - Issue seems simple (simple bugs have root causes too)
@@ -58,7 +48,8 @@ two fixes means the fixes targeted instances, not the cause.
 
 ## The Four Phases
 
-You MUST complete each phase before proceeding to the next.
+Complete each phase before proceeding to the next — each phase produces the
+evidence the next one consumes.
 
 ### Phase 1: Root Cause Investigation
 
@@ -195,7 +186,7 @@ You MUST complete each phase before proceeding to the next.
    - Simplest possible reproduction
    - Automated test if possible
    - One-off test script if no framework
-   - MUST have before fixing
+   - Required before fixing starts
    - Written after the fix already exists? Flip the fix back once and
      confirm the test goes red — a regression test that has never failed
      proves nothing about detection

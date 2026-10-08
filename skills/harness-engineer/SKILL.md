@@ -2,8 +2,11 @@
 name: harness-engineer
 description: >
   Inspect, audit/score, and improve THIS pi harness — AGENTS.md budget, skill
-  catalog, token efficiency, portability. Use when: "audit harness", "health
-  score", "trim skills", "improve the harness", or the harness feels bloated.
+  catalog, token efficiency, portability, prompt anti-patterns (emphasis
+  boosters, verification rituals, stale examples, contradictions, dated
+  configs, secret hygiene). Use when: "audit harness", "anti-pattern audit",
+  "audit my skills/prompts/extensions", "health score", "trim skills",
+  "improve the harness", or the harness feels bloated.
 disable-model-invocation: true
 ---
 
@@ -61,9 +64,14 @@ One skill covers the full loop: inspect → audit/score → diagnose → change 
    - AGENTS.md ↔ skill rule duplication: −5 per overlap
    - vague/missing descriptions: −5 each; skills-dir pollution (node_modules, .zip, ._*): −5 each class
    - portability quick-check hits in functional files: −5 per class
-4. **Write the report** into the matching `~/.pi/agent/audit-reports/{harness,skills,sessions}/` subdir as `<date>T<time>Z-<topic>.md` (every filename carries its date; header records machine provenance — `uname -srm` + `uname -n`, this repo runs from multiple machines/OSes) — structure: executive summary, inventory table, top consumers, overlaps, score breakdown, comparison to previous report if present (delta per metric).
-5. Report BEFORE → AFTER numbers; recommendations ranked by impact. Implement only on request, then log per *Workflow* step 5.
-6. **Close the audit** — advance `.watermark.json`'s `auditedThrough` to the newest session covered; prune: delete `~/.pi/agent/sessions/**/*.jsonl` not modified in 30 days, then remove emptied cwd-slug dirs.
+4. **Anti-pattern sweep** — prompt-quality + security checks orthogonal to
+   the score: run the checklist in `references/anti-pattern-audit.md` over
+   skills, prompts, and extensions (rg-signature pass first, read only
+   flagged regions, calibrate earned emphasis vs boosters). Findings get
+   their own report section; fixes are separate proposals (Workflow step 3).
+5. **Write the report** into the matching `~/.pi/agent/audit-reports/{harness,skills,sessions}/` subdir as `<date>T<time>Z-<topic>.md` (every filename carries its date; header records machine provenance — `uname -srm` + `uname -n`, this repo runs from multiple machines/OSes) — structure: executive summary, inventory table, top consumers, overlaps, score breakdown, comparison to previous report if present (delta per metric).
+6. Report BEFORE → AFTER numbers; recommendations ranked by impact. Implement only on request, then log per *Workflow* step 5.
+7. **Close the audit** — advance `.watermark.json`'s `auditedThrough` to the newest session covered; prune: delete `~/.pi/agent/sessions/**/*.jsonl` not modified in 30 days, then remove emptied cwd-slug dirs.
 
 ## Workflow
 

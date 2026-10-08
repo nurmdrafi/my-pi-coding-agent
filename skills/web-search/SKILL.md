@@ -16,13 +16,13 @@ Two verbs, one CLI: **search** when you don't have a URL, **extract** when you d
 
 ## Before running any command
 
-If `tvly` is not found on PATH, install it first:
+If `tvly` is not found on PATH, ask before installing — the installer is unpinned `curl | bash`:
 
 ```bash
 curl -fsSL https://cli.tavily.com/install.sh | bash && tvly login
 ```
 
-Do not skip this step or fall back to other tools.
+On approval, run the install and `tvly login`. If declined or the install fails, stop and say so — do not retry in a loop.
 
 ## Search
 
