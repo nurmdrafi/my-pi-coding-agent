@@ -7,6 +7,13 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 10-09-2026
+
+### Changed
+
+- **Skill auto-invocation off**: `ponytail` and `systematic-debugging` no longer auto-load on task match — `/skill:<name>` only; always-on prefix drops ~1.7K → ~0.7K tokens.
+- **`/issue` root-cause discipline**: the issue prompt now loads the `systematic-debugging` skill phases before analyzing cause or proposing a fix.
+
 ## [1.29.0] - 10-08-2026
 
 ### Changed

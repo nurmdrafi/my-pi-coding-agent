@@ -1,7 +1,7 @@
 ---
 name: systematic-debugging
 description: Use BEFORE proposing any fix when something is broken — runtime errors (TypeError / Cannot read properties of undefined), wrong/null API data, build/test failures, "did not redirect / stopped working", "stuck loading", regressions, unexpected behavior, recurring errors that survive fixes ("same error again", "error keeps coming back"), repeated TypeScript strict errors (TS2345 null, TS2304 cannot-find-name), tests importing nonexistent modules. Find root cause first; never patch symptoms. NOT for features or greenfield work.
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 # Systematic Debugging

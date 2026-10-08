@@ -12,7 +12,7 @@
 
 A portable, git-synced configuration for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent) — one `~/.pi/agent/` directory that turns any macOS or Linux machine into a fully configured coding-agent workstation in minutes.
 
-**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 23 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~1.7K tokens permanent floor) so every session starts cheap.
+**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 23 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~0.7K tokens permanent floor) so every session starts cheap.
 
 - **One directory, one repo** — `git clone` is the entire install; git is the only sync mechanism.
 - **Zero environment variables, zero absolute paths** — everything works from the default `~/.pi/agent` location.
@@ -103,13 +103,13 @@ That's it — no env vars to export, no paths to fix.
 
 ## Skills
 
-2 of 23 skills are **auto-invocable** (the model loads them on match); the rest are manual — invoke with `/skill:<name>`. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
+All 23 skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
 
 | Skill | Purpose | Invocation |
 |---|---|---|
-| ponytail | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder + over-engineering review mode | auto |
+| ponytail | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder + over-engineering review mode | `/skill:ponytail` |
 | web-search | Web search + URL extraction via Tavily CLI (`tvly search` / `tvly extract`) | `/skill:web-search` |
-| systematic-debugging | Phased root-cause debugging (incl. error-class loops) before proposing any fix | auto |
+| systematic-debugging | Phased root-cause debugging (incl. error-class loops) before proposing any fix | `/skill:systematic-debugging` |
 | pre-push-review | CI-parity correctness review of the diff before commit/push | `/skill:pre-push-review` |
 | auth | NextAuth v4 credentials auth for Next.js App Router against an external REST IdP | `/skill:auth` |
 | brainstorming | Explore genuinely-unclear feature direction; one question at a time | `/skill:brainstorming` |
@@ -205,13 +205,13 @@ What is in context, and when:
 
 ## Always-on token budget
 
-The permanent prefix costs ~1.7K tokens per session (AGENTS.md 5,826 chars ≈ 1.5K + 2-entry auto-skill catalog ≈ 0.9K chars ≈ 0.25K, at ~4 chars/token; manual-skill descriptions stay out of the model-visible catalog; subagents tool defs removed — see [CHANGELOG.md](CHANGELOG.md)). Bodies and references stay out of context until needed.
+The permanent prefix costs ~0.7K tokens per session (AGENTS.md 2,702 chars ≈ 0.7K at ~4 chars/token; the 2 formerly auto-invocable skills went manual, so no skill descriptions sit in the model-visible catalog; subagents tool defs removed — see [CHANGELOG.md](CHANGELOG.md)). Bodies and references stay out of context until needed.
 
 | Component | Target | Notes |
 |-----------|--------|-------|
 | AGENTS.md | as small as possible (behavioral core only) | no stack essays, no skill lists |
-| Skill descriptions | short; delete dead skills | largest descriptions cost every session |
-| **Total always-on** | ≤ ~3.5K tok | all 23 descriptions always-on; no package tool defs |
+| Skill descriptions | short; delete dead skills | all 23 manual — zero per-session cost |
+| **Total always-on** | ≤ ~1K tok | AGENTS.md only; no auto-skill catalog, no package tool defs |
 
 Thinking is `off` by default (token economy); bump per-task with `--thinking high`.
 

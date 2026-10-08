@@ -7,6 +7,8 @@ argument-hint: "<issue-number>"
 
 **Validate.** Repro command / expected / observed; run the repro. Stale/dupe: rg CHANGELOG.md, recent commits, issue body/labels. Verdict `valid | invalid | dupe of #X | needs-info`, one line why. Not valid → report, stop.
 
+**Root-cause work runs on the systematic-debugging skill** — read `~/.pi/agent/skills/systematic-debugging/SKILL.md` and follow its phases before analyzing cause or proposing any fix.
+
 **Propose** (same reply): root cause (rg callers first), approach, files, risks (security impact + blast radius on existing business logic), `Deps:`, test plan. Approach feels risky or touches business-logic behavior → say so explicitly, present alternatives, let the human pick. **HARD STOP** — the human verifies: continue or skip. Skip → done.
 
 **Continue → implement on the current branch** (never create one): repro first, root-cause fix, minimal change, narrowest relevant verification. Report changes + verification.

@@ -3,7 +3,7 @@ name: ponytail
 description: "Ponytail: ship the minimal correct solution, and review diffs for over-engineering. Intensity modes (lite/full/ultra) on top of the always-on AGENTS.md ladder. Use when the user says 'ponytail', 'be lazy', 'simplest', 'yagni', 'ultra', complains of over-engineering, or the task/diff shows speculative generality, dead code still shipped, duplicated logic where one path would do, or new deps for solved problems. Review mode for 'review for over-engineering', 'what can we delete': one line per finding — location, cut, replacement. NOT correctness review or fixes."
 argument-hint: "[lite|full|ultra]"
 license: MIT
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 # Ponytail
