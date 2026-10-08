@@ -5,7 +5,7 @@ argument-hint: "[version]"
 
 Update changelog for this session; output ≤500 tokens.
 
-Source: session context, not git. Exceptions: read CHANGELOG.md; one `git status --porcelain` (paths only, committed vs uncommitted).
+Source: session context, not git. Exceptions: read CHANGELOG.md head only (first 15 lines — newest section; full-file reads are permission-gate blocked); one `git status --porcelain` (paths only, committed vs uncommitted).
 
 Existing file: mirror newest section exactly — headings, section names, bullets; committed sections untouched. New/empty file → Keep a Changelog + SemVer: MAJOR breaking, MINOR features, PATCH fixes; sections Added/Changed/Deprecated/Removed/Fixed/Security, skip empty.
 

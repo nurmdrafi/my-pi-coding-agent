@@ -7,6 +7,13 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 10-08-2026
+
+### Changed
+
+- **AGENTS.md rules tightened after behavior audit**: subagents rule reduced to a routing hint (extension gates activation; `/subagents on` = session authorization); ask-first now approves reads/searches directly implied by the named action; caveman mode hardened — ~5-line reply cap unless detail requested.
+- **`/update-changelog` token fix**: reads CHANGELOG.md head only (15 lines, newest section) instead of the full ~199KB file — ~50K → ~0.5K tokens per run; full-file reads stay permission-gate blocked.
+
 ## [1.28.0] - 10-08-2026
 
 ### Added
