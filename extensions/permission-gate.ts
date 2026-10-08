@@ -61,7 +61,7 @@
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ToolResultEventResult } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "crypto";
 import { homedir, tmpdir } from "os";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "fs";
@@ -286,7 +286,7 @@ function capBashOutput(event: {
 	toolCallId: string;
 	content?: unknown[];
 	structuredContent?: unknown;
-}): { content: unknown[]; structuredContent?: unknown } | undefined {
+}): ToolResultEventResult | undefined {
 	const blocks = event.content ?? [];
 	const texts: string[] = [];
 	for (const b of blocks) if ((b as { type?: unknown })?.type === "text") texts.push(String((b as { text?: unknown })?.text ?? ""));
@@ -329,10 +329,10 @@ function capBashOutput(event: {
 	} catch {
 		// spill is best-effort; truncation alone still caps the flood
 	}
-	const content = blocks.filter((b) => (b as { type?: unknown })?.type !== "text");
+	const content: ToolResultEventResult["content"] = blocks.filter((b) => (b as { type?: unknown })?.type !== "text") as NonNullable<ToolResultEventResult["content"]>;
 	content.push({ type: "text", text: `${kept.join("\n")}\n${note}` });
-	const out: { content: unknown[]; structuredContent?: unknown } = { content };
-	if (event.structuredContent !== undefined) out.structuredContent = event.structuredContent;
+	const out: ToolResultEventResult = { content };
+	if (event.structuredContent !== undefined) out.structuredContent = event.structuredContent as ToolResultEventResult["structuredContent"];
 	return out;
 }
 
