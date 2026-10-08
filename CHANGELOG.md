@@ -7,6 +7,14 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.0] - 10-08-2026
+
+### Changed
+
+- **`/issue` redesigned from stateful pipeline to in-context flow**: issue state (validation, verdict, proposal, decision) now lives in conversation only — never in files. Dropped: `.pi/issues/N.md` record + scaffold, `ISSUE_TRACKER.md` bookkeeping, `/tmp/issues/N.json` dumps, dedicated `fix/issue-N` branch, human `Decision`/`Version` ceremony, built-in changelog-edit and ship stages (owned by the standalone `/update-changelog` and `/ship` commands). New flow: single `gh issue view` fetch → validate (repro/expected/observed + stale/dupe) → propose in the same reply → hard stop for human verify → skip, or implement on the current branch with narrowest verification → `gh issue close $1 -c` with a concise comment, only when the human asks.
+
+Measured: `prompts/issue.md` 3,132 → 1,181 bytes (−62%); prompt template loads on demand (zero prefix cost) — run `/reload` in active sessions; portability sweep clean.
+
 ## [1.26.0] - 10-08-2026
 
 ### Added

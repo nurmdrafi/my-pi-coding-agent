@@ -87,7 +87,7 @@ That's it — no env vars to export, no paths to fix.
 ├── skills/                   # one dir per skill: SKILL.md + scripts/ references/ assets/
 ├── extensions/               # Always-on TS extensions (permission-gate)
 ├── agents/                   # Subagent definitions (scout/researcher/worker/reviewer)
-├── prompts/                  # /command prompt templates (ship)
+├── prompts/                  # /command prompt templates (/issue, /ship, /triage, /update-changelog)
 ├── tests/                    # Node test runner suite (permission-gate)
 ├── .github/workflows/        # Release CI/CD
 ├── package.json              # husky + commitlint (conventional commits)
@@ -249,7 +249,7 @@ Both keys are identical across machines and live only in `auth.json`. pi also ac
 | `settings.json` | Provider/model/theme/thinking (no secrets) |
 | `models.json` | Custom model definitions |
 | `agents/` | Subagent definitions (scout/researcher/worker/reviewer) |
-| `prompts/` | Prompt templates (`/ship`: commit+push from session context) |
+| `prompts/` | Prompt templates (`/issue`: in-context validate→propose→fix; `/ship`: commit+push; `/update-changelog`; `/triage`) |
 | `skills/` | All skills (auto-trigger + `/skill:name`) |
 | `extensions/` | Always-on extensions (`permission-gate`) |
 | `tests/` | Node test runner suite (`node --test tests/`) |
