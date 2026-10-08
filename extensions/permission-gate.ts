@@ -37,6 +37,19 @@
  * and widened to head/tail viewers (free-evasion lane closed), isCapped
  * counts stdout redirects to files, R5 accepts git log -<N>, R2 reason now
  * warns about the R1 re-read cascade.
+ * 2026-10-08 extensions-audit fixes (audit-reports/extensions/
+ * 2026-10-08T051448Z.md, 120 blocks measured over Oct 6–7): ';'-joined
+ * single-region seds count as one batch — AGENTS.md sanctions "sed -n when
+ * batching 2+ regions" but sedBatch counted ranges only inside one
+ * invocation, false-firing twice on the split two-region form; same dump
+ * ceiling as the already-sanctioned -e×2 form, so no new evasion lane. And
+ * a ≤128-byte cat inside a multi-segment batch is exempt: a block costs
+ * ~460 tok (reason ~71 + recovery turn ~392, measured), so vetoing
+ * date/ls/rg over a 49-byte watermark read spent ~460 tok to save ~12.
+ * Re-block escalation: the audit's single RETRY-SAME case re-sent a blocked
+ * `git clone + git log` verbatim twice before complying — repeating the
+ * original reason taught nothing, so a verbatim re-send of the just-blocked
+ * command now gets a dedicated reason naming the re-send itself.
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
@@ -62,6 +75,33 @@ interface EditEntry {
  */
 function isCapped(seg: string): boolean {
 	return /\|\s*(head|tail|rg|grep|cut|jq|sort|uniq|wc)\b/.test(seg) || /(^|\s)1?>+\s*\S/.test(seg);
+}
+
+/**
+ * R2 batch-cat exemption (2026-10-08 extensions audit,
+ * audit-reports/extensions/2026-10-08T051448Z.md). Decision trail: a block
+ * costs ~460 tok marginal (block reason ~71 + the forced recovery turn
+ * ~392, averaged over the audit's 120 blocks), so vetoing an entire
+ * multi-segment command because one `cat` dumps a tiny file is a net loss —
+ * the audited case was `date; cat .watermark.json (49 B); ls …` re-issued
+ * in full to save ~12 tok of output. Standalone `cat file` still blocks
+ * (the read-tool habit is the rule's point; zero ambiguity there), and any
+ * flag, glob, or unstatable/missing target never exempts — resolution
+ * failure falls back to blocking, never to allowing an unknown-size dump.
+ * `~` expands as the shell would; other paths resolve against the process
+ * cwd (same resolution normPath uses, so the two never disagree).
+ */
+async function trivialCat(seg: string): Promise<boolean> {
+	const toks = seg.split(/\s+/).slice(1).filter(Boolean);
+	if (toks.length === 0 || toks.some((t) => t.startsWith("-") || /[*?]/.test(t))) return false;
+	let total = 0;
+	for (const t of toks) {
+		const p = t.startsWith("~/") ? join(homedir(), t.slice(2)) : resolve(t);
+		const s = await stat(p).catch(() => undefined);
+		if (!s?.isFile()) return false;
+		total += s.size;
+	}
+	return total <= 128;
 }
 
 /**
@@ -391,7 +431,8 @@ function validateCommitMessages(seg: string): string | undefined {
 
 /** R10: re-running an unchanged base command inside this window re-sends output already in context */
 const RERUN_WINDOW_MS = 10 * 60_000;
-
+/** Re-block window: shorter than R10 — the verbatim re-send pattern is immediate (2026-10-08 audit: 3s and 2.5s gaps) */
+const REBLOCK_WINDOW_MS = 2 * 60_000;
 /**
  * Violation memory (2026-10-06 feedback: "LLM keeps repeating the same mistakes
  * every session"). Blocks correct within a session (98% one-shot recovery)
@@ -443,6 +484,13 @@ export default function (pi: ExtensionAPI) {
 	const pendingBash = new Map<string, string>();
 	/** R10: base command -> last-run record; re-runs are compared against it */
 	const lastBashRun = new Map<string, { ts: number; mut: number; failed: boolean }>();
+	// 2026-10-08 extensions audit (Re-block): pendingBash is only set AFTER all
+	// checks pass, so blocked calls leave no tool_result-side trace — keep the
+	// verbatim cmd keyed by toolCallId to recognize our own synthesized block
+	// results. One lastBlockedBash slot: only the immediately preceding blocked
+	// bash call can be "re-sent verbatim".
+	const pendingBashFull = new Map<string, string>();
+	let lastBlockedBash: { cmd: string; family: string; ts: number } | undefined;
 	/** R10: bumped on every successful edit/write — a mutation makes verify re-runs legitimate */
 	let mutationSeq = 0;
 
@@ -565,10 +613,41 @@ export default function (pi: ExtensionAPI) {
 
 		if (!isToolCallEventType("bash", event)) return;
 		const cmd = event.input.command;
+		pendingBashFull.set(event.toolCallId, cmd);
+
+		// Re-block (2026-10-08 extensions audit): the audit's one RETRY-SAME case
+		// re-sent a blocked `git clone + git log` verbatim — twice — because the
+		// second block just repeated the original reason, giving the model no
+		// signal that the re-send itself was the mistake. Escalate instead.
+		// No mutationSeq guard, unlike R10: block reasons are command-shape
+		// facts (an uncapped git log stays uncapped after an edit); short window
+		// because the pattern is an immediate re-send, and the slot is single so
+		// a different block in between naturally re-arms the original rule.
+		if (
+			lastBlockedBash &&
+			lastBlockedBash.cmd === cmd &&
+			Date.now() - lastBlockedBash.ts < REBLOCK_WINDOW_MS
+		) {
+			return blockCall(
+				`Token Economy (Re-block): this exact command was blocked ${Math.round((Date.now() - lastBlockedBash.ts) / 1000)}s ago ` +
+				`(${lastBlockedBash.family}) — that reason still applies. Change the command per it; a verbatim re-send only gets blocked again.`,
+			);
+		}
 
 		// split into segments; each checked independently (quote-aware — a quoted
 		// ';' is part of the command, not a separator)
 		const segs = splitSegments(cmd);
+
+		// 2026-10-08 extensions audit: AGENTS.md sanctions "sed -n when batching
+		// 2+ regions", but sedBatch below counted ranges only within one
+		// invocation — `sed -n '55,70p' f; sed -n '301,302p' f; rg …` false-fired
+		// twice in audited sessions, each forcing a read-tool re-issue that
+		// returned near-identical bytes. Count ';'-joined single-region sed
+		// viewers as one distributed batch: semantically identical to the
+		// already-sanctioned `-e`-per-invocation form (same output ceiling),
+		// so this closes a doc/impl gap without widening what a sed can dump.
+		// Piped/redirected seds don't count — they aren't blockable viewers.
+		const sedViewers = segs.filter((s) => /^sed -n\b/.test(s) && !/[|>]/.test(s)).length;
 
 		for (const seg of segs) {
 			// R2: cat/head/tail/sed for file viewing (no pipe consumer); sed -n allowed
@@ -579,7 +658,7 @@ export default function (pi: ExtensionAPI) {
 			// (evasion rate 0.24). tail -f is a watcher, not viewing.
 			const sedBatch =
 				/^sed -n\b/.test(seg) &&
-				(/;\s*[^\s;]+p\b/.test(seg) || (seg.match(/(?:^|\s)-e\b/g) ?? []).length >= 2);
+				(/;\s*[^\s;]+p\b/.test(seg) || (seg.match(/(?:^|\s)-e\b/g) ?? []).length >= 2 || sedViewers >= 2);
 			const sedSubstPrint =
 				/^sed -n\b/.test(seg) &&
 				/(?:^|\s|['"])s([|#/@])[\s\S]*\1[\s\S]*\1[a-zA-Z]*p[a-zA-Z]*(?=['"\s]|$)/.test(seg);
@@ -588,6 +667,9 @@ export default function (pi: ExtensionAPI) {
 				!/(^|\s)tail\s+-[a-zA-Z]*[fF]/.test(seg) &&
 				!sedBatch &&
 				!sedSubstPrint &&
+				// batched ≤128-byte cat exempt — whole-command veto over trivial
+				// bytes measured as a net token loss (trivialCat has the numbers)
+				!(segs.length >= 2 && /^cat\b/.test(seg) && (await trivialCat(seg))) &&
 				!seg.includes("|") &&
 				!seg.includes(">>") &&
 				!seg.includes(">")
@@ -717,6 +799,16 @@ export default function (pi: ExtensionAPI) {
 			}
 			return;
 		}
+		const bashBlockedCmd = pendingBashFull.get(event.toolCallId);
+		if (bashBlockedCmd !== undefined) {
+			pendingBashFull.delete(event.toolCallId);
+			// our synthesized block results carry isError + a family-prefixed
+			// text; a real command failure ("bash: xyz: command not found") must
+			// not arm the escalation — hence the prefix match, not isError alone
+			const txt = (event.content as { text?: unknown }[] | undefined)?.[0]?.text;
+			const fam = typeof txt === "string" ? /^(Token Economy|Anchor Guard|Commitlint)[^:]*/.exec(txt) : null;
+			if (event.isError && fam) lastBlockedBash = { cmd: bashBlockedCmd, family: fam[0], ts: Date.now() };
+		}
 		const bashBase = pendingBash.get(event.toolCallId);
 		if (bashBase !== undefined) {
 			pendingBash.delete(event.toolCallId);
@@ -750,6 +842,8 @@ export default function (pi: ExtensionAPI) {
 		pendingEdits.clear();
 		pendingBash.clear();
 		lastBashRun.clear();
+		pendingBashFull.clear();
+		lastBlockedBash = undefined;
 	});
 
 	// R1 resume hydration (2026-10-07): a resumed/continued session replays its
@@ -774,6 +868,8 @@ export default function (pi: ExtensionAPI) {
 		pendingEdits.clear();
 		pendingBash.clear();
 		lastBashRun.clear();
+		pendingBashFull.clear();
+		lastBlockedBash = undefined;
 		const raw = ctx.sessionManager.getBranch();
 		if (raw.length === 0) return;
 		// only the post-compaction slice is in context (same rule as the

@@ -117,6 +117,10 @@ function prevBranch(descs) {
 const hydrate = (pi, descs) => pi.handlers.get('session_start')({ type: 'session_start', reason: 'resume' }, { sessionManager: { getBranch: () => prevBranch(descs) } });
 const fileB = join(tmp, 'dup.ts'); // duplicate line for the anchor-uniqueness case
 writeFileSync(fileB, 'x\nx\n');
+const tinyFile = join(tmp, 'tiny.json'); // 2026-10-08: R2 trivial-cat batch exemption (audit: 49 B watermark case)
+writeFileSync(tinyFile, '{ "auditedThrough": "2026-10-07" }\n'); // 34 B
+const bigFile = join(tmp, 'big.json');
+writeFileSync(bigFile, `${'x'.repeat(199)}\n`); // 200 B — over the 128 B exemption
 // violation-memory isolation: never touch the real ~/.pi/agent/logs telemetry
 process.env.PGATE_MEMORY = join(tmp, 'vmem.ndjson');
 writeFileSync(process.env.PGATE_MEMORY, '');
@@ -243,6 +247,43 @@ const cases = [
   ['tail -f watcher is not viewing', 'pass', async (pi) => bash(pi, 'tail -f /tmp/server.log')],
   ['sed -n batching 2+ regions passes', 'pass', async (pi) => bash(pi, "sed -n '1p;5p' notes.md")],
   ['sed s///p substitution-print passes', 'pass', async (pi) => bash(pi, 'sed -n "s/^export const APP_VERSION = \'\\(.*\\)\'$/\\1/p" src/version.js')],
+  // ---- 2026-10-08 extensions audit: distributed sed batch + trivial batched cat ----
+  ['distributed sed batch (;-joined, 2 regions) passes', 'pass', async (pi) => bash(pi, `sed -n '1,2p' ${fileA}; sed -n '3p' ${fileA}`)],
+  ['distributed sed batch inside a longer batched command passes', 'pass', async (pi) => bash(pi, `date -u; sed -n '1,2p' ${fileA}; sed -n '2,3p' ${fileA}; rg -n x ${fileA} | head -3`)],
+  ['lone sed region inside a batched command still blocks', 'blocked', async (pi) => bash(pi, `date -u; sed -n '1,2p' ${fileA}`)],
+  ['tiny cat inside a batched command passes', 'pass', async (pi) => bash(pi, `date -u; cat ${tinyFile}; ls ${tmp}`)],
+  ['tiny cat standalone still blocks', 'blocked', async (pi) => bash(pi, `cat ${tinyFile}`)],
+  ['big cat inside a batched command still blocks', 'blocked', async (pi) => bash(pi, `date -u; cat ${bigFile}`)],
+  // ---- 2026-10-08 extensions audit: Re-block escalation (RETRY-SAME case) ----
+  // bash() alone doesn't replay the synthesized block tool_result pi emits —
+  // do it by hand so pendingBashFull -> lastBlockedBash arms, like the real loop
+  ['verbatim re-send of a just-blocked command escalates to Re-block', 'blocked', async (pi) => {
+    const bad = 'git clone -q https://example.com/r /tmp/r && cd /tmp/r && git log';
+    const id1 = `rb${++seqId}`;
+    const b1 = await pi.handlers.get('tool_call')({ type: 'tool_call', toolName: 'bash', toolCallId: id1, input: { command: bad } });
+    if (!b1) return { blocked: false }; // precondition: R5 blocks the uncapped git log
+    await pi.handlers.get('tool_result')({ type: 'tool_result', toolName: 'bash', toolCallId: id1, input: { command: bad }, content: textBlocks(b1.reason), isError: true });
+    const b2 = await pi.handlers.get('tool_call')({ type: 'tool_call', toolName: 'bash', toolCallId: `rb${++seqId}`, input: { command: bad } });
+    return b2 && b2.reason.includes('Re-block') ? { blocked: true, reason: b2.reason } : { blocked: false };
+  }],
+  ['compliant variant after a block does not escalate', 'pass', async (pi) => {
+    const bad = 'git clone -q https://example.com/r /tmp/r && cd /tmp/r && git log';
+    const id1 = `rb${++seqId}`;
+    const b1 = await pi.handlers.get('tool_call')({ type: 'tool_call', toolName: 'bash', toolCallId: id1, input: { command: bad } });
+    if (!b1) return { blocked: false }; // precondition: blocked first
+    await pi.handlers.get('tool_result')({ type: 'tool_result', toolName: 'bash', toolCallId: id1, input: { command: bad }, content: textBlocks(b1.reason), isError: true });
+    return bash(pi, 'git clone -q https://example.com/r /tmp/r2 && cd /tmp/r2 && git log --oneline | head -5');
+  }],
+  ['real command failure does not arm the escalation', 'pass', async (pi) => {
+    const cmd = 'timeout 120 pi -p "ok"';
+    const id1 = `rb${++seqId}`;
+    const b1 = await pi.handlers.get('tool_call')({ type: 'tool_call', toolName: 'bash', toolCallId: id1, input: { command: cmd } });
+    if (!b1) return { blocked: false }; // precondition: passes the gate
+    await pi.handlers.get('tool_result')({ type: 'tool_result', toolName: 'bash', toolCallId: id1, input: { command: cmd }, content: textBlocks('/bin/bash: timeout: command not found'), isError: true });
+    const b2 = await pi.handlers.get('tool_call')({ type: 'tool_call', toolName: 'bash', toolCallId: `rb${++seqId}`, input: { command: cmd } });
+    if (b2) console.log(`      must not re-block after a real (non-gate) failure: ${b2.reason.slice(0, 90)}`);
+    return b2 ? { blocked: true, reason: b2.reason } : { blocked: false }; // blocked here = test failure
+  }],
   ['loop-body sed viewing is not split out', 'pass', async (pi) => bash(pi, 'for s in research domain; do echo "== $s"; sed -n \'1,6p\' "$s.md"; done')],
   ['R2 reason carries the R1-cascade hint', 'blocked', async (pi) => {
     const r = await bash(pi, 'cat package.json');
