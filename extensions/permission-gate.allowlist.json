@@ -2,6 +2,7 @@
 	"$comment": "H2 allowlist — auto-approve rules for the permission-gate destructive confirm. Schema and semantics: permission-gate.ts (AllowRule). Reloaded live per destructive command; absent/corrupt file fails closed (everything confirms). Delete a rule or this file to restore full confirming.",
 	"rules": [
 		{ "match": "rm", "within": "$TMPDIR" },
-		{ "match": "git commit", "trustMarker": "PGATE_TRUST" }
+		{ "match": "git commit", "trustMarker": "PGATE_TRUST" },
+		{ "match": "git push", "trustMarker": "PGATE_TRUST" }
 	]
 }
