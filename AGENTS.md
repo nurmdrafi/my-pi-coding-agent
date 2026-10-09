@@ -33,7 +33,7 @@
 - Never paste a skill's full body into a message; skills load via description only.
 
 ## Safety
-- Ask before: commit, push, install packages, or any destructive command.
+- Ask before: commit, push, install packages, or any destructive command — unless the invoking message (incl. predefined prompts: /ship, /issue, /update-changelog) already approved it.
 
 ## Cadence
 - Plan → do → verify (narrowest relevant check only: targeted test / typecheck / lint / build when integration is affected) → repeat. Prefer the 80% solution that ships.

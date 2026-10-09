@@ -677,7 +677,7 @@ const FAMILY_LESSONS: Record<string, string> = {
 		"Never re-run a command unchanged within 10 min without an edit/write since — its output is already in context.",
 	"Token Economy (Re-read)": "Never re-read a file window already in context this session — read only new regions (offset/limit).",
 	"Permission Gate (Destructive)":
-		"Destructive/mutating commands (rm, git reset --hard/clean/checkout --/commit/push, package installs, sudo) need explicit user approval first — ask in chat and wait when no confirm dialog appears.",
+		"Destructive/mutating commands (rm, git reset --hard/clean/checkout --/commit/push, package installs, sudo) need explicit user approval first — approval in the invoking message counts (incl. predefined prompts: /ship, /issue, /update-changelog); otherwise ask in chat and wait when no confirm dialog appears.",
 	"Anchor Guard": "edit oldText is exact bytes from a read this session, unique in the file, non-overlapping with sibling edits.",
 	Commitlint: "Commit messages are conventional: 'type(scope?): subject', lowercase subject, no trailing dot.",
 };
@@ -957,7 +957,23 @@ export default function (pi: ExtensionAPI) {
 		) {
 			let approved = false;
 			if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
-				approved = await ctx.ui.confirm("Allow destructive command?", cmd);
+				// S-3 (2026-10-09, /ship-flow autoresearch): a dialog that never
+				// surfaces (lost focus, dropped RPC client) must not freeze the
+				// agent — decline after PGATE_CONFIRM_TIMEOUT_MS (default 120 s);
+				// the block reason then tells the model to ask in chat and wait.
+				const t = Number(process.env.PGATE_CONFIRM_TIMEOUT_MS);
+				const ms = Number.isFinite(t) && t > 0 ? t : 120_000;
+				let timer: ReturnType<typeof setTimeout> | undefined;
+				try {
+					approved = await Promise.race([
+						ctx.ui.confirm("Allow destructive command?", cmd),
+						new Promise<boolean>((r) => {
+							timer = setTimeout(() => r(false), ms);
+						}),
+					]);
+				} finally {
+						if (timer) clearTimeout(timer);
+				}
 			}
 			if (approved) {
 				lastApprovedDestructive = { cmd, ts: Date.now() };
