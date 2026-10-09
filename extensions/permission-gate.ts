@@ -58,6 +58,12 @@
  * 18%) incl. prose-in-heredoc false fires; the cap delivers the same token
  * ceiling with zero block turns. R5/R6/R7/R8/verbose retire next, one per
  * iteration, each measured (fp_rate, fixture_pass, block_cost).
+ * 2026-10-09 /ship-flow autoresearch: S-1 — R9 extracts `-m "$(cat <<'EOF'…)`
+ * heredoc bodies (no more garbage `"$(cat"` reasons, 01a11d06) and enforces
+ * body-max-line-length (100) pre-hook, so the git hook stops rejecting what
+ * the gate could have caught; S-2 — leading VAR=val assignments are stripped
+ * before destructive/allowlist/R9 anchors, so `GIT_TERMINAL_PROMPT=0 git
+ * push` cannot skip the confirm.
  */
 
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
@@ -194,6 +200,7 @@ function cmdAllowlisted(cmd: string, cwd: string): boolean {
 	if (rules.length === 0) return false;
 	const segs = splitSegments(cmd)
 		.map((s) => s.trim())
+		.map(stripEnvPrefix)
 		.filter((s) => DESTRUCTIVE_BASH.test(s));
 	return segs.length > 0 && segs.every((s) => rules.some((r) => ruleAllows(r, s, cwd)));
 }
@@ -579,6 +586,20 @@ async function validateEditAnchors(input: {
 const COMMIT_TYPES = "feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert";
 const CONVENTIONAL_HEADER = new RegExp(`^(${COMMIT_TYPES})(\\([\\w\\-.]+\\))?!?: .+`);
 
+/** S-2 (2026-10-09, /ship-flow autoresearch): leading VAR=value assignments
+ * (`GIT_TERMINAL_PROMPT=0 git push`) precede the subcommand and hid it from
+ * the ^-anchored destructive/allowlist/R9 matches — strip them first so an
+ * env-prefixed mutation can never skip the confirm (B18's -C class of miss). */
+const stripEnvPrefix = (seg: string) =>
+	seg.replace(/^(?:[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|[^\s"']+)\s+)+/, "");
+
+/** S-1 (2026-10-09): body of a `<<'EOF' … EOF` heredoc embedded in a -m
+ * value, else undefined */
+function extractHeredoc(val: string): string | undefined {
+	const m = /<<-?\s*(['"]?)(\w+)\1\s*\n([\s\S]*?)\n[ \t]*\2(?:\s|$)/.exec(val);
+	return m ? m[3] : undefined;
+}
+
 /**
  * Validates every -m message of a 'git commit' segment against the commitlint
  * conventional pattern (type(scope?): subject, header <= 100 chars, subject
@@ -592,14 +613,19 @@ function validateCommitMessages(seg: string): string | undefined {
 	const flags = [
 		...seg.matchAll(/(?:^|\s)(?:--[a-zA-Z-]*message|-[a-zA-Z]*m)\s*(?:=\s*)?(?:"((?:\\.|[^"])*)"|'((?:\\.|[^'])*)'|([^\s"'][^\s]*))/g),
 	];
-	if (flags.length === 0) return; // heredoc / -F / editor message: not inspectable
+	if (flags.length === 0) return; // -F / editor message: not inspectable
 	for (let i = 0; i < flags.length; i++) {
-		const msg = (flags[i][1] ?? flags[i][2] ?? flags[i][3] ?? "")
+		let msg = (flags[i][1] ?? flags[i][2] ?? flags[i][3] ?? "")
 			.replace(/\\n/g, "\n")
 			.replace(/\\(["'\\])/g, "$1");
 		if (!msg) continue;
-		if (i > 0) continue; // body paragraphs: header rules only (i === 0)
-		const header = msg.split("\n")[0];
+		// S-1: `-m "$(cat <<'EOF' … EOF)"` delivers the message via heredoc —
+		// lint the BODY, not the shell literal
+		const heredoc = extractHeredoc(msg);
+		if (heredoc !== undefined) msg = heredoc;
+		const lines = msg.split("\n");
+		if (i === 0) {
+		const header = lines[0];
 		if (!CONVENTIONAL_HEADER.test(header)) {
 			return `Commitlint: ${JSON.stringify(header)} must match 'type(scope?): subject' — e.g. 'fix(auth): cap git log'.`;
 		}
@@ -617,6 +643,15 @@ function validateCommitMessages(seg: string): string | undefined {
 			}
 			if (/[.]$/.test(header)) {
 				return `Commitlint: header must not end with '.'.`;
+			}
+		}
+		}
+		// S-1: body-max-line-length (100, config-conventional) on every -m part —
+		// until now the git hook enforced it alone (two rejects in one /ship)
+		const bodyLines = i === 0 ? lines.slice(1) : lines;
+		for (let j = 0; j < bodyLines.length; j++) {
+			if (bodyLines[j].length > 100) {
+				return `Commitlint: body line ${j + 1} of message part ${i + 1} is ${bodyLines[j].length} chars (max 100) — wrap it.`;
 			}
 		}
 	}
@@ -881,7 +916,7 @@ export default function (pi: ExtensionAPI) {
 			// H4-lite (2026-10-08): global git flags (-C dir, --no-pager, -c k=v)
 			// precede the subcommand and hid it from the ^git-commit anchor (B18's
 			// `git -C x commit -m …` skipped validation entirely)
-			const norm = seg.replace(/^git\s+((-[A-Za-z]\s+\S+|--[a-z-]+(?:=\S+)?|-[A-Za-z]+)(\s+|$))*/, "git ");
+			const norm = stripEnvPrefix(seg).replace(/^git\s+((-[A-Za-z]\s+\S+|--[a-z-]+(?:=\S+)?|-[A-Za-z]+)(\s+|$))*/, "git ");
 			if (/^git commit\b/.test(norm)) {
 				const lint = validateCommitMessages(norm);
 				if (lint) return blockCall(lint);
@@ -914,7 +949,9 @@ export default function (pi: ExtensionAPI) {
 		const wdRaw = (event.input as { cwd?: unknown }).cwd;
 		const wd = typeof wdRaw === "string" ? resolve(wdRaw) : process.cwd();
 		if (
-			DESTRUCTIVE_BASH.test(cmd) &&
+			// S-2: segment-wise with env prefixes stripped — a whole-cmd test let
+			// `… && GIT_TERMINAL_PROMPT=0 git push` skip the confirm entirely
+			splitSegments(cmd).some((s) => DESTRUCTIVE_BASH.test(stripEnvPrefix(s))) &&
 			!cmdAllowlisted(cmd, wd) &&
 			!(lastApprovedDestructive && lastApprovedDestructive.cmd === cmd && Date.now() - lastApprovedDestructive.ts < APPROVED_WINDOW_MS)
 		) {
