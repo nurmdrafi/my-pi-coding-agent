@@ -58,6 +58,8 @@ File map (every piece exists for a reason; do not skip one):
 ## Hard rules (each fixes a real observed bug)
 
 - **`authorize()` throws** `new Error(backendMessage)` on bad credentials — never `return null`. With `signIn({redirect:false})` the thrown message becomes `result.error` shown to the user; `null` gives a generic failure.
+- **Class login failures by HTTP status before the user sees them.** A single catch in `authorize()` that rethrows one message collapses throttling, 5xx, network blips, and token anomalies into that message — valid credentials get told "wrong password", and every infra incident gets reported as a frontend bug. Wrap backend calls with an error type carrying the status (`ApiError`-style), then map: 401 → credentials message, 429 → too-many-attempts (wait a minute), anything else or a network failure → service-unavailable. Report non-401 causes to Sentry/server logs; wrong passwords are expected user noise.
+- **Per-IP throttling is invisible in client-side tests.** Backends commonly rate-limit login endpoints per source IP (Laravel's default throttle: 60/min); a Next server funnels every user's login through one egress IP, so peak traffic intermittently 429s valid logins — Postman or curl from a dev machine uses a different IP and never reproduces it. Throttle responses are often HTML error pages: detect 429 by status before attempting to parse the body.
 - **All backend auth calls inside `authorize()`, server-side.** Client-side post-login fetch chains (profile fetch → set-cookie → redirect) are the root cause of the no-redirect bug. One `signIn()` = one response = one cookie.
 - **`await hydrateSessionToken()` after every successful `signIn`** (login, register auto-login, any programmatic sign-in) before any authorized request or redirect. `signIn({redirect:false})` resolves *before* the `useSession` cache updates; acting on the stale empty token sends requests as anonymous → 401 → logout loop.
 - **Redirect = awaited `router.push(callbackUrl)` in the component**, never `window.location.href` buried in an API layer, never conditional on a profile fetch succeeding. Sanitize `callbackUrl` to a same-origin relative path first — it's a query param, fully user-controllable, and `router.push("https://evil.com")` navigates off-origin (open redirect).
@@ -69,6 +71,7 @@ File map (every piece exists for a reason; do not skip one):
 ## Checklist
 
 - [ ] `authorize()` throws with backend message; does all backend auth calls
+- [ ] Login failures class-distinct: 401 credentials / 429 throttled / other or network → service-unavailable; non-401 causes captured server-side
 - [ ] `hydrateSessionToken()` called after signIn and register-auto-login; sets both the token and user holders
 - [ ] Redirect chain: `callbackUrl` (same-origin validated) → same-origin referrer (≠ auth page) → default
 - [ ] Route guard uses `getToken()` (signature-verified), not cookie presence
