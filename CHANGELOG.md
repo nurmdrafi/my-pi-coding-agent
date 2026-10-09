@@ -7,6 +7,15 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 09-10-2026
+
+### Changed
+
+- **Ten skills restructured for progressive disclosure** — SKILL.md bodies slimmed to workflow + routing; long material moved to `references/` (skill-manager, browser-tools, systematic-debugging, playwright-tester, github-actions, sdk-development, pre-push-review, session-audit, map-integration, ponytail). Descriptions and invocations unchanged.
+- **skill-manager gains an authoring-time anti-pattern gate** — the six prompt anti-patterns plus a security checklist (distilled from the harness audit) are swept on every create/modify before validation; spec, writing guide, and anti-pattern rules split into `references/`.
+- **pre-push-review scope narrowed to diff review** — changelog/version-hygiene context removed, matching the actual review prompt; severity ladder unchanged.
+- **Tool-selection cleanup across skills** — agent-facing commands and instructions use `rg` instead of `grep`; CI-embedded snippets keep portable `grep`.
+
 ## [1.31.0] - 10-09-2026
 
 ### Changed

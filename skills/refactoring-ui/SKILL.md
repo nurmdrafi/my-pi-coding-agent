@@ -25,7 +25,7 @@ Apply whenever the "polish" touches data flow, not just styles:
 - Fetch-on-selection gets a staleness guard (cancelled flag / compare requested
   id) AND a `.catch` that clears the previous entity's data — a late or failed
   response must never leave old data savable against a new selection.
-- Clearing/resetting state: enumerate every derived field (grep its consumers).
+- Clearing/resetting state: enumerate every derived field (rg its consumers).
   Common survivors: a derived data field still alive after its "Clear" action;
   a dependent list still alive after its parent selection changes.
 - Form pre-filled from row 1 + `values.x ?? o.x` fallback = dead fallback; bulk

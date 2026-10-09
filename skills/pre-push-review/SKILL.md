@@ -36,7 +36,7 @@ Read whole functions/components around each hunk, not just the hunk.
      yet (lazy-rendered panes); sync on enable/disable transitions too, not
      only on data or instance change.
 2. **Reset completeness**: when clearing/changing state, enumerate every
-   derived field and grep each consumer — cleared UI must not leave stale
+   derived field and rg each consumer — cleared UI must not leave stale
    data that still gets submitted.
 3. **Fix-induced guard regressions**: after adding a guard, check BOTH
    failure modes — skips-when-it-should-run and runs-when-it-should-skip.
@@ -55,7 +55,7 @@ Read whole functions/components around each hunk, not just the hunk.
      read of the same field settles it in one glance.
 5. **Null-unsafe member access**: API-derived values reach
    `.charAt`/`.toString`/`.map`/… without optional chaining or a null check
-   — grep the touched file for member access on response fields.
+   — rg the touched file for member access on response fields.
 6. **Failure paths keep context**: failure paths clear loading/spinner state
    and preserve user context (modal stays open with the server error shown),
    instead of closing on error.
@@ -100,28 +100,9 @@ Read whole functions/components around each hunk, not just the hunk.
 
 ## 4. Output
 
-**Prove a finding before you publish it.** A finding is a claim about a bug —
-verify it the same way you would verify a fix, then report it. Reasoning that
-"this looks wrong" is a hypothesis, not a finding. Real false positives from
-this exact failure: a `Form.List` handler `(name, checked)` compared against a
-numeric index looked like a string/number bug, but `field.name` *is* the numeric
-index (the sibling file used it as an array path `['rows', field.name, 'id']`) —
-correct code; a `moment(x, 'YYYY/MM/DD')` parse looked like it would fail on an
-ISO date, but the installed moment parses `'2000-05-15'`, `'2000/05/15'` and an
-ISO timestamp identically. Both were published to the user before being checked.
-
-Cheap verification, in order of preference:
-- **Run it** — a node one-liner, a 3-case input table, a unit test. Two seconds
-  of execution beats a paragraph of inference.
-- **Read the installed source** (`node_modules/<pkg>/...`) for the actual
-  semantics, not the API you remember.
-- **Read the call site** — what is actually passed at the site (`field.name`,
-  the id source, the payload consumer), not what the parameter name suggests.
-
-If it cannot be verified, label it `[UNVERIFIED]` and say what would prove it.
-Never assign a severity to an unproven claim — severity implies confidence you
-do not have, and a wrong medium+ wastes the user's review time. A finding you
-retract after checking costs far less than one you publish.
+Prove a finding before you publish it — the verification ladder,
+false-positive cases, and `[UNVERIFIED]` labeling rules are in
+`references/finding-verification.md`.
 
 One block per finding:
 
@@ -151,45 +132,5 @@ waiving a finding with corrected reasoning is a valid outcome.
 ## 6. Per-issue ship loop
 
 When the work is tied to a gh issue, the loop is: fix → review (this skill)
-→ changelog entry under the *existing latest* version → conventional-commit
-message ending `(issue #N)` → push → `gh issue close N --comment` with a
-summary of the shipped changes.
-
-## 7. Changelog / version hygiene
-
-Before committing, settle the version question **once** and stop:
-
-1. Read the current version from the project's source of truth (e.g. the top
-   `## [x.y.z]` entry in `CHANGELOG.md`, or `package.json`) — not from memory
-   and not from a guess about "the next number".
-2. Decide whether this change is a **new release entry** or an **addition to the
-   current unreleased/just-released entry**, and if the repo's convention is not
-   obvious from the last few commits, ask the user once rather than guessing.
-3. If adding to an existing entry, add it **inside that section** (under its
-   existing `### Added` / `### Changed` / `### Fixed` headings, creating one only
-   if absent) — do not open a second heading with the same version number.
-
-Real churn from getting this wrong: one change went in as a new `1.31.6`, was
-edited back into `1.31.5`, and was then merged into `1.31.4` — where the merge
-*duplicated the `## [1.31.4]` heading* because the new block was inserted above
-the old one instead of inside it. Three force-fix commits for one log line.
-
-After editing a changelog, verify the structure before committing:
-
-```sh
-# exactly one heading per version, newest first
-rg -n '^## \[' CHANGELOG.md | head -5
-# the entry you added is under the intended version
-rg -n '<your entry text>' CHANGELOG.md
-```
-
-If the version is generated (e.g. `scripts/generate-version.mjs` writes
-`src/version.js`), re-run that generator and confirm it prints the version you
-expect. Check the file is git-ignored before staging — a generated file that
-should not be committed is a common stray in the diff.
-
-After any changelog edit, re-read the edited region (not just `rg` the
-heading) to confirm the anchor didn't swallow a neighboring bullet prefix —
-it is a repeated-block file; the same anchor discipline as test files
-applies. Real case: an edit deleted a `- Auth session handling:` prefix and
-needed a repair edit.
+→ conventional-commit message ending `(issue #N)` → push → `gh issue close N
+--comment` with a summary of the shipped changes.

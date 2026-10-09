@@ -71,61 +71,8 @@ specifiers, or read the bundler config.
   breaks after a bump (asset, rendering, export), diff against how the previous version did it
   and match — don't invent new behavior mid-version.
 
-### SDK test pyramid (npm component libraries)
-
-| Layer | What it proves | Rules |
-|---|---|---|
-| Unit (jsdom, mocked engine) | Component logic | Mocks must track the real API — when a mocked test fails after a legit component change, suspect the **mock** first (a mock once lacked `getContainer` and `once`). Grep the repo for existing test helpers before writing new ones; consult the mature upstream reference (e.g. react-map-gl for maplibre wrappers) for idioms BEFORE authoring specs. |
-| Browser mode (real engine in Chromium) | Real engine integration | Alias the package name to repo `src/` in vitest config — and verify the alias; never accidentally test an installed/stale copy. |
-| E2e vs built `dist/` | The shipped artifact | Verify the host app actually resolves the package name to `dist/` — a suite once silently tested an installed npm copy while the build sat untested. Rebuild before e2e after library changes. See `playwright-tester` skill for the case-registry pattern. |
-| Pack smoke | The installable tarball | See below. |
-
-### Vitest browser-mode pitfalls
-
-- `actUntil(helper)` is an **event-registration** primitive — its promise executor runs once.
-  `actUntil((resolve) => { if (cond) resolve() })` hangs forever when the event has already
-  fired or hasn't fired yet → flaky suite. Register the event (`onLoad={resolve}`) or use
-  `waitFor` for polling.
-- Vitest 4 has no module-level `test.setTimeout` — a spec using it fails at **collection**
-  (looks like a test failure). Per-file: `vi.setConfig({ testTimeout })`.
-- Stability claims need 6–8× repeated full-suite runs; "3× green" once hid a ~50% flake that
-  resurfaced immediately.
-- **A flake is a race, not a timeout problem** — never bump timeouts or loosen polls in
-  response; find the registration/consumption race. When a bug class is fixed anywhere in the
-  session, re-scan your own newer test code for the same pattern before running.
-- Version-specific APIs: verify against the installed version's docs/types, not memory.
-- **Cite every assertion's source**: framework behavior (`memo()` returns an object since
-  React 18), CJS support, externals — from docs/build output/tests, not memory. If you can't
-  cite where a fact came from, verify before asserting it.
-
-### E2e infra details
-
-- `.env` for test-app keys (e.g. API key); commit `.env.example`, gitignore `.env`
-  precisely (not `.env*`).
-- Cases use the app's real env mechanism — no invented `window.__*__` globals;
-  a case fallback once referenced an undefined one and crashed.
-- **Sibling-reference rule**: when the same org ships a sibling wrapper over
-  the same engine, the sibling's shipped components/CSS ARE the acceptance criteria for visual
-  contracts (attribution content & dedupe, logo asset/size/margins, control
-  stacking). Port them verbatim — a novel mechanism (e.g. `customAttribution`
-  where the style also carries source attributions → duplicate copyright) ships
-  visible bugs to the maintainer. Port its render gate (`idle` = tiles parsed &
-  painted, not just `isStyleLoaded()` — a white canvas passes style-load) and its
-  review harness (per-case pass/fail HUD, retained artifacts) rather than
-  building a weaker equivalent.
-
-### Pack smoke test (`test:pack`)
-
-Prove the tarball a consumer installs actually loads:
-
-1. Build fresh, `npm pack`.
-2. Extract the tarball into a temp sandbox.
-3. In the sandbox, import the package **by name** (exercises the exports map), assert key
-   exports exist and styles resolve. React `memo()` returns an **object** since React 18 —
-   assert `typeof X !== 'undefined'`, never `=== 'function'`.
-4. Offline: symlink the sandbox's `node_modules` entries for each external (from build output,
-   see above). An ESM-only dependency (maplibre-gl v6) makes `require()` fail by construction —
-   smoke-test the path you actually support.
+Pyramid layers, browser-mode pitfalls, e2e infra details, and the pack smoke
+procedure: `references/testing.md`.
 
 ## Pre-publish gate (in order)
 
@@ -154,43 +101,10 @@ typecheck → lint → unit → browser-mode (npm) → e2e vs dist → README ex
 6. CHANGELOG.md complete for this version, missing shipped versions backfilled.
 7. **User reviews and commits/publishes manually.** Agent never commits, pushes, or publishes
    unprompted — it suggests the commit message and waits. User may want to test live first.
-8. `npm publish --access public` (or let CI release — below).
+8. `npm publish --access public` (or let CI release — `references/ci-and-upgrades.md`).
 
-## CI/CD
-
-- **CI on push to main (and PRs):** lint + build + full tests (`make lint`, `make cover` /
-  `vitest run --coverage`); golangci-lint runs as its own job. Lint config excludes
-  generated paths (`.golangci.yml` → `gen/`) — same exclusion as coverage.
-- **Coverage badge:** CI extracts the total (`go tool cover -func=coverage.out`) and commits
-  a color-coded `coverage.json` endpoint back to the repo — live coverage on the README.
-- **CodeQL** security scan workflow alongside CI. Validate workflow edits with `actionlint`
-  before committing them.
-- **Release workflow (changelog-driven):** extracts the version from the top `## [x.y.z]`
-  CHANGELOG heading, that section's body as the release notes, tags `v{x.y.z}`, creates the
-  GitHub Release (`softprops/action-gh-release`), publishes to npm. Hard-won gotchas: escape
-  dots when matching the version in the heading (`1.26.1` → `1\.26\.1`), pass the version
-  between steps via step outputs (env vars don't survive), and dry-run the extraction script
-  locally before tagging. The release ships whatever version is on top of the changelog —
-  missing release notes means a missing or malformed changelog entry; fix the changelog, never
-  hand-write notes elsewhere.
-- **Go modules:** no publish step — tag and push; consumers resolve via `proxy.golang.org`.
-  pkg.go.dev reads the proxy, not GitHub tags; badges update only after the version is first
-  requested. The lag is normal — don't chase it.
-
-## Dependency major upgrades
-
-An engine major bump (maplibre 5→6) silently breaks the documented surface: event payloads
-lose fields (`lngLat` vanished from drag events — the README's own example crashed),
-private-internals gates drift (`style._loaded`), event timing shifts (`styledata` fires before
-`load`).
-
-Protocol:
-1. Bump, rebuild, run the **README-matrix e2e first** — fastest signal of contract breakage.
-2. Keep the wrapper's documented contract: enrich/normalize engine events the docs promise
-   (react-map-gl enriches drag events; so must the wrapper).
-3. Guard mount-timing races with retries/ready-flags, not one-shot listeners
-   (`map.once('styledata')` fires before the style is actually queryable).
-4. Breaking API changes → semver **major** + migration notes.
+CI/CD pipelines and dependency major upgrades (engine-major contract breakage
+protocol): `references/ci-and-upgrades.md`.
 
 ## Documentation (the fixed set)
 

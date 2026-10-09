@@ -78,43 +78,7 @@ evidence the next one consumes.
 
 4. **Gather Evidence in Multi-Component Systems**
 
-   **WHEN system has multiple components (CI → build → signing, API → service → database):**
-
-   **BEFORE proposing fixes, add diagnostic instrumentation:**
-   ```
-   For EACH component boundary:
-     - Log what data enters component
-     - Log what data exits component
-     - Verify environment/config propagation
-     - Check state at each layer
-
-   Run once to gather evidence showing WHERE it breaks
-   THEN analyze evidence to identify failing component
-   THEN investigate that specific component
-   ```
-
-   **Example (multi-layer system):**
-   ```bash
-   # Layer 1: Workflow
-   echo "=== Secrets available in workflow: ==="
-   echo "IDENTITY: ${IDENTITY:+SET}${IDENTITY:-UNSET}"
-
-   # Layer 2: Build script
-   echo "=== Env vars in build script: ==="
-   env | grep IDENTITY || echo "IDENTITY not in environment"
-
-   # Layer 3: Signing script
-   echo "=== Keychain state: ==="
-   security list-keychains
-   security find-identity -v
-
-   # Layer 4: Actual signing
-   codesign --sign "$IDENTITY" --verbose=4 "$APP"
-   ```
-
-   **This reveals:** Which layer fails (secrets → workflow ✓, workflow → build ✗)
-
-   **Intermittent external-API failure that "works in my tool":** inspect response headers for throttle counters (`x-ratelimit-limit`, `x-ratelimit-remaining`, `retry-after`). Per-IP rate limits fire only from the production caller — a server proxying all users through one egress IP trips the cap at traffic peaks, while Postman/curl from a dev machine uses a different IP and stays under it. Confirm by hammering the endpoint past the stated limit from the failing caller's network and watching responses flip to 429 exactly at the cap. A catch-all that rethrows one generic message hides which class fired — read the status before trusting the user-facing message.
+   **WHEN system has multiple components (CI → build → signing, API → service → database):** add diagnostic instrumentation at each component boundary and run once to localize the failing layer — the full technique, multi-layer example, and the intermittent external-API throttle-counter case are in `references/evidence-gathering.md`.
 
 5. **Trace Data Flow**
 
@@ -238,46 +202,11 @@ evidence the next one consumes.
 
 ## Red Flags - STOP and Follow Process
 
-If you catch yourself thinking:
-- "Quick fix for now, investigate later"
-- "Just try changing X and see if it works"
-- "Add multiple changes, run tests"
-- "Skip the test, I'll manually verify"
-- "It's probably X, let me fix that"
-- "I don't fully understand but this might work"
-- "Pattern says X but I'll adapt it differently"
-- "Here are the main problems: [lists fixes without investigation]"
-- Proposing solutions before tracing data flow
-- **"One more fix attempt" (when already tried 2+)**
-- **Each fix reveals new problem in different place**
-
-**ALL of these mean: STOP. Return to Phase 1.**
-
-**If 3+ fixes failed:** Question the architecture (see Phase 4.5)
-
-## your human partner's Signals You're Doing It Wrong
-
-**Watch for these redirections:**
-- "Is that not happening?" - You assumed without verifying
-- "Will it show us...?" - You should have added evidence gathering
-- "Stop guessing" - You're proposing fixes without understanding
-- "Ultra-think this" - Question fundamentals, not just symptoms
-- "We're stuck?" (frustrated) - Your approach isn't working
-
-**When you see these:** STOP. Return to Phase 1.
-
-## Common Rationalizations
-
-| Excuse | Reality |
-|--------|---------|
-| "Issue is simple, don't need process" | Simple issues have root causes too. Process is fast for simple bugs. |
-| "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check thrashing. |
-| "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
-| "I'll write test after confirming fix works" | Untested fixes don't stick. Test first proves it. |
-| "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
-| "Reference too long, I'll adapt the pattern" | Partial understanding guarantees bugs. Read it completely. |
-| "I see the problem, let me fix it" | Seeing symptoms ≠ understanding root cause. |
-| "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Question pattern, don't fix again. |
+The red-flag thoughts, your human partner's redirection signals, and the
+rationalization→reality table live in `references/red-flags.md` — read them
+when you catch yourself (or are told) you're guessing. ALL red flags mean:
+STOP. Return to Phase 1. If 3+ fixes failed: Question the architecture
+(Phase 4, step 5).
 
 ## Quick Reference
 
@@ -306,3 +235,5 @@ These techniques are part of systematic debugging and available in `references/`
 - **`references/root-cause-tracing.md`** - Trace bugs backward through call stack to find original trigger
 - **`references/defense-in-depth.md`** - Add validation at multiple layers after finding root cause
 - **`references/condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
+- **`references/evidence-gathering.md`** - Multi-component instrumentation technique and the external-API throttle-counter case
+- **`references/red-flags.md`** - Red-flag thoughts, human-partner signals, rationalization→reality table
