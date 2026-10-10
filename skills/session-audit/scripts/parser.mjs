@@ -178,7 +178,12 @@ export function loadedSkillName(entry) {
  * cost-relevant parts of the input, using pi's tool names.
  */
 const NORMALIZERS = {
-  read: (i) => i.path ?? '',
+  // read: path alone made disjoint continuation windows (offset/limit) count
+  // as duplicates — false rank-1 finding in the 2026-10-10 resume-ops audit
+  // (01a1221b: lines 1-200 then 201-266 flagged as a dup). Include the
+  // window so only true re-reads of the same span match (same fix class as
+  // the 2026-09-14 edit normalizer, 132/213 false DUPs).
+  read: (i) => `${i.path ?? ''}\u0000${i.offset ?? 1}\u0000${i.limit ?? '∞'}`,
   bash: (i) => (i.command ?? '').trim(),
   // edit: path alone made distinct sequential edits to one file count as
   // duplicates (132/213 false DUP findings in the 2026-09-14 audit) —

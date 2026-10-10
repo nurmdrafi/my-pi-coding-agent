@@ -37,6 +37,17 @@ Keeping past reports is also the only way to answer "am I improving?": trend com
 6. **(I6)** Report the audit's own self-cost from `fetch_log.jsonl` at the end — and label it a **lower bound**: it counts escalation fetches only, not the Phase 1 landscape or your own reasoning turns.
 7. **(I7)** **Write only to `$AUDIT_WORKDIR` and the report.** Never edit this skill's own files (`SKILL.md`, `scripts/`) or the user's repo. You are an installed bundle: a relative path like `scripts/views.mjs` points at *your own running code*. An audit that patches its own renderer measures itself with something that changed mid-run, and the next install destroys the change without a word.
 
+## Scope gate — before any Phase 0 run
+
+Relative target words ("current repo", "previous session", "last repo", "recent") are ambiguous: each retarget orphans every call already spent on the prior reading (measured: ~25% of audit `2026-10-10T121209Z`). When the request is relative, ask once and wait:
+
+1. **Target** — which repo/project, or a session id?
+2. **Window** — last 1 / last N / date range / whole project?
+3. **Depth** — numbers only (L0/L1, no verdicts) or full audit (L2/L3 + report)?
+4. **Output** — archived report or chat summary?
+
+One cheap ask beats a rerun. A bare "yes" is not a scope — re-ask. Once confirmed, run cheap: `run --max 50` when the target is recent (single session / last day), and `views --project <name>` directly instead of the global view (capped global output forces spill-file re-reads).
+
 ## Phase 0 — Digest (L0 + L1, zero LLM)
 
 ```sh
@@ -56,6 +67,8 @@ Rules emitted: `CACHE_TTL_EXPIRY`, `DUP_TOOL_CALL`, `BIG_TOOL_OUTPUT`, `RETRY_ST
 node <skill-dir>/scripts/audit.mjs views
 node <skill-dir>/scripts/audit.mjs views --project <name>   # per-project slice: sessions, finding detail, per-date trend
 ```
+
+If the confirmed scope is a single project or session, slice with `views --project <name>` first; run the global view only for directory-wide questions.
 
 One bounded block: totals (tokens **and** dollars), findings-by-rule with a sessions-affected count, cache hit-ratio distribution, projects and worst sessions by waste (full session ids, with the `fetch` command to inspect one), idle-gap cost curve, tools by bytes, dup-read targets, BIG_TOOL_OUTPUT by tool, peak-context and compactions, per-date trend, skill usage.
 
@@ -121,5 +134,6 @@ Then summarize the top 3 changes in chat, in the user's own context, and say whe
 - `CACHE_TTL_EXPIRY` findings carry `evidenceStats.gapKind`. Only `user_idle` gaps are priced as waste; `tool_runtime` gaps are reported at **zero waste by design** — the wait was a long-running command, not a habit. Check `gapKind` before calling any TTL finding a habit.
 - Rank by **prefix persistence**: early, long-riding costs beat late one-offs of the same size.
 - **Dollars are priced per session, from its own model mix** (rates derived from the sessions' own logged `usage.cost`) — so the token ranking and the dollar ranking can legitimately disagree. Where they do, the dollar order is the one to act on, and worth calling out.
+- `DUP_TOOL_CALL` on `read` was path-keyed in pre-2026-10-10 digests (the normalizer dropped `offset`/`limit`) — before attributing a read dup as waste, fetch `tool_input` and compare windows: disjoint windows are continuation reads, not dups. Keying fixed for `read` on 2026-10-10 (same class as the 2026-09-14 `edit` fix); old reports and archived digests still carry the false positives.
 - Peak context can exceed 200K on large-context models; don't call it a bug.
 - A healthy directory (hit ratio >0.95, near-linear growth) deserves a short report saying so — do not manufacture findings.
