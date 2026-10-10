@@ -139,6 +139,8 @@ const tinyFile = join(tmp, 'tiny.json'); // 2026-10-08: R2 trivial-cat batch exe
 writeFileSync(tinyFile, '{ "auditedThrough": "2026-10-07" }\n'); // 34 B
 const bigFile = join(tmp, 'big.json');
 writeFileSync(bigFile, `${'x'.repeat(199)}\n`); // 200 B — over the 128 B exemption
+const hugeFile = join(tmp, 'extension-huge.ts'); // 2026-10-10: R1b big-read gate (audit: 44KB/51KB whole-file reads rode two sessions' prefixes)
+writeFileSync(hugeFile, Array.from({ length: 900 }, () => 'x'.repeat(59)).join('\n') + '\n'); // ~54 KB / 900 lines
 // violation-memory isolation: never touch the real ~/.pi/agent/logs telemetry
 process.env.PGATE_MEMORY = join(tmp, 'vmem.ndjson');
 writeFileSync(process.env.PGATE_MEMORY, '');
@@ -224,6 +226,18 @@ const cases = [
   // ---- skill re-read (2026-10-06 feedback item — R1 coverage closes it) ----
   ['full SKILL.md re-read same session is blocked', 'blocked', async (pi) => read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 })],
   ['SKILL.md re-read after compaction passes', 'pass', async (pi) => read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 })],
+  // ---- R1b + cadence (2026-10-10 session audit) ----
+  ['R1b: whole read of a >24KB file is blocked with targeted-window reason', 'blocked', async (pi) => read(pi, hugeFile)],
+  ['R1b: wide window (>=500 lines) on a >24KB file is blocked', 'blocked', async (pi) => read(pi, hugeFile, { offset: 1, limit: 600 })],
+  ['R1b: narrow window on a >24KB file passes', 'pass', async (pi) => read(pi, hugeFile, { offset: 10, limit: 200 }, { outputLines: 200 })],
+  ['cadence: 200th tool call is nudged exactly once, re-issue passes', 'pass', async (pi) => {
+    let nudged = 0;
+    for (let i = 0; i < 201; i++) { // 201 calls: nudge on #200, then the re-issue must pass
+      const block = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: `cad${i}`, input: { command: `echo ${i}` } });
+      if (block) { if (++nudged !== 1 || i !== 199) return { blocked: true }; } // wrong turn or double nudge fails the case
+    }
+    return nudged === 1 ? { blocked: false } : { blocked: true };
+  }],
   // ---- violation memory (before_agent_start injection — 2026-10-06) ----
   ['violation memory: block appends ndjson family entry', 'blocked', async (pi) => {
     const r = await bash(pi, 'git commit -m "Fix the thing"'); // Commitlint family — git reads retired with R5 (H1 step 5)

@@ -3,9 +3,18 @@
   "theme": "dark",
   "defaultProvider": "zai",
   "defaultModel": "glm-5.3",
-  "defaultThinkingLevel": "off",
+  "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
   "packages": [
     "npm:pi-autoresearch"
-  ]
+  ],
+  "compaction": {
+    "enabled": true,
+    "modelOverrides": {
+      "zai/glm-5.3": { "reserveTokens": 900000 },
+      "zai/glm-5.2": { "reserveTokens": 900000 },
+      "zai/glm-5.3-flash": { "reserveTokens": 900000 },
+      "deepseek/deepseek-flash": { "reserveTokens": 900000 }
+    }
+  }
 }

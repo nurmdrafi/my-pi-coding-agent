@@ -1,0 +1,37 @@
+# Secrets — never commit
+auth.json
+
+# Local state / history
+/sessions/
+# /audit-reports/
+
+# Machine-local binaries & deps (pi regenerates)
+/bin/
+npm/
+tmp/
+**/node_modules/
+
+# Logs
+*.log
+
+# macOS cruft
+._*
+.DS_Store
+
+# Local-only caches / regenerable artifacts
+models-store.json
+skills-archive.tar.gz
+
+# Removed (git-only sync; no scripts)
+setup.sh
+bundle.sh
+__pycache__/
+
+# Transient locks
+*.lock
+tavily/config.json
+tavily/session.json
+# Machine-local gate telemetry (violation-memory counts)
+logs/
+# Autoresearch per-session scratch (workingDir pointer, rewritten each run)
+.auto/

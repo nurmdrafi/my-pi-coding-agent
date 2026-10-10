@@ -278,6 +278,20 @@ function splitSegments(cmd: string): string[] {
 const CAP_LINES = 100;
 const CAP_BYTES = 4_096;
 
+// ---- R1b + cadence guards (2026-10-10 session audit) ----
+
+/** big-read gate: a whole-file-ish request for a file larger than this is
+ * blocked with a targeted-window reason (44KB/51KB whole-file reads rode two
+ * sessions' prefixes; the read tool's own 2000-line/50KB truncation is too
+ * generous to be the only brake) */
+const BIG_READ_BYTES = 24_000;
+/** a requested window at least this wide counts as whole-file-ish */
+const BIG_READ_WIN = 500;
+/** one-shot cadence nudge threshold: tool calls in one session before
+ * proposing a compaction/fresh-session hop (2026-10-10: 354/303-turn
+ * marathons re-billed ~100M cacheRead each with zero compactions) */
+const CADENCE_TOOL_CALLS = 200;
+
 /**
  * Replaces the deleted blocking viewing/dump rules (R2 viewing first;
  * R5/R6/R7/R8/verbose retire next): oversized bash output is truncated in
@@ -717,6 +731,9 @@ export default function (pi: ExtensionAPI) {
 	// bash call can be "re-sent verbatim".
 	const pendingBashFull = new Map<string, string>();
 	let lastBlockedBash: { cmd: string; family: string; ts: number; mut: number } | undefined;
+	/** cadence nudge state — reset on session_start (in-process session switch) */
+	let toolCallsSeen = 0;
+	let cadenceFired = false;
 	/** R10: bumped on every successful edit/write — a mutation makes verify re-runs legitimate */
 	let mutationSeq = 0;
 	/** H2: last user-approved destructive command (verbatim) + when */
@@ -828,6 +845,14 @@ export default function (pi: ExtensionAPI) {
 	// edit: anchor pre-validation first (existence, uniqueness, overlap);
 	// only a call that passes is tracked for read-freshness below
 	pi.on("tool_call", async (event, ctx) => {
+		// cadence nudge (2026-10-10 session audit): fires once at the threshold —
+		// the block reason carries the fix; the re-issued call passes untouched
+		if (!cadenceFired && ++toolCallsSeen >= CADENCE_TOOL_CALLS) {
+			cadenceFired = true;
+			return blockCall(
+				`Cadence: ${CADENCE_TOOL_CALLS}+ tool calls this session — the prefix now dominates cost. Finish the current step, then propose compaction or a fresh session (AGENTS.md cadence), and re-issue this call.`,
+			);
+		}
 		if (isToolCallEventType("edit", event)) {
 			const checked = await validateEditAnchors(event.input);
 			if (checked && "block" in checked) return blockCall(checked.reason);
@@ -847,6 +872,18 @@ export default function (pi: ExtensionAPI) {
 				start,
 				end: typeof event.input.limit === "number" ? start + event.input.limit - 1 : Infinity,
 			};
+			// R1b (2026-10-10 session audit): first read of a large file requested
+			// whole — block with the targeted-window fix. Windows narrower than
+			// BIG_READ_WIN lines pass untouched, small files pass, R1 covers
+			// re-reads of what is already certified in context.
+			if (win.end === Infinity || win.end - win.start >= BIG_READ_WIN) {
+				const snap = await snapshot(path);
+				if (snap && snap.size > BIG_READ_BYTES) {
+					return blockCall(
+						`Token Economy (Big read): '${shown}' is ~${Math.round(snap.size / 1024)}KB — target it (rg the symbol, then offset/limit ≤${BIG_READ_WIN} lines).`,
+				);
+				}
+			}
 			const prior = coverage.get(path);
 			if (path && prior && coversAll(prior.spans, win)) {
 				// freshness: only block while mtime+size still match the certified snapshot —
@@ -1146,6 +1183,8 @@ export default function (pi: ExtensionAPI) {
 		lastBashRun.clear();
 		pendingBashFull.clear();
 		lastBlockedBash = undefined;
+		toolCallsSeen = 0;
+		cadenceFired = false;
 		const raw = ctx.sessionManager.getBranch();
 		if (raw.length === 0) return;
 		// only the post-compaction slice is in context (same rule as the
