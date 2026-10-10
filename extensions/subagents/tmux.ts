@@ -95,13 +95,22 @@ function ensureAgentsSessionPane(): string {
       { encoding: "utf8" },
     );
   }
-  const pane = execFileSync(
+  const paneList = execFileSync(
     "tmux",
-    ["list-panes", "-t", AGENTS_TMUX_SESSION, "-F", "#{pane_id}", "-f", "#M"],
+    ["list-panes", "-t", AGENTS_TMUX_SESSION, "-F", "#{pane_id}"],
     { encoding: "utf8" },
-  ).trim();
-  if (!pane.startsWith("%")) {
-    throw new Error(`Unexpected tmux list-panes output: ${pane}`);
+  );
+  // First valid pane id line. Deliberately no `-f` filter: filter tokens like
+  // `#M` are not uniform across tmux versions (on 3.5a `#M` matches EVERY
+  // pane), so a filtered list once returned multiple lines that passed the
+  // old startsWith("%") check, cached a multi-line "pane id", and broke every
+  // subsequent split-window with `can't find pane: %0`.
+  const pane = paneList
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => /^%\d+$/.test(line));
+  if (!pane) {
+    throw new Error(`No panes found in tmux session ${AGENTS_TMUX_SESSION}`);
   }
   agentsSessionBasePane = pane;
   return pane;
@@ -253,7 +262,27 @@ export function sendLongCommand(
   writeFileSync(scriptPath, scriptParts.join("\n") + "\n", {
     mode: 0o755,
   });
-  sendCommand(surface, `bash ${shellEscape(scriptPath)}`);
+  // Deliver by replacing the pane process with the script — NOT by typing into
+  // the pane's shell. Keystrokes sent before the shell finishes initializing
+  // (oh-my-zsh/powerlevel10k/nvm can take seconds) are unreliable: the command
+  // text renders once the line editor comes up, but an Enter sent mid-init is
+  // swallowed and the command never executes (children "died pre-turn" in
+  // headless runs). respawn-pane needs no ready shell and no keypress.
+  // The trailing interactive shell keeps the pane — and its scrollback, where
+  // the completion sentinel echo lives — alive after the script exits, matching
+  // the old typed-in-a-shell behavior; the watcher closes the pane on
+  // completion. SHELL falls back to /bin/sh for portability.
+  execFileSync(
+    "tmux",
+    [
+      "respawn-pane",
+      "-k",
+      "-t",
+      surface,
+      `bash ${shellEscape(scriptPath)}; exec "\${SHELL:-/bin/sh}"`,
+    ],
+    { encoding: "utf8" },
+  );
   return scriptPath;
 }
 

@@ -757,7 +757,8 @@ function renderSubagentWidgetLines(agents: RunningSubagent[], width: number): st
 }
 
 function updateWidget() {
-  if (!latestCtx?.hasUI) return;
+  try {
+    if (!latestCtx?.hasUI) return;
 
   if (runningSubagents.size === 0) {
     latestCtx.ui.setWidget("subagent-status", undefined);
@@ -781,6 +782,12 @@ function updateWidget() {
     },
     { placement: "aboveEditor" },
   );
+  } catch {
+    // The ctx goes stale once the session is replaced or torn down (notably
+    // right after a headless/print-mode run ends): `latestCtx.hasUI` then
+    // throws. The widget is cosmetic — a dying session must never crash the
+    // host process from a .then/.catch continuation.
+  }
 }
 
 /**
@@ -1637,22 +1644,30 @@ async function watchSubagent(
       ...(stats ? { stats } : {}),
     };
   } catch (err: any) {
+    // Abort fires on session shutdown / module teardown — most importantly when
+    // a headless (print-mode) parent finishes its run and exits. The subagent
+    // pane is an independent tmux process: killing it here destroyed children
+    // mid-turn ("seeded then die before turn_start" in headless runs). Stop
+    // watching, but leave the pane alive so the child completes on its own;
+    // its result lands in its session file, recoverable by a resumed parent
+    // or `subagents_list` via the persistent name registry.
+    if (signal.aborted) {
+      runningSubagents.delete(running.id);
+      return {
+        name,
+        task,
+        summary: "Subagent detached: parent session ended while it was running. It keeps running in its tmux pane; its result is in its session file.",
+        exitCode: 0,
+        elapsed: Math.floor((Date.now() - startTime) / 1000),
+        error: "detached",
+        sessionFile,
+      };
+    }
     try {
       closeSurface(surface);
     } catch {}
     runningSubagents.delete(running.id);
 
-    if (signal.aborted) {
-      return {
-        name,
-        task,
-        summary: "Subagent cancelled.",
-        exitCode: 1,
-        elapsed: Math.floor((Date.now() - startTime) / 1000),
-        error: "cancelled",
-        sessionFile,
-      };
-    }
     return {
       name,
       task,

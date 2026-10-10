@@ -167,7 +167,7 @@ Subagent sessions always register active (the child's `--tools` sandbox governs)
 
 **tmux is agents-only** (local patch — upstream requires pi inside tmux). The main terminal runs pi plain. When a subagent spawns and pi is not inside tmux, panes appear in a detached session `pi-agents` — attach with `tmux attach -t pi-agents`, detach with `Ctrl+b d`. The tmux binary is required either way.
 
-Spawn-failure triage: the model says it has no `subagent` tool = **spawn tools gated** — run `/subagents on` (or `/subagents <agent> <task>`) and retry. `Install tmux (…)` = the tmux binary is missing.
+Spawn-failure triage: the model says it has no `subagent` tool = **spawn tools gated** — run `/subagents on` (or `/subagents <agent> <task>`) and retry. `Install tmux (…)` = the tmux binary is missing. Full setup, headless/print-mode behavior, and triage: [`extensions/subagents/README.md`](extensions/subagents/README.md).
 
 Agent definitions in `agents/` are plain files — inert while the spawn tools are gated; discovery: project > global.
 
