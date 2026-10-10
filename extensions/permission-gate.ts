@@ -363,7 +363,7 @@ interface LineSpan {
 	end: number;
 }
 
-type CoverKind = "read" | "edit" | "write";
+type CoverKind = "read" | "edit" | "write" | "inject";
 
 /** absolute map key — the same file reached by relative and absolute paths tracks once */
 function normPath(p: unknown): string {
@@ -840,6 +840,33 @@ export default function (pi: ExtensionAPI) {
 		// leak into the system prompt as the literal "undefined" (2026-10-07 review)
 		event.systemPromptOptions.appendSystemPrompt = (event.systemPromptOptions.appendSystemPrompt ?? "") +
 			`<violation-memory>\nRecurring tool-call violations from your prior sessions (gate telemetry) — apply before the first call:\n${lessons.join("\n")}\n</violation-memory>\n`;
+	});
+
+	// R-inj (2026-10-10 session audit): CLI @file args arrive as
+	// `<file name="/abs/path">\n…content…\n</file>` blocks in the expanded
+	// prompt (cli/file-processor); TUI @paths are literal text — nothing to
+	// certify. A block that byte-matches the file on disk certifies whole-file
+	// coverage, so R1 blocks re-reads of prompt-injected content exactly like
+	// read results. Hint/empty/mismatched blocks certify nothing — err toward
+	// allowing (never over-block on unverifiable injections).
+	pi.on("before_agent_start", async (event) => {
+		if (!event.prompt.includes('<file name="')) return;
+		for (const m of event.prompt.matchAll(/<file name="([^"]+)">([\s\S]*?)<\/file>/g)) {
+			const path = normPath(m[1]);
+			if (!path) continue;
+			// file-processor emits `\n${content}\n` inside the tags — strip exactly
+			// one boundary newline each side; content itself is untouched
+			const body = m[2].replace(/^\n/, "").replace(/\n$/, "");
+			let disk: string;
+			try {
+				disk = toLF(await readFile(path, "utf8")).replace(/^\uFEFF/, "");
+			} catch {
+				continue; // unreadable/missing: nothing to certify
+			}
+			if (disk !== body) continue; // hints, truncation, drift: not verifiably in context
+			const snap = await snapshot(path);
+			if (snap) coverage.set(path, { spans: [{ start: 1, end: Infinity }], kind: "inject", stat: snap });
+		}
 	});
 
 	// edit: anchor pre-validation first (existence, uniqueness, overlap);

@@ -113,6 +113,8 @@ const compact = (pi) => pi.invoke('session_compact', { type: 'session_compact' }
 const tmp = mkdtempSync(join(tmpdir(), 'pgate-'));
 const fileA = join(tmp, 'a.ts');
 writeFileSync(fileA, 'a\nb\nc\n');
+const fileInj = join(tmp, 'injected.md'); // R-inj: CLI @file block certification (2026-10-10)
+writeFileSync(fileInj, 'i1\ni2\ni3');
 const relA = relative(process.cwd(), fileA); // same file via the other key form (Q3)
 const skillFile = join(tmp, 'SKILL.md'); // 2026-10-06 feedback: R1 coverage must close same-session skill re-reads
 writeFileSync(skillFile, Array.from({ length: 30 }, (_, i) => `skill line ${i + 1}`).join('\n') + '\n');
@@ -154,6 +156,19 @@ process.env.PGATE_ALLOWLIST = allowlistDefault;
 const cases = [
   ['identical window re-read is blocked', 'blocked', async (pi) => read(pi, fileA, { offset: 1, limit: 50 }, { outputLines: 50 })],
   ['continuation window (1-50 then 51-100) passes', 'pass', async (pi) => read(pi, fileA, { offset: 51, limit: 50 }, { outputLines: 50 })],
+  ['R-inj: read of a prompt-injected file is blocked', 'blocked', async (pi) => {
+    await pi.invoke('before_agent_start', { type: 'before_agent_start', prompt: `redo this <file name="${fileInj}">\ni1\ni2\ni3\n</file>\nnow`, systemPromptOptions: {} });
+    return read(pi, fileInj);
+  }],
+  ['R-inj: stale/mismatched block certifies nothing', 'pass', async (pi) => {
+    await pi.invoke('before_agent_start', { type: 'before_agent_start', prompt: `<file name="${fileInj}">\nold content\n</file>`, systemPromptOptions: {} });
+    return read(pi, fileInj);
+  }],
+  ['R-inj: on-disk change after injection defeats the block', 'pass', async (pi) => {
+    await pi.invoke('before_agent_start', { type: 'before_agent_start', prompt: `<file name="${fileInj}">\ni1\ni2\ni3\n</file>`, systemPromptOptions: {} });
+    writeFileSync(fileInj, 'i1\ni2\ni3\ni4'); // external edit: mtime+size drift
+    return read(pi, fileInj);
+  }],
   ['windowed re-read inside a full read is blocked', 'blocked', async (pi) => read(pi, fileA, { offset: 10, limit: 20 })],
   ['full re-read after a full read is blocked', 'blocked', async (pi) => read(pi, fileA)],
   ['window past a truncated full read passes', 'pass', async (pi) => read(pi, fileA, { offset: 3000, limit: 100 }, { outputLines: 100 })],
