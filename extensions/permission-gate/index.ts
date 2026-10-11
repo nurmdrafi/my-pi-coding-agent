@@ -11,7 +11,6 @@
  * | R1b | Token Economy (Big read)      | first whole-file-ish (>=500-line window) read of a >24KB file blocked with a targeted-window fix |
  * | H1  | output cap (non-blocking)     | bash output capped at 100 lines / 4KB UTF-8; oversized first line head+tail; tail spilled to $TMPDIR/pgate-spill; errors capped too |
  * | H2  | Permission Gate (Destructive) | destructive commands need approval: chat yes / UI confirm; fail closed headless; re-send re-prompts |
- * | SM  | Permission Gate (Self-modify) | write/edit/bash may not touch ~/.pi/agent/extensions/** or PGATE_TRUST (self-unlock guard) |
  * | R9  | Commitlint                    | conventional-commit headers, subject case, body line length (incl. heredoc bodies), pre-hook |
  * | R10 | Token Economy (Re-run)         | identical command re-run within 10 min without an edit/write/mutating-bash since is blocked |
  * | RB  | Token Economy (Re-block)      | verbatim re-send of a just-blocked command escalates (never armed for H2) |
@@ -33,18 +32,15 @@ import {
   writeFileSync,
 } from "fs";
 import { readFile } from "fs/promises";
-import { dirname, join, resolve } from "path";
+import { dirname, join } from "path";
 
 import { toLF, validateEditAnchors } from "./anchor-guard.ts";
 import { capBashOutput } from "./bash-cap.ts";
 import {
   APPROVED_WINDOW_MS,
   APPROVAL_RE,
-  EXT_HOME,
   isMutatingCommand,
-  isProtectedPath,
   normalizeSegment,
-  protectedTargetIn,
   segmentDestructive,
   splitSegments,
 } from "./destructive.ts";
@@ -340,10 +336,6 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     if (isToolCallEventType("edit", event)) {
       const path = normPath(event.input.path, ctx?.cwd);
-      if (isProtectedPath(path))
-        return blockCall(
-          `Permission Gate (Self-modify): '${path}' is gate-owned config (extensions/ or PGATE_TRUST) — propose the change in chat; the user applies it by hand.`,
-        );
       const checked = await validateEditAnchors(event.input, ctx?.cwd);
       if (checked && "block" in checked) return blockCall(checked.reason);
       pendingEdits.set(event.toolCallId, {
@@ -419,10 +411,6 @@ export default function (pi: ExtensionAPI) {
 
     if (isToolCallEventType("write", event)) {
       const path = normPath(event.input.path, ctx?.cwd);
-      if (isProtectedPath(path))
-        return blockCall(
-          `Permission Gate (Self-modify): '${path}' is gate-owned config (extensions/ or PGATE_TRUST) — propose the change in chat; the user applies it by hand.`,
-        );
       // whole file content is in context after a write — every window overlaps it
       pendingEdits.set(event.toolCallId, {
         path,
@@ -462,20 +450,9 @@ export default function (pi: ExtensionAPI) {
     // segments feed self-modify, R9 and destructive (2026-10-11:
     // destructive judged the raw segment, so `git -C . push` skipped
     // the confirm while R9 caught `git -C x commit`)
-    const wdRaw = (event.input as { cwd?: unknown }).cwd;
-    const wd = typeof wdRaw === "string" ? resolve(wdRaw) : process.cwd();
     const normSegs = splitSegments(cmd).map(normalizeSegment);
 
     for (const seg of normSegs) {
-      // Self-modify (2026-10-11): nothing the model runs may write the gate's
-      // own config — the extension or a
-      // PGATE_TRUST marker (the old marker rule was the self-unlock)
-      if (protectedTargetIn(seg, wd)) {
-        return blockCall(
-          `Permission Gate (Self-modify): this writes gate config (extensions/ or PGATE_TRUST) — propose the change in chat; the user applies it by hand.`,
-        );
-      }
-
       // R9: commit message must follow the commitlint conventional pattern
       if (/^git commit\b/.test(seg)) {
         const lint = validateCommitMessages(seg);

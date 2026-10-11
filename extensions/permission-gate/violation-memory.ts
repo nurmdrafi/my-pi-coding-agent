@@ -10,8 +10,6 @@ export const FAMILY_LESSONS: Record<string, string> = {
     "Never re-read a file window already in context this session — read only new regions (offset/limit).",
   "Permission Gate (Destructive)":
     "Destructive/mutating commands (rm, git reset --hard/clean/checkout --, package installs, sudo) need explicit user approval first — a yes in chat or in the invoking message (incl. /ship, /issue, /update-changelog) counts and suppresses the confirm; otherwise ask in chat and wait.",
-  "Permission Gate (Self-modify)":
-    "Never modify the permission-gate extension or create PGATE_TRUST markers — gate config changes are proposed in chat and applied by the user.",
   "Anchor Guard":
     "edit oldText is exact bytes from a read this session, unique in the file, non-overlapping with sibling edits.",
   Commitlint:

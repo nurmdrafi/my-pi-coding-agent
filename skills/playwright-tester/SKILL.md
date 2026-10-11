@@ -113,7 +113,7 @@ state, never source guesses.
   stylesheet/entry point (a logo once "vanished" because the test host never imported
   the library's styles export).
 - Cap everything a recon or probe step returns before it lands in context:
-  `JSON.stringify(x).slice(0, 500)` for `page.evaluate` dumps, `| tail -20` on
+  `JSON.stringify(x).slice(0, 500)` for `page.evaluate` dumps, `t=$(mktemp); <cmd> > "$t" 2>&1 || tail -20 "$t"` (tail only on failure — a bare `| tail` masks the exit code) on
   test-run output, and `-o` / `| cut -c1-200` when grepping a library's `dist` —
   minified lines are megabytes long; `head -N` bounds lines, not bytes.
 

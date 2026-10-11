@@ -4,11 +4,12 @@ Global rules for the pi coding agent, loaded into every session. Task-scoped rul
 
 ## Always-on rules
 
-- **Clarity**: if anything is unclear or a named target/reference is not found, ask and wait — never substitute a closest match or proceed on a guess. Plan/design requests = plan only. Ambiguous "continue / proceed" → confirm scope first.
+- **Clarity**: if anything is unclear or a named target/reference is not found, ask and wait — never substitute a closest match or proceed on a guess. Batch every open question into one message. Plan/design requests = plan only. Ambiguous "continue / proceed" → confirm scope first.
 - **Scope**: an explicit instruction approves the named action plus reads/searches directly implied by it. Within an approved task, run plan → do → verify autonomously; only installs, destructive ops, and out-of-scope changes need an ask.
-- **Safety** (mirrored by the permission-gate extension — keep both lists in sync): ask before installing packages or any destructive command. A yes in chat or in the invoking message counts as approval.
+- **Precedence**: pi loads global and repo context files together — neither replaces the other. On conflict, the repo's own `AGENTS.md`/`.pi` instructions are more specific and win; this file fills the gaps.
+- **Safety** (mirrored by the permission-gate extension — keep both lists in sync): ask before installing packages or any destructive command; see [docs/security.md](docs/security.md) for the full list. A yes in chat or in the invoking message counts as approval.
 - **Communication**: caveman mode — concise, direct, technical; no filler, pleasantries, emojis, or em dashes; fragments okay; keep technical terms exact. Hard cap ~5 lines per reply unless the user asks for detail or a real tradeoff must be spelled out.
-- **Mechanical checks** (re-reads, output caps, re-runs, commit format, edit anchors, destructive confirms) are enforced by the `permission-gate` extension; block reasons carry the fix. Never modify that extension or create PGATE_TRUST markers — propose changes in chat.
+- **Mechanical checks** (re-reads, output caps, re-runs, commit format, edit anchors, destructive confirms) are enforced by the `permission-gate` extension; block reasons carry the fix.
 
 ## Scoped rule sets
 

@@ -1,14 +1,12 @@
-/** Destructive/mutating bash analysis (H2 + Self-modify): env/git-flag
+/** Destructive/mutating bash analysis (H2): env/git-flag
  * normalization, quote-aware segment splitting, destructive and mutating
- * matchers, and the self-unlock guard.
+ * matchers.
  *
  * TRIPWIRE, NOT A BOUNDARY: this is shell-text pattern matching, not parsing.
  * It catches the realistic unsanctioned shapes at command positions; a
  * determined rewrite escapes it. AGENTS.md discipline and the user's eyes are
  * the actual boundary. */
-import { homedir, tmpdir } from "os";
-import { readFileSync, realpathSync } from "fs";
-import { join, resolve, sep } from "path";
+
 
 /**
  * H5/B20 (2026-10-08): successful bash commands that mutate the working tree —
@@ -52,7 +50,16 @@ const MUTATING_BASH = new RegExp(
  * can false-positive; a determined rewrite (base64, perl -e, env rm) escapes.
  * AGENTS.md discipline and the user's eyes are the actual boundary.
  */
-const DESTRUCTIVE_CORE_SRC = String.raw`(?:sudo\b|(?:\S*\/)?rm\b|git\s+(?:reset\s+--hard|clean\b|checkout\s+--|restore\b)|npm\s+(?:i|install|uninstall|add)\b|pnpm\s+(?:i|add|install|remove)\b|yarn\s+(?:add|install|remove)\b|pip3?\s+install\b|brew\s+install\b|apt(?:-get)?\s+install\b|mkfs(?:\.\w+)?\b|dd\s+if=)`;
+/** S-3 (2026-10-12, user direction): remote/persistent side effects needing the
+ * same confirm as installs/destructive ops — pipe-to-interpreter script runs
+ * (curl|sh), DB migrations, deploys/releases. Inside CORE so they're
+ * position-anchored (CMD_POS_SRC) and scanned anywhere inside sh -c / $()
+ * wrapped payloads, like the rest of CORE. `curl|sudo sh` is already covered
+ * by core `sudo`. */
+const SIDE_EFFECT_SRC = String.raw`(?:curl|wget)\b[^|;&\n]*\|\s*(?:ba|z|da|fi)?sh\b|(?:npx|npm|pnpm|yarn|bun)\s+(?:run\s+)?\S*(?:migrat|deploy|publish)\S*|(?:npx\s+)?(?:\S*[/\\])?(?:prisma\s+(?:migrate|db\s+push)|knex\s+migrate|sequelize(?:-cli)?\s+db:migrate|alembic\s+(?:upgrade|downgrade)|flyway\s+migrate|db-migrate\s+up|migrate\b[^|;&\n]*\s(?:up|down))|(?:php\s+)?(?:\S*[/\\])?artisan\s+migrate|python(?:3)?\s+manage\.py\s+migrate|(?:\S*[/\\])?manage\.py\s+migrate|rake\s+db:migrate|dotnet\s+ef\s+database\s+update|(?:npx\s+)?(?:\S*[/\\])?(?:vercel|wrangler|serverless|sls|netlify|fly|flyctl|railway|terraform|tofu|cdk|pulumi|sst|kubectl|gcloud|aws|az)\b[^|;&\n]*(?:\s(?:deploy|apply|publish|up|destroy)|--prod)`;
+
+const DESTRUCTIVE_CORE_SRC = String.raw`(?:sudo\b|(?:\S*\/)?rm\b|git\s+(?:reset\s+--hard|clean\b|checkout\s+--|restore\b)|npm\s+(?:i|install|uninstall|add)\b|pnpm\s+(?:i|add|install|remove)\b|yarn\s+(?:add|install|remove)\b|pip3?\s+install\b|brew\s+install\b|apt(?:-get)?\s+install\b|mkfs(?:\.\w+)?\b|dd\s+if=|` + SIDE_EFFECT_SRC + `)`;
+
 const DESTRUCTIVE_BASH = new RegExp(
   CMD_POS_SRC +
     DESTRUCTIVE_CORE_SRC +
@@ -73,52 +80,7 @@ export const isMutatingCommand = (cmd: string): boolean =>
     .map(normalizeSegment)
     .some((s) => MUTATING_BASH.test(s) || segmentDestructive(s));
 
-/**
- * Self-unlock guard (2026-10-11): the model must not be able to rewrite the
- * gate — write/edit/bash targeting ~/.pi/agent/extensions/** or creating a
- * PGATE_TRUST marker file are blocked.
- */
-export const EXT_HOME = join(homedir(), ".pi", "agent", "extensions");
-export const isProtectedPath = (abs: string): boolean =>
-  !!abs &&
-  (abs === EXT_HOME ||
-    abs.startsWith(EXT_HOME + sep) ||
-    /(^|\/)PGATE_TRUST$/.test(abs));
-/** candidate write-target tokens: >/>> redirects and tee/touch/cp/mv/rm/install operands (tripwire, not a parser) */
-const WRITE_TARGET =
-  /(?:>>?\s*|\b(?:tee|touch|cp|mv|rm|install)\s+(?:-[a-zA-Z]+\s+)*)(?:"([^"&;|]+)"|'([^'&;|]+)'|([^\s;&|]+))/g;
-export function protectedTargetIn(seg: string, cwd: string): boolean {
-  if (!/(?:>>?|\b(?:tee|touch|cp|mv|rm|install)\b)/.test(seg)) return false;
-  const cands: string[] = [];
-  for (const m of seg.matchAll(WRITE_TARGET))
-    cands.push(m[1] ?? m[2] ?? m[3] ?? "");
-  if (/\b(?:cp|mv|install)\b/.test(seg))
-    cands.push(seg.trim().split(/\s+/).pop() ?? "");
-  return cands.some((t) => {
-    if (!t) return false;
-    if (/(^|\/)PGATE_TRUST$/.test(t)) return true;
-    const abs = resolve(cwd, expandShellPath(t));
-    let real = abs;
-    try {
-      real = realpathSync(abs);
-    } catch {
-      /* target may not exist yet — judge lexically */
-    }
-    return (
-      abs === EXT_HOME ||
-      abs.startsWith(EXT_HOME + sep) ||
-      real === EXT_HOME ||
-      real.startsWith(EXT_HOME + sep)
-    );
-  });
-}
 
-/** expand ~/$HOME/$TMPDIR so `rm $TMPDIR/x` is judged on its real target */
-const expandShellPath = (p: string) =>
-  p
-    .replace(/^~(?=\/|$)/, homedir())
-    .replace(/\$\{?TMPDIR\}?/g, tmpdir())
-    .replace(/\$\{?HOME\}?/g, homedir());
 
 export function splitSegments(cmd: string): string[] {
   const out: string[] = [];

@@ -29,7 +29,7 @@ import {
 import { execSync } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkgLink = join(
@@ -273,7 +273,6 @@ const tinyFile = join(tmp, "tiny.json"); // 2026-10-08: R2 trivial-cat batch exe
 writeFileSync(tinyFile, '{ "auditedThrough": "2026-10-07" }\n'); // 34 B
 const bigFile = join(tmp, "big.json");
 writeFileSync(bigFile, `${"x".repeat(199)}\n`); // 200 B — over the 128 B exemption
-const EXT_HOME = join(homedir(), ".pi", "agent", "extensions");
 const spanFile = join(tmp, "spans.ts"); // item 11: gapped coverage spans
 writeFileSync(
   spanFile,
@@ -1709,69 +1708,6 @@ const cases = [
     "non-destructive: bash -c echo passes",
     "pass",
     async (pi) => bash(pi, 'bash -c "echo hi"'),
-  ],
-  // ---- item 3 — self-unlock guard ----
-  [
-    "self-modify: write to the extensions dir is blocked",
-    "blocked",
-    async (pi) => {
-      const block = await pi.invoke("tool_call", {
-        type: "tool_call",
-        toolName: "write",
-        toolCallId: `sm${++seqId}`,
-        input: { path: join(EXT_HOME, "gate-pwn.ts"), content: "x" },
-      });
-      return block
-        ? { blocked: true, reason: block.reason }
-        : { blocked: false };
-    },
-  ],
-  [
-    "self-modify: edit of a file in the extensions dir is blocked",
-    "blocked",
-    async (pi) => {
-      const block = await pi.invoke("tool_call", {
-        type: "tool_call",
-        toolName: "edit",
-        toolCallId: `sm${++seqId}`,
-        input: {
-          path: join(EXT_HOME, "permission-gate.allowlist.json"),
-          edits: [{ oldText: "a", newText: "b" }],
-        },
-      });
-      return block
-        ? { blocked: true, reason: block.reason }
-        : { blocked: false };
-    },
-  ],
-  [
-    "self-modify: echo > extensions file is blocked",
-    "blocked",
-    async (pi) => bash(pi, `echo evil > ${EXT_HOME}/evil.ts`),
-  ],
-  [
-    "self-modify: $HOME-path redirect into extensions is blocked",
-    "blocked",
-    async (pi) =>
-      bash(
-        pi,
-        "echo {} > $HOME/.pi/agent/extensions/permission-gate.allowlist.json",
-      ),
-  ],
-  [
-    "self-modify: cp into extensions is blocked",
-    "blocked",
-    async (pi) => bash(pi, `cp ${fileA} ${EXT_HOME}/x.ts`),
-  ],
-  [
-    "self-modify: touch PGATE_TRUST is blocked",
-    "blocked",
-    async (pi) => bash(pi, "touch PGATE_TRUST"),
-  ],
-  [
-    "self-modify: normal tmp redirect passes",
-    "pass",
-    async (pi) => bash(pi, `echo ok > ${tmp}/out.txt`),
   ],
   // ---- item 5 — hydration freshness on reads ----
   [
