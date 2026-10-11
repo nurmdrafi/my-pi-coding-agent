@@ -38,6 +38,12 @@ const MUTATING_BASH = new RegExp(
  * remembered verbatim for 2 min so an immediate re-send (hook retry) does not
  * re-prompt.
  *
+ * 2026-10-11 (user direction): git commit/push REMOVED from this set —
+ * commitlint (R9) and hooks still guard commits. Root cause of the
+ * intermittent /ship print-only stop: a mid-flow re-key of promptApproves
+ * left `git push` to fail closed and the model fell back to printing the
+ * message. commit/push stay in MUTATING_CORE_SRC (R10 mutationSeq).
+ *
  * TRIPWIRE, NOT A BOUNDARY (2026-10-11): this is shell-text pattern matching,
  * not parsing. It catches the realistic unsanctioned shapes at command
  * positions — segment head, after ;/&&/||/|/do/then/else/{/(/xargs/-exec —
@@ -46,7 +52,7 @@ const MUTATING_BASH = new RegExp(
  * can false-positive; a determined rewrite (base64, perl -e, env rm) escapes.
  * AGENTS.md discipline and the user's eyes are the actual boundary.
  */
-const DESTRUCTIVE_CORE_SRC = String.raw`(?:sudo\b|(?:\S*\/)?rm\b|git\s+(?:reset\s+--hard|clean\b|checkout\s+--|restore\b|commit\b|push\b)|npm\s+(?:i|install|uninstall|add)\b|pnpm\s+(?:i|add|install|remove)\b|yarn\s+(?:add|install|remove)\b|pip3?\s+install\b|brew\s+install\b|apt(?:-get)?\s+install\b|mkfs(?:\.\w+)?\b|dd\s+if=)`;
+const DESTRUCTIVE_CORE_SRC = String.raw`(?:sudo\b|(?:\S*\/)?rm\b|git\s+(?:reset\s+--hard|clean\b|checkout\s+--|restore\b)|npm\s+(?:i|install|uninstall|add)\b|pnpm\s+(?:i|add|install|remove)\b|yarn\s+(?:add|install|remove)\b|pip3?\s+install\b|brew\s+install\b|apt(?:-get)?\s+install\b|mkfs(?:\.\w+)?\b|dd\s+if=)`;
 const DESTRUCTIVE_BASH = new RegExp(
   CMD_POS_SRC +
     DESTRUCTIVE_CORE_SRC +

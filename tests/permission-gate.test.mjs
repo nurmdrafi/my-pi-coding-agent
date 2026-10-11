@@ -1148,7 +1148,7 @@ const cases = [
   ],
   // ---- H1 cap unit checks (composed tool_result return value) ----
   [
-    "H1: >200-line bash output is capped with spill pointer",
+    "H1: oversized bash output is capped with spill pointer",
     "pass",
     async (pi) => {
       const id = `cap${++seqId}`;
@@ -1178,7 +1178,7 @@ const cases = [
         r &&
         r.content.length === 1 &&
         t.startsWith("l0\n") &&
-        t.includes("kept 100/500 lines") &&
+        t.includes("kept 40/500 lines") &&
         t.includes("pgate-spill");
       return ok
         ? { blocked: false }
@@ -1189,7 +1189,7 @@ const cases = [
     },
   ],
   [
-    "H1: >12KB bash output is byte-capped even under 200 lines",
+    "H1: >2KB bash output is byte-capped even under the line cap",
     "pass",
     async (pi) => {
       const id = `cap${++seqId}`;
@@ -1288,7 +1288,7 @@ const cases = [
         ),
         isError: true,
       });
-      return r && r.content?.[0]?.text?.includes("kept 100/300")
+      return r && r.content?.[0]?.text?.includes("kept 40/300")
         ? { blocked: false }
         : { blocked: true, reason: "error output not capped" };
     },
@@ -1552,9 +1552,9 @@ const cases = [
           },
         },
       };
-      const r1 = await bash(pi, "git push", ctx);
-      if (r1.blocked) return { blocked: true, reason: "first push blocked" };
-      const r2 = await bash(pi, "git push", ctx);
+      const r1 = await bash(pi, "git reset --hard HEAD~1", ctx);
+      if (r1.blocked) return { blocked: true, reason: "first reset blocked" };
+      const r2 = await bash(pi, "git reset --hard HEAD~1", ctx);
       return !r2.blocked && asks === 1
         ? { blocked: false }
         : {
@@ -1620,21 +1620,34 @@ const cases = [
       bash(pi, 'npx tsc --noEmit > /tmp/tsc.out 2>&1; echo "TSC=$?"'),
   ],
   // ---- 2026-10-11 review: item 1 — shared env/git-flag normalization ----
+  // 2026-10-11: git commit/push removed from the destructive set (user
+  // direction — commitlint R9 + hooks still guard commits), so reset --hard
+  // stands in for the normalization cases
   [
-    "destructive: git -C . push confirms (normalized)",
+    "destructive: git -C . reset --hard confirms (normalized)",
     "blocked",
-    async (pi) => bash(pi, "git -C . push", denyUi()),
+    async (pi) => bash(pi, "git -C . reset --hard HEAD~1", denyUi()),
   ],
   [
-    "destructive: env-prefixed git --no-pager push confirms",
+    "destructive: env-prefixed git --no-pager reset --hard confirms",
     "blocked",
     async (pi) =>
-      bash(pi, "GIT_TERMINAL_PROMPT=0 git --no-pager push", denyUi()),
+      bash(pi, "GIT_PAGER=0 git --no-pager reset --hard", denyUi()),
   ],
   [
     "non-destructive: git -C . log passes",
     "pass",
     async (pi) => bash(pi, "git -C . log --oneline"),
+  ],
+  [
+    "non-destructive: git push passes without confirm (removed 2026-10-11)",
+    "pass",
+    async (pi) => bash(pi, "git push", denyUi()),
+  ],
+  [
+    "non-destructive: conventional git commit passes without confirm",
+    "pass",
+    async (pi) => bash(pi, 'git commit -m "fix: no confirm"', denyUi()),
   ],
   // ---- item 2 — destructive positions beyond segment start ----
   [
@@ -1847,7 +1860,7 @@ const cases = [
     },
   ],
   [
-    "B20: successful destructive push legitimize re-runs",
+    "B20: successful mutating push legitimize re-runs",
     "pass",
     async (pi) => {
       await runBash(pi, "npm test");

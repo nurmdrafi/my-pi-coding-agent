@@ -13,11 +13,11 @@ import {
 } from "fs";
 import { join } from "path";
 
-/** cap ceiling — whichever is hit first (2026-10-08 calibration: 100 lines / 4 KB
- * saves 26.4% of historical context inflow vs 15.3% at the initial 200/12 KB,
- * spilling on only ~5% of commands; the spill pointer keeps tails reachable) */
-const CAP_LINES = 100;
-const CAP_BYTES = 4_096;
+/** cap ceiling — whichever is hit first (2026-10-11 user feedback: 40 lines /
+ * 2 KB — most terminal output is noise while a task runs; the spill pointer
+ * keeps the full output reachable. Was 100 lines / 4 KB (2026-10-08).) */
+const CAP_LINES = 40;
+const CAP_BYTES = 2_048;
 
 /**
  * Replaces the deleted blocking viewing/dump rules (R2 viewing first;
