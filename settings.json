@@ -5,10 +5,7 @@
   "defaultModel": "glm-5.3",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
-  "packages": [
-    "npm:pi-autoresearch"
-  ],
   "compaction": {
-    "enabled": false
+    "enabled": true
   }
 }
