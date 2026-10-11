@@ -5,8 +5,8 @@
  * import '@earendil-works/pi-coding-agent' is not in this repo's node_modules,
  * so symlink it from `npm root -g` into the gitignored root node_modules.
  *
- * extensions/permission-gate.ts is a symlink to the scratch copy at the repo
- * root — the live ~/.pi install is never touched.
+ * extensions/permission-gate/index.ts is a symlink target — the live ~/.pi
+ * install is never touched.
  */
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
@@ -22,7 +22,7 @@ if (!existsSync(join(pkgLink, 'package.json'))) {
   symlinkSync(join(globalRoot, '@earendil-works', 'pi-coding-agent'), pkgLink, 'dir');
 }
 
-const gate = await import(join(ROOT, 'extensions', 'permission-gate.ts'));
+const gate = await import(join(ROOT, 'extensions', 'permission-gate', 'index.ts'));
 
 /** fresh gate instance (all gate state lives inside the factory) */
 export function freshGate() {

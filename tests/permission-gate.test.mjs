@@ -14,22 +14,42 @@
  *
  * Run: node tests/permission-gate.test.mjs   (exit 0 = all pass)
  */
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
-import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { tmpdir } from 'node:os';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { execSync } from "node:child_process";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { homedir, tmpdir } from "node:os";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const pkgLink = join(ROOT, 'node_modules', '@earendil-works', 'pi-coding-agent');
-if (!existsSync(join(pkgLink, 'package.json'))) {
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const pkgLink = join(
+  ROOT,
+  "node_modules",
+  "@earendil-works",
+  "pi-coding-agent",
+);
+if (!existsSync(join(pkgLink, "package.json"))) {
   rmSync(pkgLink, { recursive: true, force: true }); // stale empty dir / broken link must not pass
-  const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
+  const globalRoot = execSync("npm root -g", { encoding: "utf8" }).trim();
   mkdirSync(dirname(pkgLink), { recursive: true });
-  symlinkSync(join(globalRoot, '@earendil-works', 'pi-coding-agent'), pkgLink, 'dir');
+  symlinkSync(
+    join(globalRoot, "@earendil-works", "pi-coding-agent"),
+    pkgLink,
+    "dir",
+  );
 }
 
-const gate = await import('../extensions/permission-gate.ts');
+const gate = await import("../extensions/permission-gate/index.ts");
 
 // ---- stubbed ExtensionAPI + event replay ----
 
@@ -43,7 +63,11 @@ function makePi() {
       const l = lists.get(event) ?? [];
       l.push(handler);
       lists.set(event, l);
-      return () => lists.set(event, (lists.get(event) ?? []).filter((h) => h !== handler));
+      return () =>
+        lists.set(
+          event,
+          (lists.get(event) ?? []).filter((h) => h !== handler),
+        );
     },
     invoke: async (event, ev, ctx) => {
       let result;
@@ -62,22 +86,47 @@ const freshGate = () => {
 };
 
 let seqId = 0;
-const textBlocks = (s) => [{ type: 'text', text: s }];
-const lineText = (n) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n');
+const textBlocks = (s) => [{ type: "text", text: s }];
+const lineText = (n) =>
+  Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n");
 
 /** read via the gate; default result = untruncated full read of `n` lines */
 async function read(pi, path, opts = {}, result = {}) {
   const n = result.outputLines ?? 100;
   const input = { path, ...opts };
   const toolCallId = `tc${++seqId}`;
-  const block = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'read', toolCallId, input });
+  const block = await pi.invoke("tool_call", {
+    type: "tool_call",
+    toolName: "read",
+    toolCallId,
+    input,
+  });
   if (block) return { blocked: true, reason: block.reason };
   const body = lineText(n);
   const tail = result.note ? `${body}\n\n[${result.note}]` : body;
-  await pi.invoke('tool_result', {
-    type: 'tool_result', toolName: 'read', toolCallId, input,
-    content: result.image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'x' } }] : textBlocks(tail),
-    details: result.image || result.noDetails ? undefined : { truncation: { truncated: result.truncated ?? false, outputLines: n, totalLines: result.totalLines ?? n } },
+  await pi.invoke("tool_result", {
+    type: "tool_result",
+    toolName: "read",
+    toolCallId,
+    input,
+    content: result.image
+      ? [
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: "x" },
+          },
+        ]
+      : textBlocks(tail),
+    details:
+      result.image || result.noDetails
+        ? undefined
+        : {
+            truncation: {
+              truncated: result.truncated ?? false,
+              outputLines: n,
+              totalLines: result.totalLines ?? n,
+            },
+          },
     isError: false,
   });
   return { blocked: false };
@@ -86,675 +135,2255 @@ async function read(pi, path, opts = {}, result = {}) {
 async function edit(pi, path, edits) {
   const toolCallId = `tc${++seqId}`;
   const input = { path, edits };
-  const block = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'edit', toolCallId, input });
+  const block = await pi.invoke("tool_call", {
+    type: "tool_call",
+    toolName: "edit",
+    toolCallId,
+    input,
+  });
   if (block) return { blocked: true, reason: block.reason };
-  await pi.invoke('tool_result', { type: 'tool_result', toolName: 'edit', toolCallId, input, content: textBlocks('ok'), isError: false });
+  await pi.invoke("tool_result", {
+    type: "tool_result",
+    toolName: "edit",
+    toolCallId,
+    input,
+    content: textBlocks("ok"),
+    isError: false,
+  });
   return { blocked: false };
 }
 
-async function bash(pi, command, ctx = { hasUI: true, mode: 'tui', ui: { confirm: async () => true } }) {
-  const block = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: `tc${++seqId}`, input: { command } }, ctx);
+async function bash(
+  pi,
+  command,
+  ctx = { hasUI: true, mode: "tui", ui: { confirm: async () => true } },
+) {
+  const block = await pi.invoke(
+    "tool_call",
+    {
+      type: "tool_call",
+      toolName: "bash",
+      toolCallId: `tc${++seqId}`,
+      input: { command },
+    },
+    ctx,
+  );
   return block ? { blocked: true, reason: block.reason } : { blocked: false };
 }
 
 /** R10: bash call + result replay — the re-run guard records on tool_result */
-async function runBash(pi, command, { error = false } = {}) {
+async function runBash(pi, command, { error = false, ctx } = {}) {
   const toolCallId = `tc${++seqId}`;
-  const block = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId, input: { command } });
+  const block = await pi.invoke(
+    "tool_call",
+    { type: "tool_call", toolName: "bash", toolCallId, input: { command } },
+    ctx,
+  );
   if (block) return { blocked: true, reason: block.reason };
-  await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId, input: { command }, content: textBlocks('out'), isError: error });
+  await pi.invoke("tool_result", {
+    type: "tool_result",
+    toolName: "bash",
+    toolCallId,
+    input: { command },
+    content: textBlocks("out"),
+    isError: error,
+  });
   return { blocked: false };
 }
+const approveUi = () => ({
+  hasUI: true,
+  mode: "tui",
+  ui: { confirm: async () => true },
+});
+const denyUi = () => ({
+  hasUI: true,
+  mode: "tui",
+  ui: { confirm: async () => false },
+});
 
-const compact = (pi) => pi.invoke('session_compact', { type: 'session_compact' });
+const compact = (pi) =>
+  pi.invoke("session_compact", { type: "session_compact" });
 
 // ---- fixtures ----
 
-const tmp = mkdtempSync(join(tmpdir(), 'pgate-'));
-const fileA = join(tmp, 'a.ts');
-writeFileSync(fileA, 'a\nb\nc\n');
-const fileInj = join(tmp, 'injected.md'); // R-inj: CLI @file block certification (2026-10-10)
-writeFileSync(fileInj, 'i1\ni2\ni3');
+const tmp = mkdtempSync(join(tmpdir(), "pgate-"));
+const fileA = join(tmp, "a.ts");
+writeFileSync(fileA, "a\nb\nc\n");
+const fileInj = join(tmp, "injected.md"); // R-inj: CLI @file block certification (2026-10-10)
+writeFileSync(fileInj, "i1\ni2\ni3");
 const relA = relative(process.cwd(), fileA); // same file via the other key form (Q3)
-const skillFile = join(tmp, 'SKILL.md'); // 2026-10-06 feedback: R1 coverage must close same-session skill re-reads
-writeFileSync(skillFile, Array.from({ length: 30 }, (_, i) => `skill line ${i + 1}`).join('\n') + '\n');
-const fileC = join(tmp, 'hydrate-c.ts'); // 2026-10-07: resume-hydration fixtures
-writeFileSync(fileC, 'l1\nl2\nl3\n');
-const fileD = join(tmp, 'hydrate-d.ts');
-writeFileSync(fileD, 'l1\nl2\n');
-const fileE = join(tmp, 'hydrate-e.ts');
-writeFileSync(fileE, 'l1\nl2\nl3\n');
+const skillFile = join(tmp, "SKILL.md"); // 2026-10-06 feedback: R1 coverage must close same-session skill re-reads
+writeFileSync(
+  skillFile,
+  Array.from({ length: 30 }, (_, i) => `skill line ${i + 1}`).join("\n") + "\n",
+);
+const fileC = join(tmp, "hydrate-c.ts"); // 2026-10-07: resume-hydration fixtures
+writeFileSync(fileC, "l1\nl2\nl3\n");
+const fileD = join(tmp, "hydrate-d.ts");
+writeFileSync(fileD, "l1\nl2\n");
+const fileE = join(tmp, "hydrate-e.ts");
+writeFileSync(fileE, "l1\nl2\nl3\n");
 /** build fake previous-session branch entries for the hydration fixtures */
 function prevBranch(descs) {
   return descs.map((d) =>
     d.compactionAfter
-      ? { type: 'compaction', id: d.id, firstKeptEntryId: d.compactionAfter }
+      ? { type: "compaction", id: d.id, firstKeptEntryId: d.compactionAfter }
       : d.call
-        ? { type: 'message', id: d.id, message: { role: 'assistant', content: [{ type: 'toolCall', id: d.callId, name: d.call, arguments: d.call === 'write' ? { path: d.path, content: 'x' } : { path: d.path } }] } }
-        : { type: 'message', id: d.id, message: { role: 'toolResult', toolCallId: d.resultFor, toolName: d.tool ?? 'read', content: [{ type: 'text', text: d.text }], isError: false } },
+        ? {
+            type: "message",
+            id: d.id,
+            timestamp: d.ts,
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: d.callId,
+                  name: d.call,
+                  arguments:
+                    d.call === "write"
+                      ? { path: d.path, content: "x" }
+                      : { path: d.path },
+                },
+              ],
+            },
+          }
+        : {
+            type: "message",
+            id: d.id,
+            message: {
+              role: "toolResult",
+              toolCallId: d.resultFor,
+              toolName: d.tool ?? "read",
+              content: [{ type: "text", text: d.text }],
+              isError: false,
+            },
+          },
   );
 }
-const hydrate = (pi, descs) => pi.invoke('session_start', { type: 'session_start', reason: 'resume' }, { sessionManager: { getBranch: () => prevBranch(descs) } });
-const fileB = join(tmp, 'dup.ts'); // duplicate line for the anchor-uniqueness case
-writeFileSync(fileB, 'x\nx\n');
-const tinyFile = join(tmp, 'tiny.json'); // 2026-10-08: R2 trivial-cat batch exemption (audit: 49 B watermark case)
+const hydrate = (pi, descs) =>
+  pi.invoke(
+    "session_start",
+    { type: "session_start", reason: "resume" },
+    { sessionManager: { getBranch: () => prevBranch(descs) } },
+  );
+const fileB = join(tmp, "dup.ts"); // duplicate line for the anchor-uniqueness case
+writeFileSync(fileB, "x\nx\n");
+const tinyFile = join(tmp, "tiny.json"); // 2026-10-08: R2 trivial-cat batch exemption (audit: 49 B watermark case)
 writeFileSync(tinyFile, '{ "auditedThrough": "2026-10-07" }\n'); // 34 B
-const bigFile = join(tmp, 'big.json');
-writeFileSync(bigFile, `${'x'.repeat(199)}\n`); // 200 B — over the 128 B exemption
-const hugeFile = join(tmp, 'extension-huge.ts'); // 2026-10-10: R1b big-read gate (audit: 44KB/51KB whole-file reads rode two sessions' prefixes)
-writeFileSync(hugeFile, Array.from({ length: 900 }, () => 'x'.repeat(59)).join('\n') + '\n'); // ~54 KB / 900 lines
+const bigFile = join(tmp, "big.json");
+writeFileSync(bigFile, `${"x".repeat(199)}\n`); // 200 B — over the 128 B exemption
+const EXT_HOME = join(homedir(), ".pi", "agent", "extensions");
+const spanFile = join(tmp, "spans.ts"); // item 11: gapped coverage spans
+writeFileSync(
+  spanFile,
+  Array.from({ length: 120 }, (_, i) => `s${i + 1}`).join("\n") + "\n",
+);
+const hugeFile = join(tmp, "extension-huge.ts"); // 2026-10-10: R1b big-read gate (audit: 44KB/51KB whole-file reads rode two sessions' prefixes)
+writeFileSync(
+  hugeFile,
+  Array.from({ length: 900 }, () => "x".repeat(59)).join("\n") + "\n",
+); // ~54 KB / 900 lines
 // violation-memory isolation: never touch the real ~/.pi/agent/logs telemetry
-process.env.PGATE_MEMORY = join(tmp, 'vmem.ndjson');
-writeFileSync(process.env.PGATE_MEMORY, '');
-// H2 allowlist isolation: point at a nonexistent file — default cases must
-// confirm ([]) and never read the user's real extensions/ allowlist
-const allowlistDefault = join(tmp, 'no-allowlist.json');
-process.env.PGATE_ALLOWLIST = allowlistDefault;
-
+process.env.PGATE_MEMORY = join(tmp, "vmem.ndjson");
+writeFileSync(process.env.PGATE_MEMORY, "");
 // ---- cases: [name, expectation, async fn -> {blocked}] ----
 
 const cases = [
-  ['identical window re-read is blocked', 'blocked', async (pi) => read(pi, fileA, { offset: 1, limit: 50 }, { outputLines: 50 })],
-  ['continuation window (1-50 then 51-100) passes', 'pass', async (pi) => read(pi, fileA, { offset: 51, limit: 50 }, { outputLines: 50 })],
-  ['R-inj: read of a prompt-injected file is blocked', 'blocked', async (pi) => {
-    await pi.invoke('before_agent_start', { type: 'before_agent_start', prompt: `redo this <file name="${fileInj}">\ni1\ni2\ni3\n</file>\nnow`, systemPromptOptions: {} });
-    return read(pi, fileInj);
-  }],
-  ['R-inj: stale/mismatched block certifies nothing', 'pass', async (pi) => {
-    await pi.invoke('before_agent_start', { type: 'before_agent_start', prompt: `<file name="${fileInj}">\nold content\n</file>`, systemPromptOptions: {} });
-    return read(pi, fileInj);
-  }],
-  ['R-inj: on-disk change after injection defeats the block', 'pass', async (pi) => {
-    await pi.invoke('before_agent_start', { type: 'before_agent_start', prompt: `<file name="${fileInj}">\ni1\ni2\ni3\n</file>`, systemPromptOptions: {} });
-    writeFileSync(fileInj, 'i1\ni2\ni3\ni4'); // external edit: mtime+size drift
-    return read(pi, fileInj);
-  }],
-  ['windowed re-read inside a full read is blocked', 'blocked', async (pi) => read(pi, fileA, { offset: 10, limit: 20 })],
-  ['full re-read after a full read is blocked', 'blocked', async (pi) => read(pi, fileA)],
-  ['window past a truncated full read passes', 'pass', async (pi) => read(pi, fileA, { offset: 3000, limit: 100 }, { outputLines: 100 })],
-  ['partial-overlap window passes (brings new lines)', 'pass', async (pi) => read(pi, fileA, { offset: 25, limit: 50 }, { outputLines: 50 })],
-  ['full re-read after compaction passes', 'pass', async (pi) => { await compact(pi); return read(pi, fileA); }],
-  ['window over just-edited span is blocked', 'blocked', async (pi) => read(pi, fileA, { offset: 2, limit: 1 }, { outputLines: 1 })],
-  ['window outside just-edited span passes', 'pass', async (pi) => read(pi, fileA, { offset: 3, limit: 1 }, { outputLines: 1 })],
+  [
+    "identical window re-read is blocked",
+    "blocked",
+    async (pi) =>
+      read(pi, fileA, { offset: 1, limit: 50 }, { outputLines: 50 }),
+  ],
+  [
+    "continuation window (1-50 then 51-100) passes",
+    "pass",
+    async (pi) =>
+      read(pi, fileA, { offset: 51, limit: 50 }, { outputLines: 50 }),
+  ],
+  [
+    "R-inj: read of a prompt-injected file is blocked",
+    "blocked",
+    async (pi) => {
+      await pi.invoke("before_agent_start", {
+        type: "before_agent_start",
+        prompt: `redo this <file name="${fileInj}">\ni1\ni2\ni3\n</file>\nnow`,
+        systemPromptOptions: {},
+      });
+      return read(pi, fileInj);
+    },
+  ],
+  [
+    "R-inj: stale/mismatched block certifies nothing",
+    "pass",
+    async (pi) => {
+      await pi.invoke("before_agent_start", {
+        type: "before_agent_start",
+        prompt: `<file name="${fileInj}">\nold content\n</file>`,
+        systemPromptOptions: {},
+      });
+      return read(pi, fileInj);
+    },
+  ],
+  [
+    "R-inj: on-disk change after injection defeats the block",
+    "pass",
+    async (pi) => {
+      await pi.invoke("before_agent_start", {
+        type: "before_agent_start",
+        prompt: `<file name="${fileInj}">\ni1\ni2\ni3\n</file>`,
+        systemPromptOptions: {},
+      });
+      writeFileSync(fileInj, "i1\ni2\ni3\ni4"); // external edit: mtime+size drift
+      return read(pi, fileInj);
+    },
+  ],
+  [
+    "windowed re-read inside a full read is blocked",
+    "blocked",
+    async (pi) => read(pi, fileA, { offset: 10, limit: 20 }),
+  ],
+  [
+    "full re-read after a full read is blocked",
+    "blocked",
+    async (pi) => read(pi, fileA),
+  ],
+  [
+    "window past a truncated full read passes",
+    "pass",
+    async (pi) =>
+      read(pi, fileA, { offset: 3000, limit: 100 }, { outputLines: 100 }),
+  ],
+  [
+    "partial-overlap window passes (brings new lines)",
+    "pass",
+    async (pi) =>
+      read(pi, fileA, { offset: 25, limit: 50 }, { outputLines: 50 }),
+  ],
+  [
+    "full re-read after compaction passes",
+    "pass",
+    async (pi) => {
+      await compact(pi);
+      return read(pi, fileA);
+    },
+  ],
+  [
+    "window over just-edited span is blocked",
+    "blocked",
+    async (pi) => read(pi, fileA, { offset: 2, limit: 1 }, { outputLines: 1 }),
+  ],
+  [
+    "window outside just-edited span passes",
+    "pass",
+    async (pi) => read(pi, fileA, { offset: 3, limit: 1 }, { outputLines: 1 }),
+  ],
   // ---- B3/H9 (2026-10-08): true post-edit spans via position-sorted overlay math ----
-  ['B3: out-of-order edits certify true post-edit lines', 'pass', async (pi) => {
-    const f = join(tmp, 'b3.ts');
-    writeFileSync(f, Array.from({ length: 12 }, (_, i) => `L${i + 1}`).join('\n') + '\n');
-    // edit[0] touches line 8-9 (2→1 lines); edit[1] touches line 2 (1→3 lines)
-    const r = await edit(pi, f, [
-      { oldText: 'L8\nL9', newText: 'M8' },
-      { oldText: 'L2', newText: 'N2a\nN2b\nN2c' },
-    ]);
-    if (r.blocked) return { blocked: true, reason: r.reason };
-    // true post-edit layout: N2a..N2c = lines 2-4; M8 = line 10
-    const re24 = await read(pi, f, { offset: 2, limit: 3 }, { outputLines: 3 });
-    if (!re24.blocked) return { blocked: true, reason: 'B3: true post-edit lines 2-4 not certified' };
-    const re10 = await read(pi, f, { offset: 10, limit: 1 }, { outputLines: 1 });
-    if (!re10.blocked) return { blocked: true, reason: 'B3: shifted M8 line not certified at 10' };
-    return { blocked: false };
-  }],
-  ['B4: re-read below a line-count-changing edit is allowed', 'pass', async (pi) => {
-    const f = join(tmp, 'b4.ts');
-    writeFileSync(f, Array.from({ length: 30 }, (_, i) => `L${i + 1}`).join('\n') + '\n');
-    await read(pi, f, {}, { outputLines: 30, totalLines: 30 }); // certify 1-30
-    const r = await edit(pi, f, [{ oldText: 'L5', newText: 'X\nY\nZ' }]); // +2 lines at line 5
-    if (r.blocked) return { blocked: true, reason: r.reason };
-    return read(pi, f, { offset: 20, limit: 3 }, { outputLines: 3 }); // shifted content: must allow
-  }],
-  ['full re-read after external on-disk change passes', 'pass', async (pi) => read(pi, fileA)],
-  ['any window after an image read is blocked', 'blocked', async (pi) => read(pi, fileA, { offset: 5, limit: 5 }, { outputLines: 5 })],
-  ['relative-path re-read of an absolute-read file is blocked', 'blocked', async (pi) => read(pi, relA, { offset: 1, limit: 3 }, { outputLines: 3 })],
-  ['no-details fallback certifies exactly the content lines', 'pass', async (pi) => read(pi, fileA, { offset: 6, limit: 1 }, { outputLines: 1, noDetails: true })],
-  // ---- R10: identical re-run guard ----
-  ['identical bash re-run (no edit since) is blocked', 'blocked', async (pi) => bash(pi, 'gh run list --limit 3')],
-  ['bash re-run after an intervening edit passes', 'pass', async (pi) => bash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15')],
-  ['re-run with a different pipe cap passes', 'pass', async (pi) => bash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -12')], // 2026-10-07: full-command keying — a changed filter is a legitimate re-view, not a dup
-  ['whitespace-only variation still blocked', 'blocked', async (pi) => bash(pi, 'gh  run list --limit 3')],
-  ['shared nvm preamble does not collide R10 keys', 'pass', async (pi) => bash(pi, 'source ~/.nvm/nvm.sh && nvm use 22.17.0 >/dev/null 2>&1 && pnpm run check-types 2>&1 | tail -5')],
-  ['identical compound with watcher word is exempt', 'pass', async (pi) => bash(pi, 'sleep 1; rm -f /tmp/x')],
-  ['re-run of a failed command passes', 'pass', async (pi) => bash(pi, 'gh run list --limit 3')],
-  ['gh run watch re-run passes', 'pass', async (pi) => bash(pi, 'gh run watch 123 --exit-status')],
-  ['bash re-run after compaction passes', 'pass', async (pi) => bash(pi, 'gh run list --limit 3')],
-  // ---- B20/H5 (2026-10-08): mutating bash commands legitimize verify re-runs ----
-  ['re-run after git pull is legitimate (B20/H5)', 'pass', async (pi) => {
-    await runBash(pi, 'npm test 2>&1 | tail -5');
-    await runBash(pi, 'git pull');
-    return bash(pi, 'npm test 2>&1 | tail -5');
-  }],
-  ['re-run after a non-mutating command still blocks', 'blocked', async (pi) => {
-    await runBash(pi, 'gh run list --limit 3');
-    await runBash(pi, 'git status');
-    return bash(pi, 'gh run list --limit 3');
-  }],
-  ['failed mutating command does not legitimize re-run', 'blocked', async (pi) => {
-    await runBash(pi, 'gh run list --limit 3');
-    await runBash(pi, 'git pull', { error: true });
-    return bash(pi, 'gh run list --limit 3');
-  }],
-  // ---- R10 quote-aware base (2026-10-06: a quoted '|' must not truncate the base) ----
-  ['quoted pattern pipes do not collide R10 bases', 'pass', async (pi) => bash(pi, "rg -o '(Alpha|Gamma)' data.log | head -5")],
-  ['identical quoted-pattern command still blocked', 'blocked', async (pi) => bash(pi, "rg -o '(Alpha|Beta)' data.log | head -5")],
-  // ---- unquoted backslash escapes (2026-10-07: 'foo\|bar' / '1p\;5p' split the same as the quoted bugs) ----
-  ['escaped-pipe bases do not collide R10', 'pass', async (pi) => bash(pi, 'rg -o foo\\|bar data.log | head -5')],
-  ['identical escaped-pipe command still blocked', 'blocked', async (pi) => bash(pi, 'rg -o foo\\|bar data.log | head -5')],
-  ['escaped semicolon keeps sed batch intact', 'pass', async (pi) => bash(pi, 'sed -n 1p\\;5p notes.md')],
-  // ---- skill re-read (2026-10-06 feedback item — R1 coverage closes it) ----
-  ['full SKILL.md re-read same session is blocked', 'blocked', async (pi) => read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 })],
-  ['SKILL.md re-read after compaction passes', 'pass', async (pi) => read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 })],
-  // ---- R1b + cadence (2026-10-10 session audit) ----
-  ['R1b: whole read of a >24KB file is blocked with targeted-window reason', 'blocked', async (pi) => read(pi, hugeFile)],
-  ['R1b: wide window (>=500 lines) on a >24KB file is blocked', 'blocked', async (pi) => read(pi, hugeFile, { offset: 1, limit: 600 })],
-  ['R1b: narrow window on a >24KB file passes', 'pass', async (pi) => read(pi, hugeFile, { offset: 10, limit: 200 }, { outputLines: 200 })],
-  ['cadence: 200th tool call is nudged exactly once, re-issue passes', 'pass', async (pi) => {
-    let nudged = 0;
-    for (let i = 0; i < 201; i++) { // 201 calls: nudge on #200, then the re-issue must pass
-      const block = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: `cad${i}`, input: { command: `echo ${i}` } });
-      if (block) { if (++nudged !== 1 || i !== 199) return { blocked: true }; } // wrong turn or double nudge fails the case
-    }
-    return nudged === 1 ? { blocked: false } : { blocked: true };
-  }],
-  // ---- violation memory (before_agent_start injection — 2026-10-06) ----
-  ['violation memory: block appends ndjson family entry', 'blocked', async (pi) => {
-    const r = await bash(pi, 'git commit -m "Fix the thing"'); // Commitlint family — git reads retired with R5 (H1 step 5)
-    const lines = readFileSync(process.env.PGATE_MEMORY, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
-    const ok = lines.length === 1 && lines[0].family === 'Commitlint' && typeof lines[0].sid === 'string' && lines[0].sid.length > 0;
-    if (!ok) {
-      console.log(`      expected one {family,sid,ts} entry, ndjson has ${JSON.stringify(lines)}`);
+  [
+    "B3: out-of-order edits certify true post-edit lines",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "b3.ts");
+      writeFileSync(
+        f,
+        Array.from({ length: 12 }, (_, i) => `L${i + 1}`).join("\n") + "\n",
+      );
+      // edit[0] touches line 8-9 (2→1 lines); edit[1] touches line 2 (1→3 lines)
+      const r = await edit(pi, f, [
+        { oldText: "L8\nL9", newText: "M8" },
+        { oldText: "L2", newText: "N2a\nN2b\nN2c" },
+      ]);
+      if (r.blocked) return { blocked: true, reason: r.reason };
+      // true post-edit layout: N2a..N2c = lines 2-4; M8 = line 10
+      const re24 = await read(
+        pi,
+        f,
+        { offset: 2, limit: 3 },
+        { outputLines: 3 },
+      );
+      if (!re24.blocked)
+        return {
+          blocked: true,
+          reason: "B3: true post-edit lines 2-4 not certified",
+        };
+      const re10 = await read(
+        pi,
+        f,
+        { offset: 10, limit: 1 },
+        { outputLines: 1 },
+      );
+      if (!re10.blocked)
+        return {
+          blocked: true,
+          reason: "B3: shifted M8 line not certified at 10",
+        };
       return { blocked: false };
-    }
-    return r;
-  }],
-  ['violation memory: before_agent_start injects top-3 lessons at threshold', 'pass', async (pi) => {
-    const ev = { type: 'before_agent_start', prompt: '', systemPrompt: '', systemPromptOptions: { appendSystemPrompt: '' } };
-    pi.invoke('before_agent_start', ev);
-    const s = ev.systemPromptOptions.appendSystemPrompt;
-    const want = ['<violation-memory>', 'Never re-run', 'conventional']; // top lessons = Re-run 7, Commitlint 9 (Reading+Extraction lessons retired with R2/R6)
-    const ok = want.every((w) => s.includes(w)) && !s.includes('never start a bash segment') && !s.includes("Every 'rg -o'"); // retired lessons must stay out even when seeded
-    if (!ok) { console.log(`      injected: ${JSON.stringify(s)}`); return { blocked: true }; }
-    return { blocked: false };
-  }],
-  ['violation memory: injection happens once per session', 'pass', async (pi) => {
-    const ev = () => ({ type: 'before_agent_start', prompt: '', systemPrompt: '', systemPromptOptions: { appendSystemPrompt: '' } });
-    const a = ev();
-    pi.invoke('before_agent_start', a);
-    pi.invoke('before_agent_start', a);
-    const n = (a.systemPromptOptions.appendSystemPrompt.match(/<violation-memory>/g) ?? []).length;
-    return n === 1 ? { blocked: false } : { blocked: true };
-  }],
-  ['violation memory: injection tolerates undefined appendSystemPrompt', 'pass', async (pi) => {
-    const ev = { type: 'before_agent_start', prompt: '', systemPrompt: '', systemPromptOptions: {} };
-    pi.invoke('before_agent_start', ev);
-    const s = ev.systemPromptOptions.appendSystemPrompt ?? '';
-    return typeof s === 'string' && s.startsWith('<violation-memory>') ? { blocked: false } : { blocked: true };
-  }],
-  ['violation memory: one session hammering stays under threshold (H7)', 'pass', async (pi) => {
-    const ev = { type: 'before_agent_start', prompt: '', systemPrompt: '', systemPromptOptions: { appendSystemPrompt: '' } };
-    pi.invoke('before_agent_start', ev);
-    return !(ev.systemPromptOptions.appendSystemPrompt ?? '').includes('<violation-memory>') ? { blocked: false } : { blocked: true, reason: 'injected from single-session depth' };
-  }],
-  ['violation memory: compaction rewrites bloated store per family+session (H7)', 'pass', async () => {
-    const now = Date.now();
-    const lines = [];
-    for (let k = 0; k < 220; k++) lines.push(JSON.stringify({ family: 'Commitlint', sid: `s${k % 4}`, ts: now - (k % 7) }));
-    writeFileSync(process.env.PGATE_MEMORY, lines.join('\n') + '\n');
-    freshGate(); // load triggers compaction when >200 lines
-    const after = readFileSync(process.env.PGATE_MEMORY, 'utf8').trim().split('\n').filter(Boolean);
-    return after.length === 4 ? { blocked: false } : { blocked: true, reason: `expected 4 compact lines, got ${after.length}` };
-  }],
+    },
+  ],
+  [
+    "B4: re-read below a line-count-changing edit is allowed",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "b4.ts");
+      writeFileSync(
+        f,
+        Array.from({ length: 30 }, (_, i) => `L${i + 1}`).join("\n") + "\n",
+      );
+      await read(pi, f, {}, { outputLines: 30, totalLines: 30 }); // certify 1-30
+      const r = await edit(pi, f, [{ oldText: "L5", newText: "X\nY\nZ" }]); // +2 lines at line 5
+      if (r.blocked) return { blocked: true, reason: r.reason };
+      return read(pi, f, { offset: 20, limit: 3 }, { outputLines: 3 }); // shifted content: must allow
+    },
+  ],
+  [
+    "full re-read after external on-disk change passes",
+    "pass",
+    async (pi) => read(pi, fileA),
+  ],
+  [
+    "any window after an image read is blocked",
+    "blocked",
+    async (pi) => read(pi, fileA, { offset: 5, limit: 5 }, { outputLines: 5 }),
+  ],
+  [
+    "relative-path re-read of an absolute-read file is blocked",
+    "blocked",
+    async (pi) => read(pi, relA, { offset: 1, limit: 3 }, { outputLines: 3 }),
+  ],
+  [
+    "no-details fallback certifies exactly the content lines",
+    "pass",
+    async (pi) =>
+      read(
+        pi,
+        fileA,
+        { offset: 6, limit: 1 },
+        { outputLines: 1, noDetails: true },
+      ),
+  ],
+  // ---- R10: identical re-run guard ----
+  [
+    "identical bash re-run (no edit since) is blocked",
+    "blocked",
+    async (pi) => bash(pi, "gh run list --limit 3"),
+  ],
+  [
+    "bash re-run after an intervening edit passes",
+    "pass",
+    async (pi) =>
+      bash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15'),
+  ],
+  [
+    "re-run with a different pipe cap passes",
+    "pass",
+    async (pi) =>
+      bash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -12'),
+  ], // 2026-10-07: full-command keying — a changed filter is a legitimate re-view, not a dup
+  [
+    "whitespace-only variation still blocked",
+    "blocked",
+    async (pi) => bash(pi, "gh  run list --limit 3"),
+  ],
+  [
+    "shared nvm preamble does not collide R10 keys",
+    "pass",
+    async (pi) =>
+      bash(
+        pi,
+        "source ~/.nvm/nvm.sh && nvm use 22.17.0 >/dev/null 2>&1 && pnpm run check-types 2>&1 | tail -5",
+      ),
+  ],
+  [
+    "identical compound with watcher word is exempt",
+    "pass",
+    async (pi) => bash(pi, "sleep 1; rm -f /tmp/x"),
+  ],
+  [
+    "re-run of a failed command passes",
+    "pass",
+    async (pi) => bash(pi, "gh run list --limit 3"),
+  ],
+  [
+    "gh run watch re-run passes",
+    "pass",
+    async (pi) => bash(pi, "gh run watch 123 --exit-status"),
+  ],
+  [
+    "bash re-run after compaction passes",
+    "pass",
+    async (pi) => bash(pi, "gh run list --limit 3"),
+  ],
+  // ---- B20/H5 (2026-10-08): mutating bash commands legitimize verify re-runs ----
+  [
+    "re-run after git pull is legitimate (B20/H5)",
+    "pass",
+    async (pi) => {
+      await runBash(pi, "npm test 2>&1 | tail -5");
+      await runBash(pi, "git pull");
+      return bash(pi, "npm test 2>&1 | tail -5");
+    },
+  ],
+  [
+    "re-run after a non-mutating command still blocks",
+    "blocked",
+    async (pi) => {
+      await runBash(pi, "gh run list --limit 3");
+      await runBash(pi, "git status");
+      return bash(pi, "gh run list --limit 3");
+    },
+  ],
+  [
+    "failed mutating command does not legitimize re-run",
+    "blocked",
+    async (pi) => {
+      await runBash(pi, "gh run list --limit 3");
+      await runBash(pi, "git pull", { error: true });
+      return bash(pi, "gh run list --limit 3");
+    },
+  ],
+  // ---- R10 quote-aware base (2026-10-06: a quoted '|' must not truncate the base) ----
+  [
+    "quoted pattern pipes do not collide R10 bases",
+    "pass",
+    async (pi) => bash(pi, "rg -o '(Alpha|Gamma)' data.log | head -5"),
+  ],
+  [
+    "identical quoted-pattern command still blocked",
+    "blocked",
+    async (pi) => bash(pi, "rg -o '(Alpha|Beta)' data.log | head -5"),
+  ],
+  // ---- unquoted backslash escapes (2026-10-07: 'foo\|bar' / '1p\;5p' split the same as the quoted bugs) ----
+  [
+    "escaped-pipe bases do not collide R10",
+    "pass",
+    async (pi) => bash(pi, "rg -o foo\\|bar data.log | head -5"),
+  ],
+  [
+    "identical escaped-pipe command still blocked",
+    "blocked",
+    async (pi) => bash(pi, "rg -o foo\\|bar data.log | head -5"),
+  ],
+  [
+    "escaped semicolon keeps sed batch intact",
+    "pass",
+    async (pi) => bash(pi, "sed -n 1p\\;5p notes.md"),
+  ],
+  // ---- skill re-read (2026-10-06 feedback item — R1 coverage closes it) ----
+  [
+    "full SKILL.md re-read same session is blocked",
+    "blocked",
+    async (pi) => read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 }),
+  ],
+  [
+    "SKILL.md re-read after compaction passes",
+    "pass",
+    async (pi) => read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 }),
+  ],
+  // ---- R1b + cadence (2026-10-10 session audit) ----
+  [
+    "R1b: whole read of a >24KB file is blocked with targeted-window reason",
+    "blocked",
+    async (pi) => read(pi, hugeFile),
+  ],
+  [
+    "R1b: wide window (>=500 lines) on a >24KB file is blocked",
+    "blocked",
+    async (pi) => read(pi, hugeFile, { offset: 1, limit: 600 }),
+  ],
+  [
+    "R1b: narrow window on a >24KB file passes",
+    "pass",
+    async (pi) =>
+      read(pi, hugeFile, { offset: 10, limit: 200 }, { outputLines: 200 }),
+  ],
+  [
+    "cadence: nudge is non-blocking, appended once to a tool_result",
+    "pass",
+    async (pi) => {
+      for (let i = 0; i < 200; i++)
+        await pi.invoke("before_agent_start", {
+          type: "before_agent_start",
+          prompt: `msg ${i}`,
+          systemPromptOptions: {},
+        });
+      const b = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "cad1",
+        input: { command: "echo hi" },
+      });
+      if (b)
+        return {
+          blocked: true,
+          reason: `nudge must not block: ${b.reason.slice(0, 80)}`,
+        };
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: "cad1",
+        input: { command: "echo hi" },
+        content: textBlocks("ok"),
+        isError: false,
+      });
+      if (
+        !r ||
+        !r.content?.some(
+          (c) => c.type === "text" && c.text.includes("Cadence:"),
+        )
+      )
+        return { blocked: true, reason: "nudge missing from tool_result" };
+      const b2 = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "cad2",
+        input: { command: "echo again" },
+      });
+      if (b2) return { blocked: true, reason: "second call blocked" };
+      const r2 = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: "cad2",
+        input: { command: "echo again" },
+        content: textBlocks("ok"),
+        isError: false,
+      });
+      return r2 === undefined
+        ? { blocked: false }
+        : { blocked: true, reason: "nudge fired twice" };
+    },
+  ],
+  [
+    "cadence: resets after session_compact",
+    "pass",
+    async (pi) => {
+      for (let i = 0; i < 200; i++)
+        await pi.invoke("before_agent_start", {
+          type: "before_agent_start",
+          prompt: `m${i}`,
+          systemPromptOptions: {},
+        });
+      await compact(pi);
+      const b = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "cad3",
+        input: { command: "echo hi" },
+      });
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: "cad3",
+        input: { command: "echo hi" },
+        content: textBlocks("ok"),
+        isError: false,
+      });
+      return !b && r === undefined
+        ? { blocked: false }
+        : { blocked: true, reason: "cadence did not reset on compaction" };
+    },
+  ],
+  // ---- violation memory (before_agent_start injection — 2026-10-06) ----
+  [
+    "violation memory: block appends ndjson family entry",
+    "blocked",
+    async (pi) => {
+      const r = await bash(pi, 'git commit -m "Fix the thing"'); // Commitlint family — git reads retired with R5 (H1 step 5)
+      const lines = readFileSync(process.env.PGATE_MEMORY, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l));
+      const ok =
+        lines.length === 1 &&
+        lines[0].family === "Commitlint" &&
+        typeof lines[0].sid === "string" &&
+        lines[0].sid.length > 0;
+      if (!ok) {
+        console.log(
+          `      expected one {family,sid,ts} entry, ndjson has ${JSON.stringify(lines)}`,
+        );
+        return { blocked: false };
+      }
+      return r;
+    },
+  ],
+  [
+    "violation memory: before_agent_start injects top-3 lessons at threshold",
+    "pass",
+    async (pi) => {
+      const ev = {
+        type: "before_agent_start",
+        prompt: "",
+        systemPrompt: "",
+        systemPromptOptions: { appendSystemPrompt: "" },
+      };
+      pi.invoke("before_agent_start", ev);
+      const s = ev.systemPromptOptions.appendSystemPrompt;
+      const want = ["<violation-memory>", "Never re-run", "conventional"]; // top lessons = Re-run 7, Commitlint 9 (Reading+Extraction lessons retired with R2/R6)
+      const ok =
+        want.every((w) => s.includes(w)) &&
+        !s.includes("never start a bash segment") &&
+        !s.includes("Every 'rg -o'"); // retired lessons must stay out even when seeded
+      if (!ok) {
+        console.log(`      injected: ${JSON.stringify(s)}`);
+        return { blocked: true };
+      }
+      return { blocked: false };
+    },
+  ],
+  [
+    "violation memory: injection happens once per session",
+    "pass",
+    async (pi) => {
+      const ev = () => ({
+        type: "before_agent_start",
+        prompt: "",
+        systemPrompt: "",
+        systemPromptOptions: { appendSystemPrompt: "" },
+      });
+      const a = ev();
+      pi.invoke("before_agent_start", a);
+      pi.invoke("before_agent_start", a);
+      const n = (
+        a.systemPromptOptions.appendSystemPrompt.match(/<violation-memory>/g) ??
+        []
+      ).length;
+      return n === 1 ? { blocked: false } : { blocked: true };
+    },
+  ],
+  [
+    "violation memory: injection tolerates undefined appendSystemPrompt",
+    "pass",
+    async (pi) => {
+      const ev = {
+        type: "before_agent_start",
+        prompt: "",
+        systemPrompt: "",
+        systemPromptOptions: {},
+      };
+      pi.invoke("before_agent_start", ev);
+      const s = ev.systemPromptOptions.appendSystemPrompt ?? "";
+      return typeof s === "string" && s.startsWith("<violation-memory>")
+        ? { blocked: false }
+        : { blocked: true };
+    },
+  ],
+  [
+    "violation memory: one session hammering stays under threshold (H7)",
+    "pass",
+    async (pi) => {
+      const ev = {
+        type: "before_agent_start",
+        prompt: "",
+        systemPrompt: "",
+        systemPromptOptions: { appendSystemPrompt: "" },
+      };
+      pi.invoke("before_agent_start", ev);
+      return !(ev.systemPromptOptions.appendSystemPrompt ?? "").includes(
+        "<violation-memory>",
+      )
+        ? { blocked: false }
+        : { blocked: true, reason: "injected from single-session depth" };
+    },
+  ],
+  [
+    "violation memory: compaction rewrites bloated store per family+session (H7)",
+    "pass",
+    async () => {
+      const now = Date.now();
+      const lines = [];
+      for (let k = 0; k < 220; k++)
+        lines.push(
+          JSON.stringify({
+            family: "Commitlint",
+            sid: `s${k % 4}`,
+            ts: now - (k % 7),
+          }),
+        );
+      writeFileSync(process.env.PGATE_MEMORY, lines.join("\n") + "\n");
+      freshGate(); // load triggers compaction when >200 lines
+      const after = readFileSync(process.env.PGATE_MEMORY, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean);
+      return after.length === 4
+        ? { blocked: false }
+        : {
+            blocked: true,
+            reason: `expected 4 compact lines, got ${after.length}`,
+          };
+    },
+  ],
   // ---- R1 resume hydration (2026-10-07: coverage replays from the previous session file) ----
-  ['resume hydration: prior full read blocks re-read window', 'blocked', async (pi) => {
-    await hydrate(pi, [
-      { id: 'e1', call: 'read', callId: 'c1', path: fileC },
-      { id: 'e2', resultFor: 'c1', text: 'l1\nl2\nl3\n' },
-    ]);
-    return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 });
-  }],
-  ['resume hydration: changed-on-disk file re-read passes', 'pass', async (pi) => {
-    await hydrate(pi, [
-      { id: 'e1', call: 'read', callId: 'c1', path: fileC },
-      { id: 'e2', resultFor: 'c1', text: 'l1\nl2\nl3\n' },
-    ]);
-    writeFileSync(fileC, 'CHANGED\nl2\nl3\nl4\n'); // stat must mismatch the certified snapshot
-    return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 });
-  }],
-  ['resume hydration: pre-compaction reads stay legitimate', 'pass', async (pi) => {
-    await hydrate(pi, [
-      { id: 'e1', call: 'read', callId: 'c1', path: fileD },
-      { id: 'e2', resultFor: 'c1', text: 'l1\nl2\n' },
-      { id: 'e3', compactionAfter: 'e4' },
-      { id: 'e4', call: 'read', callId: 'c2', path: fileC },
-      { id: 'e5', resultFor: 'c2', text: 'l1\nl2\nl3\n' },
-    ]);
-    return read(pi, fileD, { offset: 1, limit: 2 }, { outputLines: 2 });
-  }],
-  ['resume hydration: prior write certifies the whole file', 'blocked', async (pi) => {
-    await hydrate(pi, [
-      { id: 'e1', call: 'write', callId: 'c1', path: fileE },
-      { id: 'e2', resultFor: 'c1', text: 'ok', tool: 'write' },
-    ]);
-    return read(pi, fileE, { offset: 1, limit: 2 }, { outputLines: 2 });
-  }],
+  [
+    "resume hydration: prior full read blocks re-read window",
+    "blocked",
+    async (pi) => {
+      await hydrate(pi, [
+        { id: "e1", call: "read", callId: "c1", path: fileC },
+        { id: "e2", resultFor: "c1", text: "l1\nl2\nl3\n" },
+      ]);
+      return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 });
+    },
+  ],
+  [
+    "resume hydration: changed-on-disk file re-read passes",
+    "pass",
+    async (pi) => {
+      await hydrate(pi, [
+        { id: "e1", call: "read", callId: "c1", path: fileC },
+        { id: "e2", resultFor: "c1", text: "l1\nl2\nl3\n" },
+      ]);
+      writeFileSync(fileC, "CHANGED\nl2\nl3\nl4\n"); // stat must mismatch the certified snapshot
+      return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 });
+    },
+  ],
+  [
+    "resume hydration: pre-compaction reads stay legitimate",
+    "pass",
+    async (pi) => {
+      await hydrate(pi, [
+        { id: "e1", call: "read", callId: "c1", path: fileD },
+        { id: "e2", resultFor: "c1", text: "l1\nl2\n" },
+        { id: "e3", compactionAfter: "e4" },
+        { id: "e4", call: "read", callId: "c2", path: fileC },
+        { id: "e5", resultFor: "c2", text: "l1\nl2\nl3\n" },
+      ]);
+      return read(pi, fileD, { offset: 1, limit: 2 }, { outputLines: 2 });
+    },
+  ],
+  [
+    "resume hydration: prior write certifies the whole file",
+    "blocked",
+    async (pi) => {
+      await hydrate(pi, [
+        { id: "e1", call: "write", callId: "c1", path: fileE },
+        { id: "e2", resultFor: "c1", text: "ok", tool: "write" },
+      ]);
+      return read(pi, fileE, { offset: 1, limit: 2 }, { outputLines: 2 });
+    },
+  ],
   // ---- H6 (2026-10-08): hydration safety — replayed edits clear coverage (B7) ----
-  ['resume hydration: replayed edit clears coverage (B7/H6)', 'pass', async (pi) => {
-    await hydrate(pi, [
-      { id: 'e1', call: 'read', callId: 'c1', path: fileC },
-      { id: 'e2', resultFor: 'c1', text: 'l1\nl2\nl3\n' },
-      { id: 'e3', call: 'edit', callId: 'c2', path: fileC },
-      { id: 'e4', resultFor: 'c2', text: 'ok', tool: 'edit' },
-    ]);
-    return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 }); // must be allowed
-  }],
-  ['resume hydration: re-start with an empty branch drops prior coverage', 'pass', async (pi) => {
-    await hydrate(pi, [
-      { id: 'e1', call: 'read', callId: 'c1', path: fileC },
-      { id: 'e2', resultFor: 'c1', text: 'l1\nl2\nl3\n' },
-    ]);
-    await pi.invoke('session_start', { type: 'session_start', reason: 'new' }, { sessionManager: { getBranch: () => [] } }); // in-process switch to a fresh session
-    return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 });
-  }],
+  [
+    "resume hydration: replayed edit clears coverage (B7/H6)",
+    "pass",
+    async (pi) => {
+      await hydrate(pi, [
+        { id: "e1", call: "read", callId: "c1", path: fileC },
+        { id: "e2", resultFor: "c1", text: "l1\nl2\nl3\n" },
+        { id: "e3", call: "edit", callId: "c2", path: fileC },
+        { id: "e4", resultFor: "c2", text: "ok", tool: "edit" },
+      ]);
+      return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 }); // must be allowed
+    },
+  ],
+  [
+    "resume hydration: re-start with an empty branch drops prior coverage",
+    "pass",
+    async (pi) => {
+      await hydrate(pi, [
+        { id: "e1", call: "read", callId: "c1", path: fileC },
+        { id: "e2", resultFor: "c1", text: "l1\nl2\nl3\n" },
+      ]);
+      await pi.invoke(
+        "session_start",
+        { type: "session_start", reason: "new" },
+        { sessionManager: { getBranch: () => [] } },
+      ); // in-process switch to a fresh session
+      return read(pi, fileC, { offset: 1, limit: 2 }, { outputLines: 2 });
+    },
+  ],
   // ---- Anchor Guard (existence / uniqueness / overlap) ----
-  ['anchor not found is blocked', 'blocked', async (pi) => edit(pi, fileA, [{ oldText: 'zzz', newText: 'y' }])],
-  ['non-unique anchor is blocked with line numbers', 'blocked', async (pi) => edit(pi, fileB, [{ oldText: 'x', newText: 'y' }])],
-  ['intra-call overlapping anchors are blocked', 'blocked', async (pi) => edit(pi, fileA, [{ oldText: 'a\nb', newText: 'q' }, { oldText: 'b\nc', newText: 'r' }])],
+  [
+    "anchor not found is blocked",
+    "blocked",
+    async (pi) => edit(pi, fileA, [{ oldText: "zzz", newText: "y" }]),
+  ],
+  [
+    "non-unique anchor is blocked with line numbers",
+    "blocked",
+    async (pi) => edit(pi, fileB, [{ oldText: "x", newText: "y" }]),
+  ],
+  [
+    "intra-call overlapping anchors are blocked",
+    "blocked",
+    async (pi) =>
+      edit(pi, fileA, [
+        { oldText: "a\nb", newText: "q" },
+        { oldText: "b\nc", newText: "r" },
+      ]),
+  ],
   // ---- H1 (2026-10-08): R2 viewing blocks deleted — output capped in tool_result ----
-  ['standalone cat viewing is allowed (H1 cap)', 'pass', async (pi) => bash(pi, 'cat package.json')],
-  ['standalone head viewing is allowed (H1 cap)', 'pass', async (pi) => bash(pi, 'head -40 config.json.example')],
-  ['standalone tail viewing is allowed (H1 cap)', 'pass', async (pi) => bash(pi, 'tail -20 CHANGELOG.md')],
-  ['tail -f watcher is not viewing', 'pass', async (pi) => bash(pi, 'tail -f /tmp/server.log')],
-  ['sed -n batching 2+ regions passes', 'pass', async (pi) => bash(pi, "sed -n '1p;5p' notes.md")],
-  ['sed s///p substitution-print passes', 'pass', async (pi) => bash(pi, 'sed -n "s/^export const APP_VERSION = \'\\(.*\\)\'$/\\1/p" src/version.js')],
+  [
+    "standalone cat viewing is allowed (H1 cap)",
+    "pass",
+    async (pi) => bash(pi, "cat package.json"),
+  ],
+  [
+    "standalone head viewing is allowed (H1 cap)",
+    "pass",
+    async (pi) => bash(pi, "head -40 config.json.example"),
+  ],
+  [
+    "standalone tail viewing is allowed (H1 cap)",
+    "pass",
+    async (pi) => bash(pi, "tail -20 CHANGELOG.md"),
+  ],
+  [
+    "tail -f watcher is not viewing",
+    "pass",
+    async (pi) => bash(pi, "tail -f /tmp/server.log"),
+  ],
+  [
+    "sed -n batching 2+ regions passes",
+    "pass",
+    async (pi) => bash(pi, "sed -n '1p;5p' notes.md"),
+  ],
+  [
+    "sed s///p substitution-print passes",
+    "pass",
+    async (pi) =>
+      bash(
+        pi,
+        "sed -n \"s/^export const APP_VERSION = '\\(.*\\)'$/\\1/p\" src/version.js",
+      ),
+  ],
   // ---- 2026-10-08 extensions audit: distributed sed batch + trivial batched cat ----
-  ['distributed sed batch (;-joined, 2 regions) passes', 'pass', async (pi) => bash(pi, `sed -n '1,2p' ${fileA}; sed -n '3p' ${fileA}`)],
-  ['distributed sed batch inside a longer batched command passes', 'pass', async (pi) => bash(pi, `date -u; sed -n '1,2p' ${fileA}; sed -n '2,3p' ${fileA}; rg -n x ${fileA} | head -3`)],
-  ['lone sed region inside a batched command is allowed (H1 cap)', 'pass', async (pi) => bash(pi, `date -u; sed -n '1,2p' ${fileA}`)],
-  ['tiny cat inside a batched command passes', 'pass', async (pi) => bash(pi, `date -u; cat ${tinyFile}; ls ${tmp}`)],
-  ['tiny cat standalone is allowed (H1 cap)', 'pass', async (pi) => bash(pi, `cat ${tinyFile}`)],
-  ['big cat inside a batched command is allowed (H1 cap)', 'pass', async (pi) => bash(pi, `date -u; cat ${bigFile}`)],
+  [
+    "distributed sed batch (;-joined, 2 regions) passes",
+    "pass",
+    async (pi) => bash(pi, `sed -n '1,2p' ${fileA}; sed -n '3p' ${fileA}`),
+  ],
+  [
+    "distributed sed batch inside a longer batched command passes",
+    "pass",
+    async (pi) =>
+      bash(
+        pi,
+        `date -u; sed -n '1,2p' ${fileA}; sed -n '2,3p' ${fileA}; rg -n x ${fileA} | head -3`,
+      ),
+  ],
+  [
+    "lone sed region inside a batched command is allowed (H1 cap)",
+    "pass",
+    async (pi) => bash(pi, `date -u; sed -n '1,2p' ${fileA}`),
+  ],
+  [
+    "tiny cat inside a batched command passes",
+    "pass",
+    async (pi) => bash(pi, `date -u; cat ${tinyFile}; ls ${tmp}`),
+  ],
+  [
+    "tiny cat standalone is allowed (H1 cap)",
+    "pass",
+    async (pi) => bash(pi, `cat ${tinyFile}`),
+  ],
+  [
+    "big cat inside a batched command is allowed (H1 cap)",
+    "pass",
+    async (pi) => bash(pi, `date -u; cat ${bigFile}`),
+  ],
   // ---- 2026-10-08 extensions audit: Re-block escalation (RETRY-SAME case) ----
   // bash() alone doesn't replay the synthesized block tool_result pi emits —
   // do it by hand so pendingBashFull -> lastBlockedBash arms, like the real loop
-  ['verbatim re-send of a just-blocked command escalates to Re-block', 'blocked', async (pi) => {
-    const bad = 'git commit -m "Fix the thing" && echo committed'; // Commitlint blocks it (R5 retired by H1 step 5)
-    const id1 = `rb${++seqId}`;
-    const b1 = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: id1, input: { command: bad } });
-    if (!b1) return { blocked: false }; // precondition: commitlint blocks the bad message
-    await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId: id1, input: { command: bad }, content: textBlocks(b1.reason), isError: true });
-    const b2 = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: `rb${++seqId}`, input: { command: bad } });
-    return b2 && b2.reason.includes('Re-block') ? { blocked: true, reason: b2.reason } : { blocked: false };
-  }],
+  [
+    "verbatim re-send of a just-blocked command escalates to Re-block",
+    "blocked",
+    async (pi) => {
+      const bad = 'git commit -m "Fix the thing" && echo committed'; // Commitlint blocks it (R5 retired by H1 step 5)
+      const id1 = `rb${++seqId}`;
+      const b1 = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id1,
+        input: { command: bad },
+      });
+      if (!b1) return { blocked: false }; // precondition: commitlint blocks the bad message
+      await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id1,
+        input: { command: bad },
+        content: textBlocks(b1.reason),
+        isError: true,
+      });
+      const b2 = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: `rb${++seqId}`,
+        input: { command: bad },
+      });
+      return b2 && b2.reason.includes("Re-block")
+        ? { blocked: true, reason: b2.reason }
+        : { blocked: false };
+    },
+  ],
   // ---- B1/B2 fixes (2026-10-08): Re-block yields to mutations, family preserved ----
-  ['re-block yields after an intervening edit (B1)', 'pass', async (pi) => {
-    const cmd = 'npm test 2>&1 | tail -5';
-    await runBash(pi, cmd);
-    const id = `b1${++seqId}`;
-    const blk = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: id, input: { command: cmd } });
-    if (!blk) return { blocked: false }; // precondition: R10 blocks the identical re-run
-    await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId: id, input: { command: cmd }, content: textBlocks(blk.reason), isError: true });
-    const e = await edit(pi, fileA, [{ oldText: 'b', newText: 'x' }]);
-    if (e.blocked) return { blocked: true, reason: 'edit blocked' };
-    return bash(pi, cmd); // R10 allows (mut changed) and Re-block must yield
-  }],
-  ['third consecutive block still names the original family (B2)', 'blocked', async (pi) => {
-    const cmd = 'git commit -m "Bad message here"'; // commitlint blocks
-    for (let k = 0; k < 2; k++) {
-      const id = `b2${++seqId}`;
-      const blk = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: id, input: { command: cmd } });
-      if (!blk) return { blocked: false }; // precondition
-      await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId: id, input: { command: cmd }, content: textBlocks(blk.reason), isError: true });
-    }
-    const r = await bash(pi, cmd);
-    return r.blocked && r.reason.includes('Commitlint') ? r : { blocked: false };
-  }],
-  ['compliant variant after a block does not escalate', 'pass', async (pi) => {
-    const bad = 'git commit -m "Fix the thing" && echo committed';
-    const id1 = `rb${++seqId}`;
-    const b1 = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: id1, input: { command: bad } });
-    if (!b1) return { blocked: false }; // precondition: blocked first
-    await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId: id1, input: { command: bad }, content: textBlocks(b1.reason), isError: true });
-    return bash(pi, 'git clone -q https://example.com/r /tmp/r2 && cd /tmp/r2 && git log --oneline | head -5');
-  }],
-  ['real command failure does not arm the escalation', 'pass', async (pi) => {
-    const cmd = 'timeout 120 pi -p "ok"';
-    const id1 = `rb${++seqId}`;
-    const b1 = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: id1, input: { command: cmd } });
-    if (!b1) return { blocked: false }; // precondition: passes the gate
-    await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId: id1, input: { command: cmd }, content: textBlocks('/bin/bash: timeout: command not found'), isError: true });
-    const b2 = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: `rb${++seqId}`, input: { command: cmd } });
-    if (b2) console.log(`      must not re-block after a real (non-gate) failure: ${b2.reason.slice(0, 90)}`);
-    return b2 ? { blocked: true, reason: b2.reason } : { blocked: false }; // blocked here = test failure
-  }],
-  ['loop-body sed viewing is not split out', 'pass', async (pi) => bash(pi, 'for s in research domain; do echo "== $s"; sed -n \'1,6p\' "$s.md"; done')],
+  [
+    "re-block yields after an intervening edit (B1)",
+    "pass",
+    async (pi) => {
+      const cmd = "npm test 2>&1 | tail -5";
+      await runBash(pi, cmd);
+      const id = `b1${++seqId}`;
+      const blk = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: cmd },
+      });
+      if (!blk) return { blocked: false }; // precondition: R10 blocks the identical re-run
+      await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: cmd },
+        content: textBlocks(blk.reason),
+        isError: true,
+      });
+      const e = await edit(pi, fileA, [{ oldText: "b", newText: "x" }]);
+      if (e.blocked) return { blocked: true, reason: "edit blocked" };
+      return bash(pi, cmd); // R10 allows (mut changed) and Re-block must yield
+    },
+  ],
+  [
+    "third consecutive block still names the original family (B2)",
+    "blocked",
+    async (pi) => {
+      const cmd = 'git commit -m "Bad message here"'; // commitlint blocks
+      for (let k = 0; k < 2; k++) {
+        const id = `b2${++seqId}`;
+        const blk = await pi.invoke("tool_call", {
+          type: "tool_call",
+          toolName: "bash",
+          toolCallId: id,
+          input: { command: cmd },
+        });
+        if (!blk) return { blocked: false }; // precondition
+        await pi.invoke("tool_result", {
+          type: "tool_result",
+          toolName: "bash",
+          toolCallId: id,
+          input: { command: cmd },
+          content: textBlocks(blk.reason),
+          isError: true,
+        });
+      }
+      const r = await bash(pi, cmd);
+      return r.blocked && r.reason.includes("Commitlint")
+        ? r
+        : { blocked: false };
+    },
+  ],
+  [
+    "compliant variant after a block does not escalate",
+    "pass",
+    async (pi) => {
+      const bad = 'git commit -m "Fix the thing" && echo committed';
+      const id1 = `rb${++seqId}`;
+      const b1 = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id1,
+        input: { command: bad },
+      });
+      if (!b1) return { blocked: false }; // precondition: blocked first
+      await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id1,
+        input: { command: bad },
+        content: textBlocks(b1.reason),
+        isError: true,
+      });
+      return bash(
+        pi,
+        "git clone -q https://example.com/r /tmp/r2 && cd /tmp/r2 && git log --oneline | head -5",
+      );
+    },
+  ],
+  [
+    "real command failure does not arm the escalation",
+    "pass",
+    async (pi) => {
+      const cmd = 'timeout 120 pi -p "ok"';
+      const id1 = `rb${++seqId}`;
+      const b1 = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id1,
+        input: { command: cmd },
+      });
+      if (!b1) return { blocked: false }; // precondition: passes the gate
+      await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id1,
+        input: { command: cmd },
+        content: textBlocks("/bin/bash: timeout: command not found"),
+        isError: true,
+      });
+      const b2 = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: `rb${++seqId}`,
+        input: { command: cmd },
+      });
+      if (b2)
+        console.log(
+          `      must not re-block after a real (non-gate) failure: ${b2.reason.slice(0, 90)}`,
+        );
+      return b2 ? { blocked: true, reason: b2.reason } : { blocked: false }; // blocked here = test failure
+    },
+  ],
+  [
+    "loop-body sed viewing is not split out",
+    "pass",
+    async (pi) =>
+      bash(
+        pi,
+        'for s in research domain; do echo "== $s"; sed -n \'1,6p\' "$s.md"; done',
+      ),
+  ],
   // ---- H1 cap unit checks (composed tool_result return value) ----
-  ['H1: >200-line bash output is capped with spill pointer', 'pass', async (pi) => {
-    const id = `cap${++seqId}`;
-    const b = await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: id, input: { command: 'cat big.log' } });
-    if (b) return { blocked: true, reason: `precondition: cat blocked: ${b.reason.slice(0, 80)}` };
-    const r = await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId: id, input: { command: 'cat big.log' }, content: textBlocks(Array.from({ length: 500 }, (_, i) => `l${i}`).join('\n')), isError: false });
-    const t = r?.content?.[0]?.text ?? '';
-    const ok = r && r.content.length === 1 && t.startsWith('l0\n') && t.includes('kept 100/500 lines') && t.includes('pgate-spill');
-    return ok ? { blocked: false } : { blocked: true, reason: `cap result wrong: ${JSON.stringify(r).slice(0, 160)}` };
-  }],
-  ['H1: >12KB bash output is byte-capped even under 200 lines', 'pass', async (pi) => {
-    const id = `cap${++seqId}`;
-    await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: id, input: { command: 'cat oneline.log' } });
-    const r = await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId: id, input: { command: 'cat oneline.log' }, content: textBlocks('x'.repeat(20000)), isError: false });
-    const t = r?.content?.[0]?.text ?? '';
-    return r && t.length < 20000 && t.includes('[output capped') ? { blocked: false } : { blocked: true, reason: `byte cap wrong: len=${t.length}` };
-  }],
-  ['H1: small bash output passes through unmodified', 'pass', async (pi) => {
-    const id = `cap${++seqId}`;
-    await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: id, input: { command: 'ls' } });
-    const r = await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId: id, input: { command: 'ls' }, content: textBlocks('ok'), isError: false });
-    return r === undefined ? { blocked: false } : { blocked: true, reason: `small output was modified: ${JSON.stringify(r).slice(0, 100)}` };
-  }],
-  ['H1: structuredContent preserved when capping', 'pass', async (pi) => {
-    const id = `cap${++seqId}`;
-    await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: id, input: { command: 'cat big.log' } });
-    const r = await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId: id, input: { command: 'cat big.log' }, content: textBlocks(Array.from({ length: 300 }, (_, i) => `l${i}`).join('\n')), structuredContent: { exitCode: 0 }, isError: false });
-    return r && r.structuredContent && r.structuredContent.exitCode === 0 ? { blocked: false } : { blocked: true, reason: 'structuredContent dropped by cap' };
-  }],
-  ['H1: error results are never capped', 'pass', async (pi) => {
-    const id = `cap${++seqId}`;
-    await pi.invoke('tool_call', { type: 'tool_call', toolName: 'bash', toolCallId: id, input: { command: 'cat big.log' } });
-    const r = await pi.invoke('tool_result', { type: 'tool_result', toolName: 'bash', toolCallId: id, input: { command: 'cat big.log' }, content: textBlocks(Array.from({ length: 300 }, (_, i) => `l${i}`).join('\n')), isError: true });
-    return r === undefined ? { blocked: false } : { blocked: true, reason: 'error result was capped' };
-  }],
+  [
+    "H1: >200-line bash output is capped with spill pointer",
+    "pass",
+    async (pi) => {
+      const id = `cap${++seqId}`;
+      const b = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat big.log" },
+      });
+      if (b)
+        return {
+          blocked: true,
+          reason: `precondition: cat blocked: ${b.reason.slice(0, 80)}`,
+        };
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat big.log" },
+        content: textBlocks(
+          Array.from({ length: 500 }, (_, i) => `l${i}`).join("\n"),
+        ),
+        isError: false,
+      });
+      const t = r?.content?.[0]?.text ?? "";
+      const ok =
+        r &&
+        r.content.length === 1 &&
+        t.startsWith("l0\n") &&
+        t.includes("kept 100/500 lines") &&
+        t.includes("pgate-spill");
+      return ok
+        ? { blocked: false }
+        : {
+            blocked: true,
+            reason: `cap result wrong: ${JSON.stringify(r).slice(0, 160)}`,
+          };
+    },
+  ],
+  [
+    "H1: >12KB bash output is byte-capped even under 200 lines",
+    "pass",
+    async (pi) => {
+      const id = `cap${++seqId}`;
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat oneline.log" },
+      });
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat oneline.log" },
+        content: textBlocks("x".repeat(20000)),
+        isError: false,
+      });
+      const t = r?.content?.[0]?.text ?? "";
+      return r && t.length < 20000 && t.includes("[output capped")
+        ? { blocked: false }
+        : { blocked: true, reason: `byte cap wrong: len=${t.length}` };
+    },
+  ],
+  [
+    "H1: small bash output passes through unmodified",
+    "pass",
+    async (pi) => {
+      const id = `cap${++seqId}`;
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "ls" },
+      });
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "ls" },
+        content: textBlocks("ok"),
+        isError: false,
+      });
+      return r === undefined
+        ? { blocked: false }
+        : {
+            blocked: true,
+            reason: `small output was modified: ${JSON.stringify(r).slice(0, 100)}`,
+          };
+    },
+  ],
+  [
+    "H1: structuredContent preserved when capping",
+    "pass",
+    async (pi) => {
+      const id = `cap${++seqId}`;
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat big.log" },
+      });
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat big.log" },
+        content: textBlocks(
+          Array.from({ length: 300 }, (_, i) => `l${i}`).join("\n"),
+        ),
+        structuredContent: { exitCode: 0 },
+        isError: false,
+      });
+      return r && r.structuredContent && r.structuredContent.exitCode === 0
+        ? { blocked: false }
+        : { blocked: true, reason: "structuredContent dropped by cap" };
+    },
+  ],
+  [
+    "H1: failing command output is capped too (tsc/test floods)",
+    "pass",
+    async (pi) => {
+      const id = `cap${++seqId}`;
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "tsc --noEmit" },
+      });
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "tsc --noEmit" },
+        content: textBlocks(
+          Array.from({ length: 300 }, (_, i) => `l${i}`).join("\n"),
+        ),
+        isError: true,
+      });
+      return r && r.content?.[0]?.text?.includes("kept 100/300")
+        ? { blocked: false }
+        : { blocked: true, reason: "error output not capped" };
+    },
+  ],
+  [
+    "H1: synthesized block results pass through uncapped",
+    "pass",
+    async (pi) => {
+      const bad = 'git commit -m "Fix the thing"';
+      const id = `rb${++seqId}`;
+      const b1 = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: bad },
+      });
+      if (!b1) return { blocked: false }; // precondition: commitlint blocks it
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: bad },
+        content: textBlocks(b1.reason + "\n" + "x".repeat(9000)),
+        isError: true,
+      });
+      return r === undefined
+        ? { blocked: false }
+        : { blocked: true, reason: "synthesized block result was modified" };
+    },
+  ],
+  [
+    "H1: oversized first line is truncated head+tail",
+    "pass",
+    async (pi) => {
+      const id = `cap${++seqId}`;
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat oneline.log" },
+      });
+      const line = `ERR ${"x".repeat(9000)} at src/deep/path.ts:123:45`;
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat oneline.log" },
+        content: textBlocks(line),
+        isError: true,
+      });
+      const t = r?.content?.[0]?.text ?? "";
+      const ok =
+        t.startsWith("ERR ") &&
+        t.includes("at src/deep/path.ts:123:45") &&
+        t.includes("[line truncated:");
+      return ok
+        ? { blocked: false }
+        : { blocked: true, reason: `first-line cap wrong: ${t.slice(0, 90)}` };
+    },
+  ],
+  [
+    "H1: multibyte flood is byte-capped (UTF-8, not UTF-16 units)",
+    "pass",
+    async (pi) => {
+      const id = `cap${++seqId}`;
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat i18n.log" },
+      });
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat i18n.log" },
+        content: textBlocks("আ".repeat(3000)),
+        isError: false,
+      });
+      // 3000 Bengali chars: ~9KB UTF-8 (over cap) but 3KB UTF-16 (sailed through the old check)
+      return r && r.content?.[0]?.text?.length < 3000
+        ? { blocked: false }
+        : { blocked: true, reason: "byte cap missed multibyte flood" };
+    },
+  ],
+  [
+    "H1: spill filename sanitizes the toolCallId, file is 0600",
+    "pass",
+    async (pi) => {
+      const id = `a/../z-${++seqId}`;
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat big.log" },
+      });
+      await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id,
+        input: { command: "cat big.log" },
+        content: textBlocks(
+          Array.from({ length: 500 }, (_, i) => `l${i}`).join("\n"),
+        ),
+        isError: false,
+      });
+      const dir = join(tmpdir(), "pgate-spill");
+      const files = readdirSync(dir);
+      const want = `a_.._z-${seqId}.txt`;
+      const okFile =
+        files.includes(want) &&
+        (statSync(join(dir, want)).mode & 0o777) === 0o600;
+      const noEscape = files.every((f) => !f.includes("/"));
+      return okFile && noEscape
+        ? { blocked: false }
+        : { blocked: true, reason: `spill: ${files.slice(-3).join()}` };
+    },
+  ],
   // ---- R5 git log caps (deleted 2026-10-08, H1 step 5 — output cap covers) ----
-  ['uncapped git log is allowed (H1 step 5 cap)', 'pass', async (pi) => bash(pi, 'git log')],
-  ['git log --oneline -n passes', 'pass', async (pi) => bash(pi, 'git log --oneline -n 5')],
-  ['git log -<N> short count passes', 'pass', async (pi) => bash(pi, 'git log -1 --format=%ci')],
+  [
+    "uncapped git log is allowed (H1 step 5 cap)",
+    "pass",
+    async (pi) => bash(pi, "git log"),
+  ],
+  [
+    "git log --oneline -n passes",
+    "pass",
+    async (pi) => bash(pi, "git log --oneline -n 5"),
+  ],
+  [
+    "git log -<N> short count passes",
+    "pass",
+    async (pi) => bash(pi, "git log -1 --format=%ci"),
+  ],
   // ---- R6 rg -o caps ----
-  ['uncapped rg -o is allowed (H1 step 3 cap)', 'pass', async (pi) => bash(pi, "rg -o 'pattern' src/")],
-  ['capped rg -o passes', 'pass', async (pi) => bash(pi, "rg -o 'pattern' src/ | head -20")],
+  [
+    "uncapped rg -o is allowed (H1 step 3 cap)",
+    "pass",
+    async (pi) => bash(pi, "rg -o 'pattern' src/"),
+  ],
+  [
+    "capped rg -o passes",
+    "pass",
+    async (pi) => bash(pi, "rg -o 'pattern' src/ | head -20"),
+  ],
   // ---- R7 recursive walks ----
-  ['ls -R is allowed (H1 step 6 cap)', 'pass', async (pi) => bash(pi, 'ls -R src')],
-  ['plain ls passes', 'pass', async (pi) => bash(pi, 'ls src')],
+  [
+    "ls -R is allowed (H1 step 6 cap)",
+    "pass",
+    async (pi) => bash(pi, "ls -R src"),
+  ],
+  ["plain ls passes", "pass", async (pi) => bash(pi, "ls src")],
   // ---- R8 git hook caps ----
-  ['uncapped git commit is allowed (H1 step 4 cap)', 'pass', async (pi) => bash(pi, 'git commit -m "fix: cap output"')],
-  ['capped git commit passes', 'pass', async (pi) => bash(pi, 'git commit -m "fix: cap output" 2>&1 | tail -20')],
+  [
+    "uncapped git commit is allowed (H1 step 4 cap)",
+    "pass",
+    async (pi) => bash(pi, 'git commit -m "fix: cap output"'),
+  ],
+  [
+    "capped git commit passes",
+    "pass",
+    async (pi) => bash(pi, 'git commit -m "fix: cap output" 2>&1 | tail -20'),
+  ],
   // ---- R9 commitlint ----
-  ['non-conventional commit message is blocked', 'blocked', async (pi) => bash(pi, 'git commit -m "Fix the thing"')],
+  [
+    "non-conventional commit message is blocked",
+    "blocked",
+    async (pi) => bash(pi, 'git commit -m "Fix the thing"'),
+  ],
   // ---- commitlint B12/B13/B21 fixes (2026-10-08) ----
-  ['commitlint: -am combined flag is validated', 'blocked', async (pi) => bash(pi, 'git commit -am "Add stuff"')],
-  ['commitlint: -m"x" attached form is validated', 'blocked', async (pi) => bash(pi, 'git commit -m"x"')],
-  ['commitlint: --message=y form is validated', 'blocked', async (pi) => bash(pi, 'git commit --message=y')],
-  ['commitlint: global git flags do not hide the subcommand (H4-lite)', 'blocked', async (pi) => bash(pi, 'git -C x commit -m "Bad msg"')],
-  ['commitlint: conventional commit under -C passes (H4-lite)', 'pass', async (pi) => bash(pi, 'git -C x commit -m "fix: cap output"')],
-  ['commitlint: acronym subject passes (B13)', 'pass', async (pi) => bash(pi, 'git commit -m "fix: API timeout"')],
-  ['commitlint: all-caps subject still blocked', 'blocked', async (pi) => bash(pi, 'git commit -m "fix: API TIMEOUT"')],
-  ['commitlint: start-case subject still blocked', 'blocked', async (pi) => bash(pi, 'git commit -m "fix: Fix The Timeout"')],
-  ['commitlint: \\n in message is a newline, header = first line (B21)', 'pass', async (pi) => bash(pi, 'git commit -m "fix: a\\nb c"')],
+  [
+    "commitlint: -am combined flag is validated",
+    "blocked",
+    async (pi) => bash(pi, 'git commit -am "Add stuff"'),
+  ],
+  [
+    'commitlint: -m"x" attached form is validated',
+    "blocked",
+    async (pi) => bash(pi, 'git commit -m"x"'),
+  ],
+  [
+    "commitlint: --message=y form is validated",
+    "blocked",
+    async (pi) => bash(pi, "git commit --message=y"),
+  ],
+  [
+    "commitlint: global git flags do not hide the subcommand (H4-lite)",
+    "blocked",
+    async (pi) => bash(pi, 'git -C x commit -m "Bad msg"'),
+  ],
+  [
+    "commitlint: conventional commit under -C passes (H4-lite)",
+    "pass",
+    async (pi) => bash(pi, 'git -C x commit -m "fix: cap output"'),
+  ],
+  [
+    "commitlint: acronym subject passes (B13)",
+    "pass",
+    async (pi) => bash(pi, 'git commit -m "fix: API timeout"'),
+  ],
+  [
+    "commitlint: all-caps subject still blocked",
+    "blocked",
+    async (pi) => bash(pi, 'git commit -m "fix: API TIMEOUT"'),
+  ],
+  [
+    "commitlint: start-case subject still blocked",
+    "blocked",
+    async (pi) => bash(pi, 'git commit -m "fix: Fix The Timeout"'),
+  ],
+  [
+    "commitlint: \\n in message is a newline, header = first line (B21)",
+    "pass",
+    async (pi) => bash(pi, 'git commit -m "fix: a\\nb c"'),
+  ],
   // ---- H2 (2026-10-08, suite t08/t09 evidence): destructive confirm ----
-  ['H2: rm without UI fails closed (asks in chat)', 'blocked', async (pi) => bash(pi, 'rm -f /tmp/x', { hasUI: false, mode: 'print' })],
-  ['H2: git reset --hard without UI fails closed', 'blocked', async (pi) => bash(pi, 'git reset --hard HEAD~1', { hasUI: false, mode: 'print' })],
-  ['H2: npm install without UI fails closed (t08)', 'blocked', async (pi) => bash(pi, 'npm install lodash', { hasUI: false, mode: 'print' })],
-  ['H2: destructive with UI approval passes', 'pass', async (pi) => bash(pi, 'git reset --hard HEAD~1')],
-  ['H2: destructive with UI denial is blocked', 'blocked', async (pi) => bash(pi, 'git reset --hard HEAD~1', { hasUI: true, mode: 'tui', ui: { confirm: async () => false } })],
-  ['H2: approved destructive re-send skips re-confirm (2 min window)', 'pass', async (pi) => {
-    let asks = 0;
-    const ctx = { hasUI: true, mode: 'tui', ui: { confirm: async () => { asks++; return true; } } };
-    const r1 = await bash(pi, 'git push', ctx);
-    if (r1.blocked) return { blocked: true, reason: 'first push blocked' };
-    const r2 = await bash(pi, 'git push', ctx);
-    return !r2.blocked && asks === 1 ? { blocked: false } : { blocked: true, reason: `asks=${asks} r2=${JSON.stringify(r2).slice(0, 80)}` };
-  }],
-  ['H2: commitlint runs before the permission ask', 'blocked', async (pi) => {
-    const r = await bash(pi, 'git commit -m "Fix the thing"'); // auto-approving UI
-    return r.blocked && r.reason.startsWith('Commitlint') ? r : { blocked: false };
-  }],
-  ['H2: non-destructive commands never confirm', 'pass', async (pi) => {
-    let asks = 0;
-    const ctx = { hasUI: true, mode: 'tui', ui: { confirm: async () => { asks++; return true; } } };
-    await bash(pi, 'npm test 2>&1 | tail -5', ctx);
-    await bash(pi, 'git pull', ctx);
-    await bash(pi, 'ls -la src', ctx);
-    return asks === 0 ? { blocked: false } : { blocked: true, reason: `confirmed ${asks}× on non-destructive` };
-  }],
-  // ---- H2 allowlist (2026-10-08, user-approved): per-path auto-approve rules ----
-  ['H2 allowlist: rm inside the allowed dir skips the confirm', 'pass', async (pi) => {
-    mkdirSync(join(tmp, 'spill'), { recursive: true });
-    const f = join(tmp, 'allow-rm.json');
-    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
-    process.env.PGATE_ALLOWLIST = f;
-    try {
+  [
+    "H2: rm without UI fails closed (asks in chat)",
+    "blocked",
+    async (pi) => bash(pi, "rm -f /tmp/x", { hasUI: false, mode: "print" }),
+  ],
+  [
+    "H2: git reset --hard without UI fails closed",
+    "blocked",
+    async (pi) =>
+      bash(pi, "git reset --hard HEAD~1", { hasUI: false, mode: "print" }),
+  ],
+  [
+    "H2: npm install without UI fails closed (t08)",
+    "blocked",
+    async (pi) =>
+      bash(pi, "npm install lodash", { hasUI: false, mode: "print" }),
+  ],
+  [
+    "H2: destructive with UI approval passes",
+    "pass",
+    async (pi) => bash(pi, "git reset --hard HEAD~1"),
+  ],
+  [
+    "H2: destructive with UI denial is blocked",
+    "blocked",
+    async (pi) =>
+      bash(pi, "git reset --hard HEAD~1", {
+        hasUI: true,
+        mode: "tui",
+        ui: { confirm: async () => false },
+      }),
+  ],
+  [
+    "H2: approved destructive re-send skips re-confirm (2 min window)",
+    "pass",
+    async (pi) => {
       let asks = 0;
-      const ctx = { hasUI: true, mode: 'tui', ui: { confirm: async () => { asks++; return false; } } };
-      const r = await bash(pi, `rm -rf ${tmp}/spill/*`, ctx);
-      return !r.blocked && asks === 0 ? { blocked: false } : { blocked: true, reason: `asks=${asks} r=${JSON.stringify(r).slice(0, 80)}` };
-    } finally {
-      process.env.PGATE_ALLOWLIST = allowlistDefault;
-    }
-  }],
-  ['H2 allowlist: rm outside the allowed dir still confirms', 'blocked', async (pi) => {
-    const f = join(tmp, 'allow-rm.json');
-    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
-    process.env.PGATE_ALLOWLIST = f;
-    try {
-      return bash(pi, 'rm -rf /etc', { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
-    } finally {
-      process.env.PGATE_ALLOWLIST = allowlistDefault;
-    }
-  }],
-  ['H2 allowlist: one arg outside the allowed dir still confirms', 'blocked', async (pi) => {
-    mkdirSync(join(tmp, 'a'), { recursive: true });
-    const f = join(tmp, 'allow-rm.json');
-    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
-    process.env.PGATE_ALLOWLIST = f;
-    try {
-      return bash(pi, `rm -rf ${tmp}/a /etc`, { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
-    } finally {
-      process.env.PGATE_ALLOWLIST = allowlistDefault;
-    }
-  }],
-  ['H2 allowlist: uncovered destructive segment blocks the whole command', 'blocked', async (pi) => {
-    mkdirSync(join(tmp, 'a'), { recursive: true });
-    const f = join(tmp, 'allow-rm.json');
-    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
-    process.env.PGATE_ALLOWLIST = f;
-    try {
-      return bash(pi, `rm -rf ${tmp}/a && npm install left-pad`, { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
-    } finally {
-      process.env.PGATE_ALLOWLIST = allowlistDefault;
-    }
-  }],
-  ['H2 allowlist: all-covered compound auto-passes', 'pass', async (pi) => {
-    writeFileSync(join(tmp, 'b'), '');
-    writeFileSync(join(tmp, 'c'), '');
-    const f = join(tmp, 'allow-rm.json');
-    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
-    process.env.PGATE_ALLOWLIST = f;
-    try {
+      const ctx = {
+        hasUI: true,
+        mode: "tui",
+        ui: {
+          confirm: async () => {
+            asks++;
+            return true;
+          },
+        },
+      };
+      const r1 = await bash(pi, "git push", ctx);
+      if (r1.blocked) return { blocked: true, reason: "first push blocked" };
+      const r2 = await bash(pi, "git push", ctx);
+      return !r2.blocked && asks === 1
+        ? { blocked: false }
+        : {
+            blocked: true,
+            reason: `asks=${asks} r2=${JSON.stringify(r2).slice(0, 80)}`,
+          };
+    },
+  ],
+  [
+    "H2: commitlint runs before the permission ask",
+    "blocked",
+    async (pi) => {
+      const r = await bash(pi, 'git commit -m "Fix the thing"'); // auto-approving UI
+      return r.blocked && r.reason.startsWith("Commitlint")
+        ? r
+        : { blocked: false };
+    },
+  ],
+  [
+    "H2: non-destructive commands never confirm",
+    "pass",
+    async (pi) => {
       let asks = 0;
-      const ctx = { hasUI: true, mode: 'tui', ui: { confirm: async () => { asks++; return false; } } };
-      const r = await bash(pi, `rm -f ${tmp}/b && rm -f ${tmp}/c`, ctx);
-      return !r.blocked && asks === 0 ? { blocked: false } : { blocked: true, reason: `asks=${asks} r=${JSON.stringify(r).slice(0, 80)}` };
-    } finally {
-      process.env.PGATE_ALLOWLIST = allowlistDefault;
-    }
-  }],
-  ['H2 allowlist: git commit under a PGATE_TRUST marker auto-passes', 'pass', async (pi) => {
-    const repo = mkdtempSync(join(tmpdir(), 'pgate-trust-'));
-    writeFileSync(join(repo, 'PGATE_TRUST'), '');
-    const f = join(tmp, 'allow-trust.json');
-    writeFileSync(f, JSON.stringify({ rules: [{ match: 'git commit', trustMarker: 'PGATE_TRUST' }] }));
-    const prevWd = process.cwd();
-    process.env.PGATE_ALLOWLIST = f;
-    process.chdir(repo);
-    try {
-      let asks = 0;
-      const ctx = { hasUI: true, mode: 'tui', ui: { confirm: async () => { asks++; return false; } } };
-      const r = await bash(pi, 'git commit -m "fix: allowlisted via marker"', ctx);
-      return !r.blocked && asks === 0 ? { blocked: false } : { blocked: true, reason: `asks=${asks} r=${JSON.stringify(r).slice(0, 80)}` };
-    } finally {
-      process.chdir(prevWd);
-      process.env.PGATE_ALLOWLIST = allowlistDefault;
-    }
-  }],
-  ['H2 allowlist: git commit without the marker still confirms', 'blocked', async (pi) => {
-    const repo = mkdtempSync(join(tmpdir(), 'pgate-notrust-'));
-    const f = join(tmp, 'allow-trust.json');
-    writeFileSync(f, JSON.stringify({ rules: [{ match: 'git commit', trustMarker: 'PGATE_TRUST' }] }));
-    const prevWd = process.cwd();
-    process.env.PGATE_ALLOWLIST = f;
-    process.chdir(repo);
-    try {
-      return bash(pi, 'git commit -m "fix: no marker here"', { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
-    } finally {
-      process.chdir(prevWd);
-      process.env.PGATE_ALLOWLIST = allowlistDefault;
-    }
-  }],
-  ['H2 allowlist: commitlint still gates allowlisted commits', 'blocked', async (pi) => {
-    const repo = mkdtempSync(join(tmpdir(), 'pgate-trust2-'));
-    writeFileSync(join(repo, 'PGATE_TRUST'), '');
-    const f = join(tmp, 'allow-trust.json');
-    writeFileSync(f, JSON.stringify({ rules: [{ match: 'git commit', trustMarker: 'PGATE_TRUST' }] }));
-    const prevWd = process.cwd();
-    process.env.PGATE_ALLOWLIST = f;
-    process.chdir(repo);
-    try {
-      const r = await bash(pi, 'git commit -m "Fix the thing"', { hasUI: true, mode: 'tui', ui: { confirm: async () => true } });
-      return r.blocked && r.reason.startsWith('Commitlint') ? r : { blocked: false };
-    } finally {
-      process.chdir(prevWd);
-      process.env.PGATE_ALLOWLIST = allowlistDefault;
-    }
-  }],
-  ['H2 allowlist: corrupt allowlist fails closed', 'blocked', async (pi) => {
-    const f = join(tmp, 'allow-broken.json');
-    writeFileSync(f, '{ not json');
-    process.env.PGATE_ALLOWLIST = f;
-    try {
-      return bash(pi, `rm -rf ${tmp}/x`, { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
-    } finally {
-      process.env.PGATE_ALLOWLIST = allowlistDefault;
-    }
-  }],
-  ['H2 allowlist: nonexistent target inside allowed base still confirms', 'blocked', async (pi) => {
-    const f = join(tmp, 'allow-rm.json');
-    writeFileSync(f, JSON.stringify({ rules: [{ match: 'rm', within: tmp }] }));
-    process.env.PGATE_ALLOWLIST = f;
-    try {
-      return bash(pi, `rm -rf ${tmp}/no-such-dir/*`, { hasUI: true, mode: 'tui', ui: { confirm: async () => false } });
-    } finally {
-      process.env.PGATE_ALLOWLIST = allowlistDefault;
-    }
-  }],
-  ['conventional capped commit passes', 'pass', async (pi) => bash(pi, 'git commit -m "fix: cap git log output" 2>&1 | tail -20')],
+      const ctx = {
+        hasUI: true,
+        mode: "tui",
+        ui: {
+          confirm: async () => {
+            asks++;
+            return true;
+          },
+        },
+      };
+      await bash(pi, "npm test 2>&1 | tail -5", ctx);
+      await bash(pi, "git pull", ctx);
+      await bash(pi, "ls -la src", ctx);
+      return asks === 0
+        ? { blocked: false }
+        : { blocked: true, reason: `confirmed ${asks}× on non-destructive` };
+    },
+  ],
+  [
+    "conventional capped commit passes",
+    "pass",
+    async (pi) =>
+      bash(pi, 'git commit -m "fix: cap git log output" 2>&1 | tail -20'),
+  ],
   // ---- runner caps ----
-  ['uncapped npm test is allowed (H1 step 2 cap)', 'pass', async (pi) => bash(pi, 'npm test')],
-  ['capped npm test passes', 'pass', async (pi) => bash(pi, 'npm test 2>&1 | tail -5')],
-  ['stdout redirect to a file caps runner output', 'pass', async (pi) => bash(pi, 'npx tsc --noEmit > /tmp/tsc.out 2>&1; echo "TSC=$?"')],
+  [
+    "uncapped npm test is allowed (H1 step 2 cap)",
+    "pass",
+    async (pi) => bash(pi, "npm test"),
+  ],
+  [
+    "capped npm test passes",
+    "pass",
+    async (pi) => bash(pi, "npm test 2>&1 | tail -5"),
+  ],
+  [
+    "stdout redirect to a file caps runner output",
+    "pass",
+    async (pi) =>
+      bash(pi, 'npx tsc --noEmit > /tmp/tsc.out 2>&1; echo "TSC=$?"'),
+  ],
+  // ---- 2026-10-11 review: item 1 — shared env/git-flag normalization ----
+  [
+    "destructive: git -C . push confirms (normalized)",
+    "blocked",
+    async (pi) => bash(pi, "git -C . push", denyUi()),
+  ],
+  [
+    "destructive: env-prefixed git --no-pager push confirms",
+    "blocked",
+    async (pi) =>
+      bash(pi, "GIT_TERMINAL_PROMPT=0 git --no-pager push", denyUi()),
+  ],
+  [
+    "non-destructive: git -C . log passes",
+    "pass",
+    async (pi) => bash(pi, "git -C . log --oneline"),
+  ],
+  // ---- item 2 — destructive positions beyond segment start ----
+  [
+    "destructive: rm inside a do..done loop confirms",
+    "blocked",
+    async (pi) => bash(pi, 'for f in *; do rm "$f"; done', denyUi()),
+  ],
+  [
+    "destructive: then-branch rm confirms",
+    "blocked",
+    async (pi) => bash(pi, "if [ -f x ]; then rm x; fi", denyUi()),
+  ],
+  [
+    "destructive: find | xargs rm confirms",
+    "blocked",
+    async (pi) => bash(pi, 'find . -name "*.tmp" | xargs rm', denyUi()),
+  ],
+  [
+    "destructive: find -delete confirms",
+    "blocked",
+    async (pi) => bash(pi, "find . -name '*.log' -delete", denyUi()),
+  ],
+  [
+    "destructive: find -exec rm confirms",
+    "blocked",
+    async (pi) => bash(pi, "find . -type f -exec rm {} +", denyUi()),
+  ],
+  [
+    'destructive: bash -c "rm -rf x" confirms',
+    "blocked",
+    async (pi) => bash(pi, 'bash -c "rm -rf build/"', denyUi()),
+  ],
+  [
+    "destructive: $(rm -rf x) substitution confirms",
+    "blocked",
+    async (pi) => bash(pi, "echo $(rm -rf x)", denyUi()),
+  ],
+  [
+    "destructive: /bin/rm confirms",
+    "blocked",
+    async (pi) => bash(pi, "/bin/rm -rf build", denyUi()),
+  ],
+  [
+    "destructive: > /etc redirect confirms",
+    "blocked",
+    async (pi) => bash(pi, "echo x > /etc/hosts", denyUi()),
+  ],
+  [
+    "destructive: psql DROP TABLE confirms",
+    "blocked",
+    async (pi) => bash(pi, "psql -c 'DROP TABLE users'", denyUi()),
+  ],
+  [
+    "non-destructive: plain loop body passes",
+    "pass",
+    async (pi) => bash(pi, 'for s in a b; do echo "$s"; done'),
+  ],
+  [
+    "non-destructive: bash -c echo passes",
+    "pass",
+    async (pi) => bash(pi, 'bash -c "echo hi"'),
+  ],
+  // ---- item 3 — self-unlock guard ----
+  [
+    "self-modify: write to the extensions dir is blocked",
+    "blocked",
+    async (pi) => {
+      const block = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "write",
+        toolCallId: `sm${++seqId}`,
+        input: { path: join(EXT_HOME, "gate-pwn.ts"), content: "x" },
+      });
+      return block
+        ? { blocked: true, reason: block.reason }
+        : { blocked: false };
+    },
+  ],
+  [
+    "self-modify: edit of a file in the extensions dir is blocked",
+    "blocked",
+    async (pi) => {
+      const block = await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "edit",
+        toolCallId: `sm${++seqId}`,
+        input: {
+          path: join(EXT_HOME, "permission-gate.allowlist.json"),
+          edits: [{ oldText: "a", newText: "b" }],
+        },
+      });
+      return block
+        ? { blocked: true, reason: block.reason }
+        : { blocked: false };
+    },
+  ],
+  [
+    "self-modify: echo > extensions file is blocked",
+    "blocked",
+    async (pi) => bash(pi, `echo evil > ${EXT_HOME}/evil.ts`),
+  ],
+  [
+    "self-modify: $HOME-path redirect into extensions is blocked",
+    "blocked",
+    async (pi) =>
+      bash(
+        pi,
+        "echo {} > $HOME/.pi/agent/extensions/permission-gate.allowlist.json",
+      ),
+  ],
+  [
+    "self-modify: cp into extensions is blocked",
+    "blocked",
+    async (pi) => bash(pi, `cp ${fileA} ${EXT_HOME}/x.ts`),
+  ],
+  [
+    "self-modify: touch PGATE_TRUST is blocked",
+    "blocked",
+    async (pi) => bash(pi, "touch PGATE_TRUST"),
+  ],
+  [
+    "self-modify: normal tmp redirect passes",
+    "pass",
+    async (pi) => bash(pi, `echo ok > ${tmp}/out.txt`),
+  ],
+  // ---- item 5 — hydration freshness on reads ----
+  [
+    "resume hydration: read of a file changed after the replayed read passes",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "hydrate-ts.ts");
+      writeFileSync(f, "l1\nl2\n");
+      const past = new Date(Date.now() - 60_000).toISOString();
+      await hydrate(pi, [
+        { id: "e1", call: "read", callId: "c1", path: f, ts: past },
+        { id: "e2", resultFor: "c1", text: "l1\nl2\n" },
+      ]);
+      return read(pi, f, { offset: 1, limit: 2 }, { outputLines: 2 });
+    },
+  ],
+  [
+    "resume hydration: read of an unchanged file still blocks",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "hydrate-ts2.ts");
+      writeFileSync(f, "l1\nl2\n");
+      const future = new Date(Date.now() + 60_000).toISOString(); // mtime <= ts+1s → fresh
+      await hydrate(pi, [
+        { id: "e1", call: "read", callId: "c1", path: f, ts: future },
+        { id: "e2", resultFor: "c1", text: "l1\nl2\n" },
+      ]);
+      return read(pi, f, { offset: 1, limit: 2 }, { outputLines: 2 });
+    },
+  ],
+  // ---- item 6 — pre-edit stat + fuzzy anchors drop stale coverage ----
+  [
+    "item6: external drift between read and edit drops stale spans",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "drift.ts");
+      writeFileSync(f, "a\nb\nc\nd\n");
+      await read(pi, f, { offset: 1, limit: 4 }, { outputLines: 4 }); // certify 1-4 at S0
+      appendFileSync(f, "X\n"); // external write: pre-edit stat (S1) mismatches S0
+      const e = await edit(pi, f, [{ oldText: "a", newText: "z" }]);
+      if (e.blocked)
+        return { blocked: true, reason: "edit blocked: " + e.reason };
+      return read(pi, f, { offset: 3, limit: 1 }, { outputLines: 1 }); // stale span 3 must not block
+    },
+  ],
+  [
+    "item6: fuzzy-matched edit drops the path coverage",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "fuzzy.ts");
+      writeFileSync(f, "a\nb\nc\n");
+      await read(pi, f, { offset: 1, limit: 3 }, { outputLines: 3 });
+      // trailing space on the b line: exact miss, fuzzy hit (trailing-ws normalization)
+      const e = await edit(pi, f, [{ oldText: "a\nb \nc", newText: "q" }]);
+      if (e.blocked)
+        return { blocked: true, reason: "fuzzy edit blocked: " + e.reason };
+      return read(pi, f, { offset: 1, limit: 1 }, { outputLines: 1 }); // coverage dropped → allowed
+    },
+  ],
+  // ---- item 7 — MUTATING_BASH extensions ----
+  [
+    "B20: re-run after git -C . pull is legitimate (normalized)",
+    "pass",
+    async (pi) => {
+      await runBash(pi, "npm test 2>&1 | tail -5");
+      await runBash(pi, "git -C . pull", { ctx: approveUi() });
+      return bash(pi, "npm test 2>&1 | tail -5");
+    },
+  ],
+  [
+    "B20: re-run after npm ci is legitimate",
+    "pass",
+    async (pi) => {
+      await runBash(pi, "npm test");
+      await runBash(pi, "npm ci", { ctx: approveUi() });
+      return bash(pi, "npm test");
+    },
+  ],
+  [
+    "B20: re-run after touch/mkdir is legitimate",
+    "pass",
+    async (pi) => {
+      await runBash(pi, "npm test");
+      await runBash(pi, "touch a.txt; mkdir d");
+      return bash(pi, "npm test");
+    },
+  ],
+  [
+    "B20: successful destructive push legitimize re-runs",
+    "pass",
+    async (pi) => {
+      await runBash(pi, "npm test");
+      await runBash(pi, "git push", { ctx: approveUi() });
+      return bash(pi, "npm test");
+    },
+  ],
+  // ---- item 8 — destructive re-send re-prompts; chat approval wired ----
+  [
+    "item8: destructive re-send re-prompts, never Re-block",
+    "blocked",
+    async (pi) => {
+      const cmd = "git reset --hard HEAD~1";
+      let asks = 0;
+      const ctx = {
+        hasUI: true,
+        mode: "tui",
+        ui: {
+          confirm: async () => {
+            asks++;
+            return false;
+          },
+        },
+      };
+      const id1 = `d8${++seqId}`;
+      const b1 = await pi.invoke(
+        "tool_call",
+        {
+          type: "tool_call",
+          toolName: "bash",
+          toolCallId: id1,
+          input: { command: cmd },
+        },
+        ctx,
+      );
+      if (!b1) return { blocked: false };
+      await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "bash",
+        toolCallId: id1,
+        input: { command: cmd },
+        content: textBlocks(b1.reason),
+        isError: true,
+      });
+      const b2 = await pi.invoke(
+        "tool_call",
+        {
+          type: "tool_call",
+          toolName: "bash",
+          toolCallId: `d8${++seqId}`,
+          input: { command: cmd },
+        },
+        ctx,
+      );
+      const ok = !!b2 && !b2.reason.includes("Re-block") && asks === 2; // re-prompted, not escalated
+      return ok ? { blocked: true, reason: b2.reason } : { blocked: false };
+    },
+  ],
+  [
+    "item8: chat approval unlocks headless destructive (single ask)",
+    "pass",
+    async (pi) => {
+      await pi.invoke("before_agent_start", {
+        type: "before_agent_start",
+        prompt: "yes, run the deploy now",
+        systemPromptOptions: {},
+      });
+      return bash(pi, "git reset --hard HEAD~1", {
+        hasUI: false,
+        mode: "print",
+      });
+    },
+  ],
+  [
+    "item8: a later non-approving message re-arms the confirm",
+    "blocked",
+    async (pi) => {
+      await pi.invoke("before_agent_start", {
+        type: "before_agent_start",
+        prompt: "yes go ahead",
+        systemPromptOptions: {},
+      });
+      await pi.invoke("before_agent_start", {
+        type: "before_agent_start",
+        prompt: "what does the code do?",
+        systemPromptOptions: {},
+      });
+      return bash(pi, "git reset --hard HEAD~1", denyUi());
+    },
+  ],
+  // ---- item 9 — scope regex ----
+  [
+    "commitlint: scope with slash passes (feat(api/auth))",
+    "pass",
+    async (pi) => bash(pi, 'git commit -m "feat(api/auth): add token refresh"'),
+  ],
+  [
+    "commitlint: comma scope passes (fix(a,b))",
+    "pass",
+    async (pi) => bash(pi, 'git commit -m "fix(a,b): handle both"'),
+  ],
+  // ---- item 11 — reason reports the covering span ----
+  [
+    "R1 reason reports the covering span, not the outer bounds",
+    "blocked",
+    async (pi) => {
+      await read(pi, spanFile, { offset: 1, limit: 50 }, { outputLines: 50 }); // span 1-50
+      await read(pi, spanFile, { offset: 60, limit: 11 }, { outputLines: 11 }); // span 60-70 (gap 51-59)
+      const r = await read(
+        pi,
+        spanFile,
+        { offset: 10, limit: 5 },
+        { outputLines: 5 },
+      );
+      return r.blocked &&
+        r.reason.includes("1–50") &&
+        !r.reason.includes("1–70")
+        ? r
+        : { blocked: false, reason: r.reason };
+    },
+  ],
+  [
+    "R1 gap between spans still lets the gap window through",
+    "pass",
+    async (pi) =>
+      read(pi, spanFile, { offset: 53, limit: 3 }, { outputLines: 3 }),
+  ],
+  // ---- item 13 — normPath parity with pi ----
+  [
+    "normPath: @-prefixed path keys like the absolute path",
+    "blocked",
+    async (pi) => {
+      await read(pi, fileA, { offset: 1, limit: 3 }, { outputLines: 3 });
+      return read(pi, `@${fileA}`, { offset: 1, limit: 2 }, { outputLines: 2 });
+    },
+  ],
+  [
+    "normPath: ~ path expands to the same coverage key",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "tilde.ts");
+      writeFileSync(f, "t1\nt2\n");
+      await read(pi, f, { offset: 1, limit: 2 }, { outputLines: 2 });
+      const prev = process.env.HOME;
+      process.env.HOME = tmp;
+      try {
+        return await read(
+          pi,
+          "~/tilde.ts",
+          { offset: 1, limit: 1 },
+          { outputLines: 1 },
+        );
+      } finally {
+        process.env.HOME = prev;
+      }
+    },
+  ],
+  [
+    "normPath: relative path resolves against ctx.cwd",
+    "blocked",
+    async (pi) => {
+      await read(pi, fileA, { offset: 1, limit: 3 }, { outputLines: 3 });
+      const block = await pi.invoke(
+        "tool_call",
+        {
+          type: "tool_call",
+          toolName: "read",
+          toolCallId: `cw${++seqId}`,
+          input: { path: "a.ts", offset: 1, limit: 2 },
+        },
+        { cwd: tmp },
+      );
+      return block
+        ? { blocked: true, reason: block.reason }
+        : { blocked: false };
+    },
+  ],
 ];
 
 // ---- runner: each case replays its preamble on a fresh gate, then the probe ----
 
 const preambles = {
-  'identical window re-read is blocked': async () => { const pi = freshGate(); await read(pi, fileA, { offset: 1, limit: 50 }, { outputLines: 50 }); return pi; },
-  'continuation window (1-50 then 51-100) passes': async () => { const pi = freshGate(); await read(pi, fileA, { offset: 1, limit: 50 }, { outputLines: 50 }); return pi; },
-  'windowed re-read inside a full read is blocked': async () => { const pi = freshGate(); await read(pi, fileA, {}, { outputLines: 100, totalLines: 100 }); return pi; },
-  'full re-read after a full read is blocked': async () => { const pi = freshGate(); await read(pi, fileA, {}, { outputLines: 100, totalLines: 100 }); return pi; },
-  'window past a truncated full read passes': async () => { const pi = freshGate(); await read(pi, fileA, {}, { outputLines: 2000, totalLines: 5000, truncated: true }); return pi; },
-  'partial-overlap window passes (brings new lines)': async () => { const pi = freshGate(); await read(pi, fileA, { offset: 1, limit: 50 }, { outputLines: 50 }); return pi; },
-  'full re-read after compaction passes': async () => { const pi = freshGate(); await read(pi, fileA, {}, { outputLines: 100, totalLines: 100 }); await compact(pi); return pi; },
-  'window over just-edited span is blocked': async () => {
+  "identical window re-read is blocked": async () => {
     const pi = freshGate();
-    const r = await edit(pi, fileA, [{ oldText: 'b', newText: 'x' }]);
-    if (r.blocked) throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
+    await read(pi, fileA, { offset: 1, limit: 50 }, { outputLines: 50 });
     return pi;
   },
-  'window outside just-edited span passes': async () => {
+  "continuation window (1-50 then 51-100) passes": async () => {
     const pi = freshGate();
-    const r = await edit(pi, fileA, [{ oldText: 'b', newText: 'x' }]);
-    if (r.blocked) throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
+    await read(pi, fileA, { offset: 1, limit: 50 }, { outputLines: 50 });
     return pi;
   },
-  'full re-read after external on-disk change passes': async () => {
+  "windowed re-read inside a full read is blocked": async () => {
+    const pi = freshGate();
+    await read(pi, fileA, {}, { outputLines: 100, totalLines: 100 });
+    return pi;
+  },
+  "full re-read after a full read is blocked": async () => {
+    const pi = freshGate();
+    await read(pi, fileA, {}, { outputLines: 100, totalLines: 100 });
+    return pi;
+  },
+  "window past a truncated full read passes": async () => {
+    const pi = freshGate();
+    await read(
+      pi,
+      fileA,
+      {},
+      { outputLines: 2000, totalLines: 5000, truncated: true },
+    );
+    return pi;
+  },
+  "partial-overlap window passes (brings new lines)": async () => {
+    const pi = freshGate();
+    await read(pi, fileA, { offset: 1, limit: 50 }, { outputLines: 50 });
+    return pi;
+  },
+  "full re-read after compaction passes": async () => {
+    const pi = freshGate();
+    await read(pi, fileA, {}, { outputLines: 100, totalLines: 100 });
+    await compact(pi);
+    return pi;
+  },
+  "window over just-edited span is blocked": async () => {
+    const pi = freshGate();
+    const r = await edit(pi, fileA, [{ oldText: "b", newText: "x" }]);
+    if (r.blocked)
+      throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
+    return pi;
+  },
+  "window outside just-edited span passes": async () => {
+    const pi = freshGate();
+    const r = await edit(pi, fileA, [{ oldText: "b", newText: "x" }]);
+    if (r.blocked)
+      throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
+    return pi;
+  },
+  "full re-read after external on-disk change passes": async () => {
     // stat model (2026-10-06): a bash command's TEXT no longer resets coverage — an
     // actual on-disk change (mtime+size mismatch) does; appendFileSync stands in for
     // any external writer (codegen, another terminal, sed -i)
     const pi = freshGate();
     await read(pi, fileA, {}, { outputLines: 100, totalLines: 100 });
-    appendFileSync(fileA, 'd\n');
+    appendFileSync(fileA, "d\n");
     return pi;
   },
-  'any window after an image read is blocked': async () => { const pi = freshGate(); await read(pi, fileA, {}, { image: true }); return pi; },
-  'relative-path re-read of an absolute-read file is blocked': async () => { const pi = freshGate(); await read(pi, fileA, {}, { outputLines: 3, totalLines: 3 }); return pi; },
+  "any window after an image read is blocked": async () => {
+    const pi = freshGate();
+    await read(pi, fileA, {}, { image: true });
+    return pi;
+  },
+  "relative-path re-read of an absolute-read file is blocked": async () => {
+    const pi = freshGate();
+    await read(pi, fileA, {}, { outputLines: 3, totalLines: 3 });
+    return pi;
+  },
   // live tool_result events carry no details.truncation — the fallback must
   // count 5 content lines, not 6 (content + blank + note), so line 6 stays uncovered
-  'no-details fallback certifies exactly the content lines': async () => {
+  "no-details fallback certifies exactly the content lines": async () => {
     const pi = freshGate();
-    await read(pi, fileA, { offset: 1, limit: 5 }, { outputLines: 5, noDetails: true, note: '1409 more lines in file. Use offset=6 to continue.' });
+    await read(
+      pi,
+      fileA,
+      { offset: 1, limit: 5 },
+      {
+        outputLines: 5,
+        noDetails: true,
+        note: "1409 more lines in file. Use offset=6 to continue.",
+      },
+    );
     return pi;
   },
   // ---- R10 preambles ----
-  'identical bash re-run (no edit since) is blocked': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3'); return pi; },
-  'bash re-run after an intervening edit passes': async () => {
+  "identical bash re-run (no edit since) is blocked": async () => {
     const pi = freshGate();
-    await runBash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15');
-    const r = await edit(pi, fileA, [{ oldText: 'b', newText: 'x' }]);
-    if (r.blocked) throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
+    await runBash(pi, "gh run list --limit 3");
     return pi;
   },
-  're-run with a different pipe cap passes': async () => { const pi = freshGate(); await runBash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15'); return pi; },
-  'whitespace-only variation still blocked': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3'); return pi; },
-  'shared nvm preamble does not collide R10 keys': async () => { const pi = freshGate(); await runBash(pi, 'source ~/.nvm/nvm.sh && nvm use 22.17.0 >/dev/null 2>&1 && pnpm vitest run x.test.ts 2>&1 | tail -8'); return pi; },
-  'identical compound with watcher word is exempt': async () => { const pi = freshGate(); await runBash(pi, 'sleep 1; rm -f /tmp/x'); return pi; },
-  're-run of a failed command passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3', { error: true }); return pi; },
-  'gh run watch re-run passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run watch 123 --exit-status'); return pi; },
-  'bash re-run after compaction passes': async () => { const pi = freshGate(); await runBash(pi, 'gh run list --limit 3'); await compact(pi); return pi; },
-  'quoted pattern pipes do not collide R10 bases': async () => { const pi = freshGate(); await runBash(pi, "rg -o '(Alpha|Beta)' data.log | head -5"); return pi; },
-  'identical quoted-pattern command still blocked': async () => { const pi = freshGate(); await runBash(pi, "rg -o '(Alpha|Beta)' data.log | head -5"); return pi; },
-  'escaped-pipe bases do not collide R10': async () => { const pi = freshGate(); await runBash(pi, 'rg -o foo\\|qux data.log | head -5'); return pi; },
-  'identical escaped-pipe command still blocked': async () => { const pi = freshGate(); await runBash(pi, 'rg -o foo\\|bar data.log | head -5'); return pi; },
-  'full SKILL.md re-read same session is blocked': async () => { const pi = freshGate(); await read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 }); return pi; },
-  'SKILL.md re-read after compaction passes': async () => { const pi = freshGate(); await read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 }); await compact(pi); return pi; },
-  'violation memory: block appends ndjson family entry': async () => { writeFileSync(process.env.PGATE_MEMORY, ''); return freshGate(); },
-  'violation memory: before_agent_start injects top-3 lessons at threshold': async () => {
-    const now = Date.now();
-    const sidN = (k) => `seed-${k}`;
-    writeFileSync(process.env.PGATE_MEMORY, [
-      // H7: distinct sessions per family, rolling window — Re-run 6, Commitlint 6
-      // (threshold 5); Reading seeded 6× too but its lesson retired with R2
-      ...Array.from({ length: 6 }, (_, k) => ({ family: 'Token Economy (Re-run)', sid: sidN(`r${k}`), ts: now })),
-      ...Array.from({ length: 6 }, (_, k) => ({ family: 'Commitlint', sid: sidN(`c${k}`), ts: now })),
-      ...Array.from({ length: 6 }, (_, k) => ({ family: 'Token Economy (Reading)', sid: sidN(`d${k}`), ts: now })),
-    ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  "bash re-run after an intervening edit passes": async () => {
+    const pi = freshGate();
+    await runBash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15');
+    const r = await edit(pi, fileA, [{ oldText: "b", newText: "x" }]);
+    if (r.blocked)
+      throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
+    return pi;
+  },
+  "re-run with a different pipe cap passes": async () => {
+    const pi = freshGate();
+    await runBash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15');
+    return pi;
+  },
+  "whitespace-only variation still blocked": async () => {
+    const pi = freshGate();
+    await runBash(pi, "gh run list --limit 3");
+    return pi;
+  },
+  "shared nvm preamble does not collide R10 keys": async () => {
+    const pi = freshGate();
+    await runBash(
+      pi,
+      "source ~/.nvm/nvm.sh && nvm use 22.17.0 >/dev/null 2>&1 && pnpm vitest run x.test.ts 2>&1 | tail -8",
+    );
+    return pi;
+  },
+  "identical compound with watcher word is exempt": async () => {
+    const pi = freshGate();
+    await runBash(pi, "sleep 1; rm -f /tmp/x");
+    return pi;
+  },
+  "re-run of a failed command passes": async () => {
+    const pi = freshGate();
+    await runBash(pi, "gh run list --limit 3", { error: true });
+    return pi;
+  },
+  "gh run watch re-run passes": async () => {
+    const pi = freshGate();
+    await runBash(pi, "gh run watch 123 --exit-status");
+    return pi;
+  },
+  "bash re-run after compaction passes": async () => {
+    const pi = freshGate();
+    await runBash(pi, "gh run list --limit 3");
+    await compact(pi);
+    return pi;
+  },
+  "quoted pattern pipes do not collide R10 bases": async () => {
+    const pi = freshGate();
+    await runBash(pi, "rg -o '(Alpha|Beta)' data.log | head -5");
+    return pi;
+  },
+  "identical quoted-pattern command still blocked": async () => {
+    const pi = freshGate();
+    await runBash(pi, "rg -o '(Alpha|Beta)' data.log | head -5");
+    return pi;
+  },
+  "escaped-pipe bases do not collide R10": async () => {
+    const pi = freshGate();
+    await runBash(pi, "rg -o foo\\|qux data.log | head -5");
+    return pi;
+  },
+  "identical escaped-pipe command still blocked": async () => {
+    const pi = freshGate();
+    await runBash(pi, "rg -o foo\\|bar data.log | head -5");
+    return pi;
+  },
+  "full SKILL.md re-read same session is blocked": async () => {
+    const pi = freshGate();
+    await read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 });
+    return pi;
+  },
+  "SKILL.md re-read after compaction passes": async () => {
+    const pi = freshGate();
+    await read(pi, skillFile, {}, { outputLines: 30, totalLines: 30 });
+    await compact(pi);
+    return pi;
+  },
+  "R1 reason reports the covering span, not the outer bounds": async () => {
+    const pi = freshGate();
+    await read(pi, spanFile, { offset: 1, limit: 50 }, { outputLines: 50 });
+    await read(pi, spanFile, { offset: 60, limit: 11 }, { outputLines: 11 });
+    return pi;
+  },
+  "R1 gap between spans still lets the gap window through": async () => {
+    const pi = freshGate();
+    await read(pi, spanFile, { offset: 1, limit: 50 }, { outputLines: 50 });
+    await read(pi, spanFile, { offset: 60, limit: 11 }, { outputLines: 11 });
+    return pi;
+  },
+  "normPath: @-prefixed path keys like the absolute path": async () => {
+    const pi = freshGate();
+    await read(pi, fileA, { offset: 1, limit: 3 }, { outputLines: 3 });
+    return pi;
+  },
+  "normPath: ~ path expands to the same coverage key": async () => {
+    const pi = freshGate();
+    writeFileSync(join(tmp, "tilde.ts"), "t1\nt2\n");
+    await read(
+      pi,
+      join(tmp, "tilde.ts"),
+      { offset: 1, limit: 2 },
+      { outputLines: 2 },
+    );
+    return pi;
+  },
+  "normPath: relative path resolves against ctx.cwd": async () => {
+    const pi = freshGate();
+    await read(pi, fileA, { offset: 1, limit: 3 }, { outputLines: 3 });
+    return pi;
+  },
+  "item6: external drift between read and edit drops stale spans": async () => {
+    const pi = freshGate();
+    writeFileSync(join(tmp, "drift.ts"), "a\nb\nc\nd\n");
+    await read(
+      pi,
+      join(tmp, "drift.ts"),
+      { offset: 1, limit: 4 },
+      { outputLines: 4 },
+    );
+    appendFileSync(join(tmp, "drift.ts"), "X\n");
+    return pi;
+  },
+  "item6: fuzzy-matched edit drops the path coverage": async () => {
+    const pi = freshGate();
+    writeFileSync(join(tmp, "fuzzy.ts"), "a\nb\nc\n");
+    await read(
+      pi,
+      join(tmp, "fuzzy.ts"),
+      { offset: 1, limit: 3 },
+      { outputLines: 3 },
+    );
+    return pi;
+  },
+  "B20: re-run after git -C . pull is legitimate (normalized)": async () => {
+    const pi = freshGate();
+    await runBash(pi, "npm test 2>&1 | tail -5");
+    return pi;
+  },
+  "B20: re-run after npm ci is legitimate": async () => {
+    const pi = freshGate();
+    await runBash(pi, "npm test");
+    return pi;
+  },
+  "B20: re-run after touch/mkdir is legitimate": async () => {
+    const pi = freshGate();
+    await runBash(pi, "npm test");
+    return pi;
+  },
+  "B20: successful destructive push legitimize re-runs": async () => {
+    const pi = freshGate();
+    await runBash(pi, "npm test");
+    return pi;
+  },
+  "violation memory: block appends ndjson family entry": async () => {
+    writeFileSync(process.env.PGATE_MEMORY, "");
     return freshGate();
   },
-  'violation memory: injection happens once per session': async () => {
+  "violation memory: before_agent_start injects top-3 lessons at threshold":
+    async () => {
+      const now = Date.now();
+      const sidN = (k) => `seed-${k}`;
+      writeFileSync(
+        process.env.PGATE_MEMORY,
+        [
+          // H7: distinct sessions per family, rolling window — Re-run 6, Commitlint 6
+          // (threshold 5); Reading seeded 6× too but its lesson retired with R2
+          ...Array.from({ length: 6 }, (_, k) => ({
+            family: "Token Economy (Re-run)",
+            sid: sidN(`r${k}`),
+            ts: now,
+          })),
+          ...Array.from({ length: 6 }, (_, k) => ({
+            family: "Commitlint",
+            sid: sidN(`c${k}`),
+            ts: now,
+          })),
+          ...Array.from({ length: 6 }, (_, k) => ({
+            family: "Token Economy (Reading)",
+            sid: sidN(`d${k}`),
+            ts: now,
+          })),
+        ]
+          .map((e) => JSON.stringify(e))
+          .join("\n") + "\n",
+      );
+      return freshGate();
+    },
+  "violation memory: injection happens once per session": async () => {
     const now = Date.now();
-    writeFileSync(process.env.PGATE_MEMORY, Array.from({ length: 6 }, (_, k) => JSON.stringify({ family: 'Token Economy (Re-run)', sid: `s${k}`, ts: now })).join('\n') + '\n');
+    writeFileSync(
+      process.env.PGATE_MEMORY,
+      Array.from({ length: 6 }, (_, k) =>
+        JSON.stringify({
+          family: "Token Economy (Re-run)",
+          sid: `s${k}`,
+          ts: now,
+        }),
+      ).join("\n") + "\n",
+    );
     return freshGate();
   },
-  'violation memory: injection tolerates undefined appendSystemPrompt': async () => {
-    const now = Date.now();
-    writeFileSync(process.env.PGATE_MEMORY, Array.from({ length: 6 }, (_, k) => JSON.stringify({ family: 'Token Economy (Re-run)', sid: `s${k}`, ts: now })).join('\n') + '\n');
-    return freshGate();
-  },
-  'violation memory: one session hammering stays under threshold (H7)': async () => {
-    const now = Date.now();
-    writeFileSync(process.env.PGATE_MEMORY, Array.from({ length: 9 }, () => JSON.stringify({ family: 'Token Economy (Re-run)', sid: 'same-session', ts: now })).join('\n') + '\n');
-    return freshGate();
-  },
+  "violation memory: injection tolerates undefined appendSystemPrompt":
+    async () => {
+      const now = Date.now();
+      writeFileSync(
+        process.env.PGATE_MEMORY,
+        Array.from({ length: 6 }, (_, k) =>
+          JSON.stringify({
+            family: "Token Economy (Re-run)",
+            sid: `s${k}`,
+            ts: now,
+          }),
+        ).join("\n") + "\n",
+      );
+      return freshGate();
+    },
+  "violation memory: one session hammering stays under threshold (H7)":
+    async () => {
+      const now = Date.now();
+      writeFileSync(
+        process.env.PGATE_MEMORY,
+        Array.from({ length: 9 }, () =>
+          JSON.stringify({
+            family: "Token Economy (Re-run)",
+            sid: "same-session",
+            ts: now,
+          }),
+        ).join("\n") + "\n",
+      );
+      return freshGate();
+    },
 };
 
 let failed = 0;
 for (const [name, expect, probe] of cases) {
   const pi = await (preambles[name] ?? (() => freshGate()))();
   const got = await probe(pi);
-  const ok = (expect === 'blocked') === got.blocked;
+  const ok = (expect === "blocked") === got.blocked;
   if (!ok) failed++;
   if (got.blocked && got.reason) {
     // 2026-10-06 diet: prose reasons <= 220c; Anchor Guard may carry a <= 800c snippet
-    const cap = got.reason.startsWith('Anchor Guard') ? 800 : 220;
+    const cap = got.reason.startsWith("Anchor Guard") ? 800 : 220;
     if (got.reason.length > cap) {
       failed++;
-      console.log(`FAIL  ${name}  (block reason ${got.reason.length}c exceeds ${cap}c diet cap)`);
+      console.log(
+        `FAIL  ${name}  (block reason ${got.reason.length}c exceeds ${cap}c diet cap)`,
+      );
     }
   }
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  (expected ${expect}, got ${got.blocked ? 'blocked' : 'pass'})`);
+  console.log(
+    `${ok ? "PASS" : "FAIL"}  ${name}  (expected ${expect}, got ${got.blocked ? "blocked" : "pass"})`,
+  );
 }
 
-console.log(failed === 0 ? `\n${cases.length}/${cases.length} PASS` : `\n${failed}/${cases.length} FAILED`);
+console.log(
+  failed === 0
+    ? `\n${cases.length}/${cases.length} PASS`
+    : `\n${failed}/${cases.length} FAILED`,
+);
 process.exit(failed === 0 ? 0 : 1);

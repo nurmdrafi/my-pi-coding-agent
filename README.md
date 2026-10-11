@@ -78,12 +78,12 @@ That's it — no env vars to export, no paths to fix.
 
 ## Requirements
 
-| Requirement | Detail |
-|---|---|
-| Node.js | ≥ 22.19 (`.nvmrc` pins 24, the current LTS) |
-| OS | macOS or Linux |
-| tmux | Only if using subagents — see [Subagents](#subagents) |
-| Git | For sync; `~/.pi/agent` is itself a repo |
+| Requirement | Detail                                                |
+| ----------- | ----------------------------------------------------- |
+| Node.js     | ≥ 22.19 (`.nvmrc` pins 24, the current LTS)           |
+| OS          | macOS or Linux                                        |
+| tmux        | Only if using subagents — see [Subagents](#subagents) |
+| Git         | For sync; `~/.pi/agent` is itself a repo              |
 
 ## What's inside
 
@@ -116,28 +116,28 @@ That's it — no env vars to export, no paths to fix.
 
 All 20 skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
 
-| Skill | Purpose | Invocation |
-|---|---|---|
-| ponytail | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder + over-engineering review mode | `/skill:ponytail` |
-| web-search | Web search + URL extraction via Tavily CLI (`tvly search` / `tvly extract`) | `/skill:web-search` |
-| systematic-debugging | Phased root-cause debugging (incl. error-class loops) before proposing any fix | `/skill:systematic-debugging` |
-| pre-push-review | CI-parity correctness review of the diff before commit/push | `/skill:pre-push-review` |
-| auth | NextAuth v4 credentials auth for Next.js App Router against an external REST IdP | `/skill:auth` |
-| brainstorming | Explore genuinely-unclear feature direction; one question at a time | `/skill:brainstorming` |
-| browser-tools | Live DOM via CDP `:9222` — Playwright/e2e only (deps: `npm install` at skill root) | `/skill:browser-tools` |
-| documentation-writer | Diátaxis-based tech writer: SDK docs, READMEs, CONTRIBUTING, docs audits | `/skill:documentation-writer` |
-| domain-modeling | Build/sharpen a project's domain model — GLOSSARY.md terms, ADRs | `/skill:domain-modeling` |
-| fallow-audit | Dead-code / unused-export / unused-dependency cleanup (fallow, knip, ts-prune, depcheck) | `/skill:fallow-audit` |
-| frontend-design | New web components/pages/apps from scratch (detects the UI stack) | `/skill:frontend-design` |
-| github-actions | Author/harden CI workflows: SHA-pinned actions, scoped secrets, actionlint | `/skill:github-actions` |
-| grill-me | Relentless one-question-at-a-time stress-testing of a plan/decision | `/skill:grill-me` |
-| harness-engineer | Meta: audit/improve this harness (budgets, evidence, skill audits, anti-pattern sweep) | `/skill:harness-engineer` |
-| map-integration | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw; Barikoi stack | `/skill:map-integration` |
-| playwright-tester | e2e specs, stress/update-flow runs, bug-hunt iterations, untested-critical-path coverage | `/skill:playwright-tester` |
-| refactoring-ui | Audit/fix existing UI: hierarchy, spacing, color, depth, small UI defects | `/skill:refactoring-ui` |
-| sdk-development | Installable packages (Go/npm/CLI): OpenAPI codegen, test, publish | `/skill:sdk-development` |
-| session-audit | Token/cost waste audit of `~/.pi/agent/sessions` | `/skill:session-audit` |
-| skill-manager | Create/modify SKILL.md + mandatory validator gate | `/skill:skill-manager` |
+| Skill                | Purpose                                                                                                 | Invocation                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| ponytail             | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder + over-engineering review mode | `/skill:ponytail`             |
+| web-search           | Web search + URL extraction via Tavily CLI (`tvly search` / `tvly extract`)                             | `/skill:web-search`           |
+| systematic-debugging | Phased root-cause debugging (incl. error-class loops) before proposing any fix                          | `/skill:systematic-debugging` |
+| pre-push-review      | CI-parity correctness review of the diff before commit/push                                             | `/skill:pre-push-review`      |
+| auth                 | NextAuth v4 credentials auth for Next.js App Router against an external REST IdP                        | `/skill:auth`                 |
+| brainstorming        | Explore genuinely-unclear feature direction; one question at a time                                     | `/skill:brainstorming`        |
+| browser-tools        | Live DOM via CDP `:9222` — Playwright/e2e only (deps: `npm install` at skill root)                      | `/skill:browser-tools`        |
+| documentation-writer | Diátaxis-based tech writer: SDK docs, READMEs, CONTRIBUTING, docs audits                                | `/skill:documentation-writer` |
+| domain-modeling      | Build/sharpen a project's domain model — GLOSSARY.md terms, ADRs                                        | `/skill:domain-modeling`      |
+| fallow-audit         | Dead-code / unused-export / unused-dependency cleanup (fallow, knip, ts-prune, depcheck)                | `/skill:fallow-audit`         |
+| frontend-design      | New web components/pages/apps from scratch (detects the UI stack)                                       | `/skill:frontend-design`      |
+| github-actions       | Author/harden CI workflows: SHA-pinned actions, scoped secrets, actionlint                              | `/skill:github-actions`       |
+| grill-me             | Relentless one-question-at-a-time stress-testing of a plan/decision                                     | `/skill:grill-me`             |
+| harness-engineer     | Meta: audit/improve this harness (budgets, evidence, skill audits, anti-pattern sweep)                  | `/skill:harness-engineer`     |
+| map-integration      | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw; Barikoi stack                                    | `/skill:map-integration`      |
+| playwright-tester    | e2e specs, stress/update-flow runs, bug-hunt iterations, untested-critical-path coverage                | `/skill:playwright-tester`    |
+| refactoring-ui       | Audit/fix existing UI: hierarchy, spacing, color, depth, small UI defects                               | `/skill:refactoring-ui`       |
+| sdk-development      | Installable packages (Go/npm/CLI): OpenAPI codegen, test, publish                                       | `/skill:sdk-development`      |
+| session-audit        | Token/cost waste audit of `~/.pi/agent/sessions`                                                        | `/skill:session-audit`        |
+| skill-manager        | Create/modify SKILL.md + mandatory validator gate                                                       | `/skill:skill-manager`        |
 
 ### Skill layout (validator-enforced)
 
@@ -171,21 +171,22 @@ Spawn-failure triage: the model says it has no `subagent` tool = **spawn tools g
 
 Agent definitions in `agents/` are plain files — inert while the spawn tools are gated; discovery: project > global.
 
-| Agent | Tools | Role |
-|---|---|---|
-| scout | read, grep, find, ls | read-only recon |
-| researcher | read, bash | web research via `tvly` CLI |
-| worker | read, write, edit, bash (+ may spawn scout, researcher) | general implementer |
-| reviewer | read, bash, grep, find, ls (auto-loads `pre-push-review` skill) | pre-commit diff review; never commits/pushes |
+| Agent      | Tools                                                           | Role                                         |
+| ---------- | --------------------------------------------------------------- | -------------------------------------------- |
+| scout      | read, grep, find, ls                                            | read-only recon                              |
+| researcher | read, bash                                                      | web research via `tvly` CLI                  |
+| worker     | read, write, edit, bash (+ may spawn scout, researcher)         | general implementer                          |
+| reviewer   | read, bash, grep, find, ls (auto-loads `pre-push-review` skill) | pre-commit diff review; never commits/pushes |
 
 No `model` pin — sub-agents inherit the harness default from `settings.json`; the spawn-time `model` param still overrides.
 
 ## Extensions
 
-Always-on TypeScript modules in `extensions/` — loaded by pi, never in the model prefix. Currently two: **`permission-gate.ts`**, a `tool_call` interceptor providing:
+Always-on TypeScript modules in `extensions/` — loaded by pi, never in the model prefix. Currently two: **`permission-gate/`**, a `tool_call` interceptor providing:
 
 - edit-anchor pre-validation (oldText must match a region actually read)
-- reading/output economy rules (no `cat` viewing, capped `rg`/`git` output)
+- reading/output economy rules (in-context re-read guard, capped bash output)
+- destructive-command confirm (chat approval, UI dialog, user-owned allowlist)
 - identical re-run guard (R10)
 - commitlint conventional-commit validation on `git commit -m` headers (R9)
 
@@ -197,13 +198,13 @@ Raw events (tool errors, guard blocks) land in pi's native `sessions/**/*.jsonl`
 
 What is in context, and when:
 
-| Layer | What | When in context | Stability rule |
-|-------|------|-----------------|----------------|
-| System + tools | pi built-in | every turn | pi-managed |
-| **AGENTS.md** | global behavioral rules | every turn | **must stay byte-stable** |
-| Skill descriptions | frontmatter only | every turn | **must stay byte-stable** |
-| Skill bodies | SKILL.md full text | on match or `/skill:name` | load on demand |
-| Project AGENTS.md | repo rules | when present | overlays global |
+| Layer              | What                    | When in context           | Stability rule            |
+| ------------------ | ----------------------- | ------------------------- | ------------------------- |
+| System + tools     | pi built-in             | every turn                | pi-managed                |
+| **AGENTS.md**      | global behavioral rules | every turn                | **must stay byte-stable** |
+| Skill descriptions | frontmatter only        | every turn                | **must stay byte-stable** |
+| Skill bodies       | SKILL.md full text      | on match or `/skill:name` | load on demand            |
+| Project AGENTS.md  | repo rules              | when present              | overlays global           |
 
 ### Skill discovery order
 
@@ -215,11 +216,11 @@ What is in context, and when:
 
 The permanent prefix costs ~0.7K tokens per session (AGENTS.md 2,702 chars ≈ 0.7K at ~4 chars/token; the 2 formerly auto-invocable skills went manual, so no skill descriptions sit in the model-visible catalog; subagents tool defs removed — see [CHANGELOG.md](CHANGELOG.md)). Bodies and references stay out of context until needed.
 
-| Component | Target | Notes |
-|-----------|--------|-------|
-| AGENTS.md | as small as possible (behavioral core only) | no stack essays, no skill lists |
-| Skill descriptions | short; delete dead skills | all 20 manual — zero per-session cost |
-| **Total always-on** | ≤ ~1K tok | AGENTS.md only; no auto-skill catalog, no package tool defs |
+| Component           | Target                                      | Notes                                                       |
+| ------------------- | ------------------------------------------- | ----------------------------------------------------------- |
+| AGENTS.md           | as small as possible (behavioral core only) | no stack essays, no skill lists                             |
+| Skill descriptions  | short; delete dead skills                   | all 20 manual — zero per-session cost                       |
+| **Total always-on** | ≤ ~1K tok                                   | AGENTS.md only; no auto-skill catalog, no package tool defs |
 
 Thinking is `off` by default (token economy); bump per-task with `--thinking high`.
 
@@ -242,45 +243,45 @@ cd ~/.pi/agent && git pull
 
 ### Providers
 
-| Provider | Role | Models |
-|---|---|---|
-| `zai` | default | `glm-5.3`; `models.json` adds `glm-5.3-flash` (1M context, reasoning) |
-| `deepseek` | secondary (`/model`) | built-in catalog |
+| Provider   | Role                 | Models                                                                |
+| ---------- | -------------------- | --------------------------------------------------------------------- |
+| `zai`      | default              | `glm-5.3`; `models.json` adds `glm-5.3-flash` (1M context, reasoning) |
+| `deepseek` | secondary (`/model`) | built-in catalog                                                      |
 
 Both keys are identical across machines and live only in `auth.json`. pi also accepts `ZAI_API_KEY` / `DEEPSEEK_API_KEY` env vars but does not auto-load any `.env`; `auth.json` is the single secrets file.
 
 ### Tracked in git (portable, OS-agnostic)
 
-| Path | Purpose |
-|---|---|
-| `AGENTS.md` | Always-on behavioral core + efficiency ladder |
-| `settings.json` | Provider/model/theme/thinking (no secrets) |
-| `models.json` | Custom model definitions |
-| `agents/` | Subagent definitions (scout/researcher/worker/reviewer) |
-| `prompts/` | Prompt templates (`/issue`: in-context validate→propose→fix; `/ship`: commit+push; `/update-changelog`) |
-| `skills/` | All skills (auto-trigger + `/skill:name`) |
-| `extensions/` | Always-on extensions (`permission-gate`) |
-| `tests/` | Node test runner suite (`node --test tests/`) |
-| `.github/workflows/` | Release CI/CD (version from CHANGELOG, on push to main) |
-| `package.json` / `commitlint.config.js` | husky + commitlint: conventional-commit enforcement |
-| `README.md` / `CHANGELOG.md` | This file + change log |
-| `.nvmrc` | Pins Node 24 |
-| `LICENSE` | MIT |
-| `.gitignore` | Secret/caches hygiene |
+| Path                                    | Purpose                                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `AGENTS.md`                             | Always-on behavioral core + efficiency ladder                                                           |
+| `settings.json`                         | Provider/model/theme/thinking (no secrets)                                                              |
+| `models.json`                           | Custom model definitions                                                                                |
+| `agents/`                               | Subagent definitions (scout/researcher/worker/reviewer)                                                 |
+| `prompts/`                              | Prompt templates (`/issue`: in-context validate→propose→fix; `/ship`: commit+push; `/update-changelog`) |
+| `skills/`                               | All skills (auto-trigger + `/skill:name`)                                                               |
+| `extensions/`                           | Always-on extensions (`permission-gate`)                                                                |
+| `tests/`                                | Node test runner suite (`node --test tests/`)                                                           |
+| `.github/workflows/`                    | Release CI/CD (version from CHANGELOG, on push to main)                                                 |
+| `package.json` / `commitlint.config.js` | husky + commitlint: conventional-commit enforcement                                                     |
+| `README.md` / `CHANGELOG.md`            | This file + change log                                                                                  |
+| `.nvmrc`                                | Pins Node 24                                                                                            |
+| `LICENSE`                               | MIT                                                                                                     |
+| `.gitignore`                            | Secret/caches hygiene                                                                                   |
 
 ### Machine-local (gitignored, never synced)
 
-| Path | Why |
-|---|---|
-| `auth.json` | Secrets — copy once per machine; never in git |
-| `bin/` | Platform binaries, auto-downloaded per arch (currently `fd`) |
-| `npm/` | pi-managed `pi install npm:<pkg>` store |
-| `git/` | pi-managed `pi install git:<repo>` clones (re-created on next `pi install git:…`) |
-| `skills/**/node_modules/` | Per-skill deps — regenerable via `npm install` in the skill dir |
-| `models-store.json` | Provider model catalog (regenerable cache) |
-| `sessions/` | Session history, keyed by absolute project paths → per-machine |
-| `audit-reports/` | Dated audit artifacts; reports name private projects, this repo is public |
-| `*.log` | Debug logs |
+| Path                      | Why                                                                               |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `auth.json`               | Secrets — copy once per machine; never in git                                     |
+| `bin/`                    | Platform binaries, auto-downloaded per arch (currently `fd`)                      |
+| `npm/`                    | pi-managed `pi install npm:<pkg>` store                                           |
+| `git/`                    | pi-managed `pi install git:<repo>` clones (re-created on next `pi install git:…`) |
+| `skills/**/node_modules/` | Per-skill deps — regenerable via `npm install` in the skill dir                   |
+| `models-store.json`       | Provider model catalog (regenerable cache)                                        |
+| `sessions/`               | Session history, keyed by absolute project paths → per-machine                    |
+| `audit-reports/`          | Dated audit artifacts; reports name private projects, this repo is public         |
+| `*.log`                   | Debug logs                                                                        |
 
 ### Portability rules (enforced)
 
@@ -313,14 +314,13 @@ Quality gates in this repo:
 - **Conventional commits:** enforced by husky + commitlint on every commit
 - **CI:** [Release workflow](https://github.com/nurmdrafi/my-pi-coding-agent/actions/workflows/release.yml) extracts the version from `CHANGELOG.md` on push to `main`
 
-| File | Update when |
-|------|-------------|
-| [`CHANGELOG.md`](CHANGELOG.md) | every harness change (what / why / risk / measured delta) |
-| `README.md` (this file) | structure, skill roster, budget, or sync/portability contract change |
+| File                           | Update when                                                          |
+| ------------------------------ | -------------------------------------------------------------------- |
+| [`CHANGELOG.md`](CHANGELOG.md) | every harness change (what / why / risk / measured delta)            |
+| `README.md` (this file)        | structure, skill roster, budget, or sync/portability contract change |
 
 **Goal:** smaller, more stable, cache-friendly, rg-first, fully portable harness.
 
 ## License
 
 [MIT](LICENSE) © nurmdrafi
-

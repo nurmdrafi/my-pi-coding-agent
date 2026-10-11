@@ -1,0 +1,216 @@
+/** Anchor Guard (AG): edit-call oldText pre-validation — existence (exact +
+ * fuzzy), uniqueness with line numbers, intra-call overlap — with actual file
+ * context on a miss so the model fixes its anchor in one retry. Also derives
+ * the post-application line spans R1 certifies, the pre-edit stat (drift
+ * check) and whether any anchor matched only fuzzily. */
+import { readFile } from "fs/promises";
+import { normPath, snapshot } from "./read-coverage.ts";
+import type { LineSpan } from "./read-coverage.ts";
+
+export interface EditEntry {
+  oldText: string;
+  newText: string;
+}
+
+/** Mirror of edit-diff.js normalizeForFuzzyMatch: trailing ws, NFKC, smart quotes/dashes/spaces */
+function normalizeForFuzzyMatch(text: string): string {
+  return text
+    .normalize("NFKC")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-")
+    .replace(/[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g, " ");
+}
+
+export const toLF = (text: string): string =>
+  text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+/** 1-based line number of a character index (line boundaries survive normalization) */
+function lineOf(content: string, index: number): number {
+  let line = 1;
+  for (let i = 0; i < index && i < content.length; i++)
+    if (content[i] === "\n") line++;
+  return line;
+}
+
+function snippetAround(
+  content: string,
+  line: number,
+  spanLines: number,
+  pad = 2,
+  maxLines = 8,
+): string {
+  const lines = content.split("\n");
+  const start = Math.max(1, line - pad);
+  const end = Math.min(lines.length, line + spanLines + pad - 1);
+  const shown = Math.min(end, start + maxLines - 1);
+  const width = String(shown).length;
+  const parts: string[] = [];
+  for (let n = start; n <= shown; n++)
+    parts.push(`${String(n).padStart(width)} | ${lines[n - 1]}`);
+  if (shown < end) parts.push("…");
+  return parts.join("\n");
+}
+
+/** Longest run of anchor lines (from the tail, else the head) that exists in fuzzyContent */
+function findClosestFragment(
+  fuzzyContent: string,
+  oldText: string,
+): { index: number; lines: number; end: "tail" | "head" } | undefined {
+  const lines = oldText.split("\n");
+  for (let take = lines.length; take >= 1; take--) {
+    const tail = normalizeForFuzzyMatch(
+      lines.slice(lines.length - take).join("\n"),
+    );
+    if (tail.trim()) {
+      const index = fuzzyContent.indexOf(tail);
+      if (index !== -1) return { index, lines: take, end: "tail" };
+    }
+    const head = normalizeForFuzzyMatch(lines.slice(0, take).join("\n"));
+    if (head.trim()) {
+      const index = fuzzyContent.indexOf(head);
+      if (index !== -1) return { index, lines: take, end: "head" };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Validates an edit call's anchors; returns a block (with corrective context)
+ * or the call's post-application edited line spans (exact-match anchors only)
+ * if ok.
+ */
+export async function validateEditAnchors(
+  input: {
+    path?: unknown;
+    edits?: unknown;
+  },
+  cwd?: string,
+): Promise<
+  | { block: true; reason: string }
+  | {
+      spans?: LineSpan[];
+      firstEditedLine?: number;
+      preStat?: { mtimeMs: number; size: number };
+      fuzzy?: boolean;
+    }
+  | undefined
+> {
+  const edits = input.edits;
+  if (!Array.isArray(edits)) return; // let the tool's own validation respond
+
+  const absPath = normPath(input.path, cwd);
+  let content: string;
+  try {
+    const raw = await readFile(absPath, "utf8");
+    content = toLF(raw).replace(/^\uFEFF/, "");
+  } catch {
+    return; // unreadable/missing file: the edit tool reports it
+  }
+  // item 6 (2026-10-11): pre-edit stat — the tool_result compares it against
+  // the coverage snapshot to drop externally-drifted spans instead of
+  // re-validating them against the post-edit file
+  const preStat = await snapshot(absPath);
+
+  const fuzzyContent = normalizeForFuzzyMatch(content);
+  // verified exact-match spans, for the intra-call overlap check
+  const spans: { i: number; start: number; end: number }[] = [];
+  // fuzzy-matched anchors contribute no span (index only exists in normalized
+  // space) — and mark the call fuzzy so tool_result drops the path's coverage
+  // instead of certifying line math that skipped them (2026-10-11)
+  let fuzzyUsed = false;
+
+  for (let i = 0; i < edits.length; i++) {
+    const oldText = toLF(String((edits[i] as EditEntry)?.oldText ?? ""));
+    if (!oldText) continue; // tool has a dedicated empty-oldText error
+
+    const exact = content.indexOf(oldText);
+    const fuzzy = exact === -1 ? normalizeForFuzzyMatch(oldText) : "";
+
+    if (exact === -1 && fuzzyContent.indexOf(fuzzy) === -1) {
+      const frag = findClosestFragment(fuzzyContent, oldText);
+      const near = frag
+        ? `Its ${frag.end} lines occur at line ${lineOf(fuzzyContent, frag.index)}; the inferred lines around them are wrong:\n${snippetAround(content, lineOf(fuzzyContent, frag.index), frag.lines)}\nUse these exact lines (incl. whitespace) as oldText.`
+        : `No part exists — read the region (offset/limit) and rebuild oldText from actual content.`;
+      return {
+        block: true,
+        reason: `Anchor Guard: edits[${i}].oldText not found in ${String(input.path)} (exact+fuzzy). ${near}`,
+      };
+    }
+
+    // uniqueness (mirror of the tool's duplicate check) with line numbers
+    const probe = exact !== -1 ? oldText : fuzzy;
+    const haystack = exact !== -1 ? content : fuzzyContent;
+    const occurrences: number[] = [];
+    let at = haystack.indexOf(probe);
+    while (at !== -1) {
+      occurrences.push(lineOf(haystack, at));
+      at = haystack.indexOf(probe, at + 1);
+    }
+    if (occurrences.length > 1) {
+      return {
+        block: true,
+        reason:
+          `Anchor Guard: edits[${i}].oldText occurs ${occurrences.length}× in ${String(input.path)} ` +
+          `(lines ${occurrences.join(", ")}). Widen the anchor with adjacent lines until unique.`,
+      };
+    }
+
+    // overlap (exact matches only — fuzzy indices live in normalized space)
+    if (exact !== -1) {
+      const start = exact;
+      const end = exact + oldText.length;
+      for (const s of spans) {
+        if (start < s.end && s.start < end) {
+          return {
+            block: true,
+            reason:
+              `Anchor Guard: edits[${s.i}] and edits[${i}] overlap in ${String(input.path)} — ` +
+              `the edit tool rejects overlapping edits. Merge into one edit (or disjoint anchors).`,
+          };
+        }
+      }
+      spans.push({ i, start, end });
+    } else {
+      fuzzyUsed = true; // this anchor matched only after normalization
+    }
+  }
+
+  // H9/B3 (2026-10-08): edits[] are applied as ONE overlay against the
+  // ORIGINAL file — a span's post-edit line depends on edits EARLIER IN THE
+  // FILE, not on array order (the old in-loop delta accumulated array order
+  // and mis-certified out-of-order calls). Position-sort, then fold deltas.
+  // B4: also report the first edited ORIGINAL line — tool_result truncates
+  // stale coverage at it, because every line below a line-count-changing
+  // edit shifted and old spans there describe different content.
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const edited: LineSpan[] = [];
+  let delta = 0;
+  let firstEditedLine = Infinity;
+  for (const s of sorted) {
+    const oldLines = toLF(
+      String((edits[s.i] as EditEntry)?.oldText ?? ""),
+    ).split("\n").length;
+    const newLines = String((edits[s.i] as EditEntry)?.newText ?? "").split(
+      "\n",
+    ).length;
+    const oStart = lineOf(content, s.start);
+    if (oStart < firstEditedLine) firstEditedLine = oStart;
+    const eStart = oStart + delta;
+    edited.push({ start: eStart, end: eStart + newLines - 1 });
+    delta += newLines - oldLines;
+  }
+
+  return {
+    spans: edited.length ? edited : undefined,
+    firstEditedLine:
+      edited.length && firstEditedLine !== Infinity
+        ? firstEditedLine
+        : undefined,
+    preStat,
+    fuzzy: fuzzyUsed || undefined,
+  }; // all anchors verified: let the edit proceed
+}
