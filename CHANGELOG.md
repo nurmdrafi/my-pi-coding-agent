@@ -7,6 +7,12 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 12-10-2026
+
+### Removed
+
+- **`skills/domain-modeling` deleted** — README roster row, badge, and skill counts updated (20 → 19); no prompts/, extensions/, or docs/ references existed.
+
 ## [1.32.0] - 09-10-2026
 
 ### Changed

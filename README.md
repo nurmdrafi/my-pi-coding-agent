@@ -5,25 +5,17 @@
 [![license](https://img.shields.io/badge/license-MIT-2ea44f?logo=opensourceinitiative&logoColor=white&labelColor=24292f&style=flat-square)](LICENSE)
 [![pi coding agent](https://img.shields.io/badge/pi-coding_agent-8A2BE2?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/earendil-works/pi-coding-agent)
 <br>
-[![stars](https://img.shields.io/github/stars/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/stargazers)
-[![forks](https://img.shields.io/github/forks/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/forks)
-[![contributors](https://img.shields.io/github/contributors/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/graphs/contributors)
-[![issues](https://img.shields.io/github/issues/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/issues)
-[![commits/month](https://img.shields.io/github/commit-activity/m/nurmdrafi/my-pi-coding-agent?logo=git&logoColor=F05032&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/commits)
-[![last commit](https://img.shields.io/github/last-commit/nurmdrafi/my-pi-coding-agent?logo=git&logoColor=F05032&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/commits)
-[![repo size](https://img.shields.io/github/repo-size/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent)
-<br>
 [![node](https://img.shields.io/badge/node_%E2%A5%BC_22.19_%C2%B7_.nvmrc_24-339933?logo=nodedotjs&logoColor=5FA04E&labelColor=24292f&style=flat-square)](#requirements)
 [![macOS](https://img.shields.io/badge/macOS-6e7681?logo=apple&logoColor=A2AAAD&labelColor=24292f&style=flat-square)](#portability)[![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=FCC624&labelColor=24292f&style=flat-square)](#portability)
 [![language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white&labelColor=24292f&style=flat-square)](#extensions)
 [![tmux](https://img.shields.io/badge/tmux-optional-6e7681?logo=tmux&logoColor=1BB91F&labelColor=24292f&style=flat-square)](#subagents)
-[![skills](https://img.shields.io/badge/skills-20-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
+[![skills](https://img.shields.io/badge/skills-19-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
 [![extensions](https://img.shields.io/badge/extensions-2-2563eb?labelColor=24292f&style=flat-square)](#extensions)
-[![token floor](https://img.shields.io/badge/token_floor-%E2%89%88_0.7K-2ea44f?labelColor=24292f&style=flat-square)](#always-on-token-budget)
+[![token floor](https://img.shields.io/badge/token_floor-%E2%89%88_0.5K-2ea44f?labelColor=24292f&style=flat-square)](#always-on-token-budget)
 
 A portable, git-synced configuration for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent) — one `~/.pi/agent/` directory that turns any macOS or Linux machine into a fully configured coding-agent workstation in minutes.
 
-**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 20 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~0.7K tokens permanent floor) so every session starts cheap.
+**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 19 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~0.5K tokens permanent floor) so every session starts cheap.
 
 - **One directory, one repo** — `git clone` is the entire install; git is the only sync mechanism.
 - **Zero environment variables, zero absolute paths** — everything works from the default `~/.pi/agent` location.
@@ -90,6 +82,7 @@ That's it — no env vars to export, no paths to fix.
 ```
 ~/.pi/agent/
 ├── AGENTS.md                 # Always-on behavioral core (kept short & byte-stable)
+├── docs/                     # Scoped rule sets — load on demand via AGENTS.md links
 ├── settings.json             # Provider / model / theme / thinking (no secrets)
 ├── auth.json                 # API keys — gitignored, copied once per machine
 ├── models.json               # Custom model defs (glm-5.3-flash)
@@ -114,7 +107,7 @@ That's it — no env vars to export, no paths to fix.
 
 ## Skills
 
-All 20 skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
+All 19 skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
 
 | Skill                | Purpose                                                                                                 | Invocation                    |
 | -------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------- |
@@ -126,7 +119,6 @@ All 20 skills are **manual** — invoke with `/skill:<name>`; none auto-load on 
 | brainstorming        | Explore genuinely-unclear feature direction; one question at a time                                     | `/skill:brainstorming`        |
 | browser-tools        | Live DOM via CDP `:9222` — Playwright/e2e only (deps: `npm install` at skill root)                      | `/skill:browser-tools`        |
 | documentation-writer | Diátaxis-based tech writer: SDK docs, READMEs, CONTRIBUTING, docs audits                                | `/skill:documentation-writer` |
-| domain-modeling      | Build/sharpen a project's domain model — GLOSSARY.md terms, ADRs                                        | `/skill:domain-modeling`      |
 | fallow-audit         | Dead-code / unused-export / unused-dependency cleanup (fallow, knip, ts-prune, depcheck)                | `/skill:fallow-audit`         |
 | frontend-design      | New web components/pages/apps from scratch (detects the UI stack)                                       | `/skill:frontend-design`      |
 | github-actions       | Author/harden CI workflows: SHA-pinned actions, scoped secrets, actionlint                              | `/skill:github-actions`       |
@@ -182,7 +174,7 @@ No `model` pin — sub-agents inherit the harness default from `settings.json`; 
 
 ## Extensions
 
-Always-on TypeScript modules in `extensions/` — loaded by pi, never in the model prefix. Currently two: **`permission-gate/`**, a `tool_call` interceptor providing:
+Always-on TypeScript modules in `extensions/` — loaded by pi, never in the model prefix. Two always-on, plus the gated `subagents/` tool set above: **`permission-gate/`**, a `tool_call` interceptor providing:
 
 - edit-anchor pre-validation (oldText must match a region actually read)
 - reading/output economy rules (in-context re-read guard, capped bash output)
@@ -202,6 +194,7 @@ What is in context, and when:
 | ------------------ | ----------------------- | ------------------------- | ------------------------- |
 | System + tools     | pi built-in             | every turn                | pi-managed                |
 | **AGENTS.md**      | global behavioral rules | every turn                | **must stay byte-stable** |
+| Scoped rule docs   | `docs/*.md` rule sets   | task touches the area     | read on demand            |
 | Skill descriptions | frontmatter only        | every turn                | **must stay byte-stable** |
 | Skill bodies       | SKILL.md full text      | on match or `/skill:name` | load on demand            |
 | Project AGENTS.md  | repo rules              | when present              | overlays global           |
@@ -214,12 +207,12 @@ What is in context, and when:
 
 ## Always-on token budget
 
-The permanent prefix costs ~0.7K tokens per session (AGENTS.md 2,702 chars ≈ 0.7K at ~4 chars/token; the 2 formerly auto-invocable skills went manual, so no skill descriptions sit in the model-visible catalog; subagents tool defs removed — see [CHANGELOG.md](CHANGELOG.md)). Bodies and references stay out of context until needed.
+The permanent prefix costs ~0.5K tokens per session (AGENTS.md 1,991 bytes ≈ 0.5K at ~4 chars/token; scoped rules now live in `docs/` and load on demand; the 2 formerly auto-invocable skills went manual, so no skill descriptions sit in the model-visible catalog; subagents tool defs removed — see [CHANGELOG.md](CHANGELOG.md)). Bodies and references stay out of context until needed.
 
 | Component           | Target                                      | Notes                                                       |
 | ------------------- | ------------------------------------------- | ----------------------------------------------------------- |
 | AGENTS.md           | as small as possible (behavioral core only) | no stack essays, no skill lists                             |
-| Skill descriptions  | short; delete dead skills                   | all 20 manual — zero per-session cost                       |
+| Skill descriptions  | short; delete dead skills                   | all 19 manual — zero per-session cost                       |
 | **Total always-on** | ≤ ~1K tok                                   | AGENTS.md only; no auto-skill catalog, no package tool defs |
 
 Thinking is `off` by default (token economy); bump per-task with `--thinking high`.
@@ -254,12 +247,12 @@ Both keys are identical across machines and live only in `auth.json`. pi also ac
 
 | Path                                    | Purpose                                                                                                 |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `AGENTS.md`                             | Always-on behavioral core + efficiency ladder                                                           |
+| `AGENTS.md` + `docs/`                   | Behavioral core (always-on) + scoped rule sets loaded on demand                                       |
 | `settings.json`                         | Provider/model/theme/thinking (no secrets)                                                              |
 | `models.json`                           | Custom model definitions                                                                                |
 | `agents/`                               | Subagent definitions (scout/researcher/worker/reviewer)                                                 |
 | `prompts/`                              | Prompt templates (`/issue`: in-context validate→propose→fix; `/ship`: commit+push; `/update-changelog`) |
-| `skills/`                               | All skills (auto-trigger + `/skill:name`)                                                               |
+| `skills/`                             | All 19 skills (manual, `/skill:name`)                                                                 |
 | `extensions/`                           | Always-on extensions (`permission-gate`)                                                                |
 | `tests/`                                | Node test runner suite (`node --test tests/`)                                                           |
 | `.github/workflows/`                    | Release CI/CD (version from CHANGELOG, on push to main)                                                 |
