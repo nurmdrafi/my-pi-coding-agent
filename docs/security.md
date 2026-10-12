@@ -1,7 +1,22 @@
 # Security
 
-- Security is build-time: mutating routes carry auth/permission checks when first written; secrets stay server-side.
+## Build-time
+
+- Mutating routes carry auth/permission checks when first written.
+- Secrets stay server-side.
 - Guard/effect fixes re-check adjacent paths they unblocked.
-- Ask before: installing packages, destructive commands, anything outside the repo (dotfiles, global config), network side effects, `sudo`, `curl | sh`, migrations, deploys.
-- Never overwrite uncommitted user changes; never `git add -A`, `git commit --amend`, or `--no-verify` unprompted.
-- Never print or log `.env` contents or any secret.
+
+## Ask before
+
+- Installing packages
+- Destructive commands
+- Anything outside the repo (dotfiles, global config)
+- Network side effects
+- `sudo` or `curl | sh`
+- Migrations or deploys
+
+## Never
+
+- Overwrite uncommitted user changes
+- `git add -A`, `git commit --amend`, or `--no-verify` unprompted
+- Print or log `.env` contents or any secret

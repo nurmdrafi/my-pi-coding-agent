@@ -9,13 +9,13 @@
 [![macOS](https://img.shields.io/badge/macOS-6e7681?logo=apple&logoColor=A2AAAD&labelColor=24292f&style=flat-square)](#portability)[![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=FCC624&labelColor=24292f&style=flat-square)](#portability)
 [![language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white&labelColor=24292f&style=flat-square)](#extensions)
 [![tmux](https://img.shields.io/badge/tmux-optional-6e7681?logo=tmux&logoColor=1BB91F&labelColor=24292f&style=flat-square)](#subagents)
-[![skills](https://img.shields.io/badge/skills-19-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
+[![skills](https://img.shields.io/badge/skills-20-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
 [![extensions](https://img.shields.io/badge/extensions-2-2563eb?labelColor=24292f&style=flat-square)](#extensions)
 [![token floor](https://img.shields.io/badge/token_floor-%E2%89%88_0.5K-2ea44f?labelColor=24292f&style=flat-square)](#always-on-token-budget)
 
 A portable, git-synced configuration for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent) — one `~/.pi/agent/` directory that turns any macOS or Linux machine into a fully configured coding-agent workstation in minutes.
 
-**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 19 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~0.5K tokens permanent floor) so every session starts cheap.
+**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 20 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~0.5K tokens permanent floor) so every session starts cheap.
 
 - **One directory, one repo** — `git clone` is the entire install; git is the only sync mechanism.
 - **Zero environment variables, zero absolute paths** — everything works from the default `~/.pi/agent` location.
@@ -107,7 +107,7 @@ That's it — no env vars to export, no paths to fix.
 
 ## Skills
 
-All 19 skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
+All 20 skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
 
 | Skill                | Purpose                                                                                                 | Invocation                    |
 | -------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------- |
@@ -125,6 +125,7 @@ All 19 skills are **manual** — invoke with `/skill:<name>`; none auto-load on 
 | grill-me             | Relentless one-question-at-a-time stress-testing of a plan/decision                                     | `/skill:grill-me`             |
 | harness-engineer     | Meta: audit/improve this harness (budgets, evidence, skill audits, anti-pattern sweep)                  | `/skill:harness-engineer`     |
 | map-integration      | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw; Barikoi stack                                    | `/skill:map-integration`      |
+| markdown-optimizer   | LLM-rule markdown formatting (AGENTS.md, system prompts, SKILL.md bodies): bold/heading/list discipline | `/skill:markdown-optimizer`   |
 | playwright-tester    | e2e specs, stress/update-flow runs, bug-hunt iterations, untested-critical-path coverage                | `/skill:playwright-tester`    |
 | refactoring-ui       | Audit/fix existing UI: hierarchy, spacing, color, depth, small UI defects                               | `/skill:refactoring-ui`       |
 | sdk-development      | Installable packages (Go/npm/CLI): OpenAPI codegen, test, publish                                       | `/skill:sdk-development`      |
@@ -207,12 +208,12 @@ What is in context, and when:
 
 ## Always-on token budget
 
-The permanent prefix costs ~0.5K tokens per session (AGENTS.md 1,991 bytes ≈ 0.5K at ~4 chars/token; scoped rules now live in `docs/` and load on demand; the 2 formerly auto-invocable skills went manual, so no skill descriptions sit in the model-visible catalog; subagents tool defs removed — see [CHANGELOG.md](CHANGELOG.md)). Bodies and references stay out of context until needed.
+The permanent prefix costs ~0.5K tokens per session (AGENTS.md 2,249 bytes ≈ 0.5K at ~4 chars/token; scoped rules now live in `docs/` and load on demand; the 2 formerly auto-invocable skills went manual, so no skill descriptions sit in the model-visible catalog; subagents tool defs removed — see [CHANGELOG.md](CHANGELOG.md)). Bodies and references stay out of context until needed.
 
 | Component           | Target                                      | Notes                                                       |
 | ------------------- | ------------------------------------------- | ----------------------------------------------------------- |
 | AGENTS.md           | as small as possible (behavioral core only) | no stack essays, no skill lists                             |
-| Skill descriptions  | short; delete dead skills                   | all 19 manual — zero per-session cost                       |
+| Skill descriptions  | short; delete dead skills                   | all 20 manual — zero per-session cost                       |
 | **Total always-on** | ≤ ~1K tok                                   | AGENTS.md only; no auto-skill catalog, no package tool defs |
 
 Thinking is `off` by default (token economy); bump per-task with `--thinking high`.
@@ -252,7 +253,7 @@ Both keys are identical across machines and live only in `auth.json`. pi also ac
 | `models.json`                           | Custom model definitions                                                                                |
 | `agents/`                               | Subagent definitions (scout/researcher/worker/reviewer)                                                 |
 | `prompts/`                              | Prompt templates (`/issue`: in-context validate→propose→fix; `/ship`: commit+push; `/update-changelog`) |
-| `skills/`                             | All 19 skills (manual, `/skill:name`)                                                                 |
+| `skills/`                             | All 20 skills (manual, `/skill:name`)                                                                 |
 | `extensions/`                           | Always-on extensions (`permission-gate`)                                                                |
 | `tests/`                                | Node test runner suite (`node --test tests/`)                                                           |
 | `.github/workflows/`                    | Release CI/CD (version from CHANGELOG, on push to main)                                                 |

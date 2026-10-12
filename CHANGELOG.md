@@ -7,6 +7,18 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 12-10-2026
+
+### Added
+
+- **`skills/markdown-optimizer`** — manual-only skill (`/skill:markdown-optimizer`, model invocation disabled): LLM-optimized Markdown formatting discipline for rule/instruction files only (AGENTS.md/CLAUDE.md, system prompts, prompt templates, SKILL.md bodies, agent rule-set docs) — bold only for critical constraints/entities, strict heading nesting, bullets vs numbered lists, one clause per bullet. Prose docs, READMEs, changelogs out of scope. Skill count 19 → 20; zero per-session cost.
+
+### Changed
+
+- **AGENTS.md restructured for LLM adherence** — bold-label bullets became `###` rule sections with one-clause bullets; bold kept only on the two hard constraints. Wording preserved verbatim; 2,218 → 2,249 bytes (~0.5K tokens, always-on budget unchanged). Prefix bytes changed — fresh session after pull.
+- **`docs/` rule sets restructured** — security: comma-blob bullets → `## Ask before` / `## Never` lists; token-economy: 13 flat bullets → five `##` groups; change-discipline/portability/workflow: compound bullets split. Wording verbatim, zero semantic changes (+99/−30 lines across AGENTS.md + docs/).
+- **README synced** — badge and skill counts 19 → 20, markdown-optimizer roster row, AGENTS.md byte figure 1,991 → 2,249.
+
 ## [1.33.0] - 12-10-2026
 
 ### Removed
