@@ -2,7 +2,7 @@
   "lastChangelogVersion": "1.1.0",
   "theme": "dark",
   "defaultProvider": "zai",
-  "defaultModel": "glm-5.3",
+  "defaultModel": "glm-5.3-flash",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
   "compaction": {
