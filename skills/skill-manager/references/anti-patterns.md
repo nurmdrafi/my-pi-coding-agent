@@ -21,26 +21,26 @@ before flagging secrets hits.
 
 ## The six patterns, with authoring fixes
 
-1. **Verification rituals** — "double-check your work", "verify twice". Models comply literally →
+- Verification rituals — "double-check your work", "verify twice". Models comply literally →
    duplicated reasoning loops. Write single scoped checks instead: "run the validator, fix,
    re-run" is a loop with an exit condition, not a ritual.
-2. **Emphasis boosters** — CRITICAL / YOU MUST stacked on vague advice. Write a reasoned
+- Emphasis boosters — CRITICAL / YOU MUST stacked on vague advice. Write a reasoned
    imperative — explain why once. Emphasis is earned when it encodes a real precedence rule or
    precise constraint ("the validation gate is mandatory, no exceptions"); a booster when it
    decorates vague advice ("CRITICAL: be bold").
-3. **Mandatory scaffolds** — hardcoded step-by-step or scratchpad procedures. Acceptable when the
+- Mandatory scaffolds — hardcoded step-by-step or scratchpad procedures. Acceptable when the
    skill is user-invoked (`disable-model-invocation: true`) or tightly trigger-scoped; if the
    description lets it load for ordinary turns, cut the scaffold or narrow the description.
-4. **Stale examples** — few-shots or test scaffolds imported from another harness, wrong paths,
+- Stale examples — few-shots or test scaffolds imported from another harness, wrong paths,
    old-model references, creation logs. Don't write them; never rewrite imported ones to "fit" —
    delete. Session residue belongs here: issue numbers, repo variable/function names
    (`our consignmentsData`), app-specific error chains. Strip to the generalizable rule; if an
    example is needed, make it library-level (rc-select event order), never app-level.
-5. **Contradictory rules** — description vs body giving opposite trigger semantics; skill
+- Contradictory rules — description vs body giving opposite trigger semantics; skill
    instructions vs `AGENTS.md` (forced installs vs ask-before-install). Re-read both surfaces
    after drafting. A carve-out the body documents as deliberate (invocation = approval) is
    consistent, not contradictory.
-6. **Dated configurations** — model names, thinking budgets, temperature overrides,
+- Dated configurations — model names, thinking budgets, temperature overrides,
    "before August 2025 use the old API" instructions, postmortem dates. They go stale silently:
    state current behavior, parameterize to the harness setting, or push legacy detail into a
    reference file.
@@ -61,8 +61,8 @@ Security rules are carried when the skill is first written, not patched in later
 
 ## Calibration
 
-- **Earned emphasis** — encodes a real precedence rule or precise constraint → keep.
-- **Booster** — emphasis on vague advice → rewrite with a reason.
-- **Rhetoric with no semantics** ("violating the spirit of…") → delete.
-- **Structural bugs** (spliced bullet lists, orphaned bullets, duplicated headers) → fix; they
+- Earned emphasis — encodes a real precedence rule or precise constraint → keep.
+- Booster — emphasis on vague advice → rewrite with a reason.
+- Rhetoric with no semantics ("violating the spirit of…") → delete.
+- Structural bugs (spliced bullet lists, orphaned bullets, duplicated headers) → fix; they
   mark edits inserted without reading around them.

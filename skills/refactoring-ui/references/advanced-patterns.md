@@ -17,7 +17,7 @@ Extended reference for complex scenarios. Load only when deeper guidance needed.
 
 Empty states are opportunities, not afterthoughts.
 
-**Good empty states include:**
+### Good empty states include:
 - Illustration or icon (not generic)
 - Clear explanation of what goes here
 - Primary action to remedy emptiness
@@ -29,7 +29,7 @@ Empty states are opportunities, not afterthoughts.
    [+ Create Project]
 ```
 
-**Match the tone.** A todo app empty state can be playful; an enterprise dashboard should be professional.
+Match the tone. A todo app empty state can be playful; an enterprise dashboard should be professional.
 
 ---
 
@@ -88,14 +88,14 @@ Danger:     Red but not screaming (bg-red-600 for confirm, text-red-600 for trig
 
 ### Background Images
 
-**Problem:** Text over images is often unreadable.
+Problem: Text over images is often unreadable.
 
-**Solutions:**
-1. Semi-transparent overlay: `bg-black/50`
-2. Gradient overlay: `bg-gradient-to-t from-black/80 to-transparent`
-3. Text shadow: `text-shadow: 0 2px 4px rgba(0,0,0,0.5)`
-4. Solid color box behind text
-5. Choose images with natural dark/simple areas for text
+#### Solutions:
+- Semi-transparent overlay: `bg-black/50`
+- Gradient overlay: `bg-gradient-to-t from-black/80 to-transparent`
+- Text shadow: `text-shadow: 0 2px 4px rgba(0,0,0,0.5)`
+- Solid color box behind text
+- Choose images with natural dark/simple areas for text
 
 ### User Avatars
 
@@ -208,7 +208,7 @@ Use color purposefully:
 
 Stay consistent. Pick a system:
 
-**Sharp/Modern:**
+### Sharp/Modern:
 ```
 none: 0
 sm: 2px
@@ -217,7 +217,7 @@ lg: 6px
 full: 9999px (pills/circles)
 ```
 
-**Soft/Friendly:**
+### Soft/Friendly:
 ```
 none: 0
 sm: 4px
@@ -286,11 +286,11 @@ xl:  1280px (desktops)
 
 ### Mobile-First Principles
 
-1. Design for mobile first, add complexity for larger screens
-2. Stack on mobile, side-by-side on desktop
-3. Full-width inputs on mobile, constrained on desktop
-4. Larger touch targets on mobile (44px minimum)
-5. Hide secondary navigation in hamburger on mobile
+- Design for mobile first, add complexity for larger screens
+- Stack on mobile, side-by-side on desktop
+- Full-width inputs on mobile, constrained on desktop
+- Larger touch targets on mobile (44px minimum)
+- Hide secondary navigation in hamburger on mobile
 
 ---
 

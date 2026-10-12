@@ -59,7 +59,7 @@ Most UI animations should be around 200ms:
 - Faster than 100ms → Too fast to perceive
 - Slower than 400ms → Feels sluggish, interrupts flow
 
-**Exception:** Loading and progress indicators can be slower because they represent real waiting.
+Exception: Loading and progress indicators can be slower because they represent real waiting.
 
 ### Duration by Distance
 
@@ -88,7 +88,7 @@ Easing makes motion feel natural. Linear motion looks robotic.
 
 ### When to Use Each
 
-**Ease-out (default for entrances):**
+#### Ease-out (default for entrances):
 ```css
 transition: transform 200ms ease-out;
 ```
@@ -97,7 +97,7 @@ transition: transform 200ms ease-out;
 - Dropdowns opening
 - Tooltips appearing
 
-**Ease-in (for exits):**
+#### Ease-in (for exits):
 ```css
 transition: opacity 150ms ease-in;
 ```
@@ -105,7 +105,7 @@ transition: opacity 150ms ease-in;
 - Elements fading out
 - Notifications leaving
 
-**Ease-in-out (for on-screen movement):**
+#### Ease-in-out (for on-screen movement):
 ```css
 transition: transform 250ms ease-in-out;
 ```
@@ -131,7 +131,7 @@ transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 
 ### Button States
 
-**Hover:**
+#### Hover:
 ```css
 .btn {
   transition: background-color 100ms ease-out, transform 100ms ease-out;
@@ -141,14 +141,14 @@ transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 ```
 
-**Active/Pressed:**
+#### Active/Pressed:
 ```css
 .btn:active {
   transform: scale(0.97);
 }
 ```
 
-**Loading state:**
+#### Loading state:
 ```css
 .btn.loading {
   opacity: 0.7;
@@ -161,7 +161,7 @@ transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 
 ### Modal Entrance/Exit
 
-**Enter:**
+#### Enter:
 ```css
 .modal {
   opacity: 0;
@@ -174,7 +174,7 @@ transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 ```
 
-**Exit:**
+#### Exit:
 ```css
 .modal.closing {
   opacity: 0;
@@ -290,7 +290,7 @@ Small animations that provide feedback and delight.
 
 ### Effective Microinteractions
 
-**Toggle switches:**
+#### Toggle switches:
 ```css
 .toggle-thumb {
   transition: transform 150ms ease-out;
@@ -300,7 +300,7 @@ Small animations that provide feedback and delight.
 }
 ```
 
-**Checkbox check:**
+#### Checkbox check:
 ```css
 .checkmark {
   stroke-dasharray: 20;
@@ -312,7 +312,7 @@ Small animations that provide feedback and delight.
 }
 ```
 
-**Like/Heart animation:**
+#### Like/Heart animation:
 ```css
 .heart {
   transform: scale(1);
@@ -328,7 +328,7 @@ Small animations that provide feedback and delight.
 }
 ```
 
-**Input focus:**
+#### Input focus:
 ```css
 .input {
   border-color: #ccc;

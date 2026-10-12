@@ -31,7 +31,7 @@ Users must be able to perceive content.
 
 #### 1.1 Text Alternatives
 
-**All images need alt text:**
+##### All images need alt text:
 
 ```html
 <!-- Decorative image (no alt) -->
@@ -52,7 +52,7 @@ Users must be able to perceive content.
 </figure>
 ```
 
-**Icons:**
+##### Icons:
 ```html
 <!-- Icon with visible text (icon is decorative) -->
 <button>
@@ -68,7 +68,7 @@ Users must be able to perceive content.
 
 #### 1.3 Adaptable
 
-**Semantic HTML structure:**
+##### Semantic HTML structure:
 
 ```html
 <!-- Use semantic elements -->
@@ -89,12 +89,12 @@ Users must be able to perceive content.
 <div class="nav">...</div>
 ```
 
-**Heading hierarchy:**
+##### Heading hierarchy:
 - One `<h1>` per page
 - Don't skip levels (h1 → h3)
 - Headings describe content structure
 
-**Form labels:**
+##### Form labels:
 ```html
 <!-- Explicit label -->
 <label for="email">Email</label>
@@ -113,7 +113,7 @@ Users must be able to perceive content.
 
 #### 1.4 Distinguishable
 
-**Color contrast requirements:**
+##### Color contrast requirements:
 
 | Content Type | Minimum Ratio | Tool |
 |--------------|---------------|------|
@@ -121,7 +121,7 @@ Users must be able to perceive content.
 | Large text (≥18px or ≥14px bold) | 3:1 | |
 | UI components & graphics | 3:1 | |
 
-**Common contrast fixes:**
+##### Common contrast fixes:
 
 ```css
 /* Too light - fails */
@@ -134,7 +134,7 @@ Users must be able to perceive content.
 .text-strong { color: #374151; } /* gray-700: 9.1:1 on white */
 ```
 
-**Don't rely on color alone:**
+##### Don't rely on color alone:
 
 ```html
 <!-- Bad: only color indicates error -->
@@ -148,7 +148,7 @@ Users must be able to perceive content.
 </p>
 ```
 
-**Text resize:**
+##### Text resize:
 - Content must be readable at 200% zoom
 - Use relative units (rem, em) not px for text
 - Test by zooming browser to 200%
@@ -161,7 +161,7 @@ Users must be able to operate the interface.
 
 #### 2.1 Keyboard Accessible
 
-**All functionality must work with keyboard:**
+##### All functionality must work with keyboard:
 
 | Key | Expected Behavior |
 |-----|-------------------|
@@ -172,7 +172,7 @@ Users must be able to operate the interface.
 | Arrows | Navigate within components (tabs, menus, radios) |
 | Escape | Close modals, dropdowns, cancel actions |
 
-**Focus must be visible:**
+##### Focus must be visible:
 
 ```css
 /* Don't remove focus outlines */
@@ -192,7 +192,7 @@ Users must be able to operate the interface.
 }
 ```
 
-**Keyboard traps:**
+##### Keyboard traps:
 - Modal dialogs should trap focus inside
 - But must have a way to exit (Escape key, close button)
 
@@ -226,7 +226,7 @@ function Modal({ isOpen, onClose, children }) {
 }
 ```
 
-**Skip links:**
+##### Skip links:
 
 ```html
 <body>
@@ -240,16 +240,16 @@ function Modal({ isOpen, onClose, children }) {
 
 #### 2.4 Navigable
 
-**Page titles:**
+##### Page titles:
 - Unique, descriptive page titles
 - Format: `Page Name | Site Name`
 
-**Focus order:**
+##### Focus order:
 - Must follow logical reading order
 - Don't use positive `tabindex` values (messes up order)
 - Only use `tabindex="0"` (make focusable) or `tabindex="-1"` (programmatically focusable)
 
-**Link purpose:**
+##### Link purpose:
 ```html
 <!-- Bad -->
 <a href="/article">Click here</a>
@@ -270,7 +270,7 @@ Users must be able to understand content and operation.
 
 #### 3.1 Readable
 
-**Language declaration:**
+##### Language declaration:
 ```html
 <html lang="en">
   <body>
@@ -282,11 +282,11 @@ Users must be able to understand content and operation.
 
 #### 3.2 Predictable
 
-**Consistent navigation:**
+##### Consistent navigation:
 - Same navigation in same location across pages
 - Same elements behave the same way
 
-**No unexpected changes:**
+##### No unexpected changes:
 - Form inputs don't auto-submit on change
 - No unexpected pop-ups
 - Focus doesn't move unexpectedly
@@ -302,7 +302,7 @@ Users must be able to understand content and operation.
 
 #### 3.3 Input Assistance
 
-**Error identification:**
+##### Error identification:
 ```html
 <label for="email">Email</label>
 <input
@@ -316,7 +316,7 @@ Users must be able to understand content and operation.
 </p>
 ```
 
-**Required fields:**
+##### Required fields:
 ```html
 <label for="name">
   Name <span aria-hidden="true">*</span>
@@ -325,7 +325,7 @@ Users must be able to understand content and operation.
 <input id="name" required aria-required="true">
 ```
 
-**Error prevention for critical actions:**
+##### Error prevention for critical actions:
 - Confirm destructive actions
 - Allow review before submission
 - Provide undo capability
@@ -338,12 +338,12 @@ Content must work with current and future technologies.
 
 #### 4.1 Compatible
 
-**Valid HTML:**
+##### Valid HTML:
 - Unique IDs
 - Complete start/end tags
 - Proper nesting
 
-**ARIA usage:**
+##### ARIA usage:
 ```html
 <!-- If you use ARIA, use it correctly -->
 

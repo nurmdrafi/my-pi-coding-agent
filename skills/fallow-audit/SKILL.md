@@ -20,10 +20,15 @@ Static analyzers miss non-import references and over-flag. The tool's report is 
 
 ## Workflow
 
-1. **Run tool, sanity-check BEFORE deleting.** Spot-check flagged deps against config usage (next.config, tailwind, postcss, PM2/compose). Inverse case too: imported-but-missing packages get added.
-2. **Delete in tiers:** unreachable files → unused deps (incl. newly-orphaned Radix peers) → duplicate exports (consolidate only if verbatim-identical) → unused type/value exports.
-3. **Non-import reference check** (tool can't do this): `rg -F '<deleted filename>'` across repo. Check dynamic `import()`, icon barrels, docker/compose/PM2 configs. Hits in comments/docs = acceptable, note them. Never delete deploy/CI config.
-4. **Cascades:** delete → re-run tool → handle newly-orphaned consumers (types-only-used-by-deleted-types, barrel entries, single-export files) → repeat until clean.
-5. **Scripted bulk edits are dangerous:** after EVERY script run `tsc --noEmit` + lint (for JSX/TS projects without tsc, run `esbuild --loader:.jsx=jsx file --outfile=/dev/null` on each touched file), review the full diff — scripts eat adjacent declarations, leave orphaned union bodies, and on JSX, `str.replace` silently nests or duplicates tags. Never declare success from a regex count; parse or render. Restore wrong removals from git.
-6. **Orphan sweep (zero-orphan guarantee):** scan touched files for JSDoc `/** */` blocks and section comments describing deleted declarations; cross-check each survivor. Read before removing — file-header docs followed by blanks are false positives.
-7. **Gate:** `tsc --noEmit` clean, lint 0 new issues, production build succeeds, deleted-name string scan clean, modified-file diffs are deletions/re-sourcing only — no semantic change.
+1. Run tool, sanity-check BEFORE deleting. Spot-check flagged deps against config usage (next.config, tailwind, postcss, PM2/compose). Inverse case too: imported-but-missing packages get added.
+2. Delete in tiers: unreachable files → unused deps (incl. newly-orphaned Radix peers) → duplicate exports (consolidate only if verbatim-identical) → unused type/value exports.
+3. Non-import reference check (tool can't do this): `rg -F '<deleted filename>'` across repo. Check dynamic `import()`, icon barrels, docker/compose/PM2 configs. Hits in comments/docs = acceptable, note them. Never delete deploy/CI config.
+4. Cascades: delete → re-run tool → handle newly-orphaned consumers (types-only-used-by-deleted-types, barrel entries, single-export files) → repeat until clean.
+5. Scripted bulk edits are dangerous: after EVERY script run `tsc --noEmit` + lint (for JSX/TS projects without tsc, run `esbuild --loader:.jsx=jsx file --outfile=/dev/null` on each touched file), review the full diff — scripts eat adjacent declarations, leave orphaned union bodies, and on JSX, `str.replace` silently nests or duplicates tags. Never declare success from a regex count; parse or render. Restore wrong removals from git.
+6. Orphan sweep (zero-orphan guarantee): scan touched files for JSDoc `/** */` blocks and section comments describing deleted declarations; cross-check each survivor. Read before removing — file-header docs followed by blanks are false positives.
+7. Gate:
+   - `tsc --noEmit` clean
+   - lint 0 new issues
+   - production build succeeds
+   - deleted-name string scan clean
+   - modified-file diffs are deletions/re-sourcing only — no semantic change

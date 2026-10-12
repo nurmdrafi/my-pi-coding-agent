@@ -50,16 +50,16 @@ Sometimes a simple number is better:
 
 ### Orientation
 
-**Vertical bars:** Best when comparing few categories with short labels
-**Horizontal bars:** Best when comparing many categories or labels are long
+Vertical bars: Best when comparing few categories with short labels
+Horizontal bars: Best when comparing many categories or labels are long
 
 ### Bar Chart Rules
 
-1. **Always start at zero** - Truncated axes mislead
-2. **Order meaningfully** - By value (descending) or logical order (time, alphabet)
-3. **Space bars correctly** - Gap between bars = 50-100% of bar width
-4. **Label directly** - Put values on bars, not in legend
-5. **Limit categories** - 5-7 bars maximum; group others as "Other"
+- Always start at zero - Truncated axes mislead
+- Order meaningfully - By value (descending) or logical order (time, alphabet)
+- Space bars correctly - Gap between bars = 50-100% of bar width
+- Label directly - Put values on bars, not in legend
+- Limit categories - 5-7 bars maximum; group others as "Other"
 
 ### Bar Styling
 
@@ -92,11 +92,11 @@ Sometimes a simple number is better:
 
 ### Line Chart Rules
 
-1. **Start Y-axis at zero** (usually) - Unless all values are in narrow range
-2. **Limit to 4-5 lines** - More becomes unreadable
-3. **Use distinct line styles** - Different colors, consider dashes for printing
-4. **Label lines directly** - Not just in legend
-5. **Highlight important points** - Mark significant events or thresholds
+- Start Y-axis at zero (usually) - Unless all values are in narrow range
+- Limit to 4-5 lines - More becomes unreadable
+- Use distinct line styles - Different colors, consider dashes for printing
+- Label lines directly - Not just in legend
+- Highlight important points - Mark significant events or thresholds
 
 ### Line Styling
 
@@ -139,11 +139,11 @@ Sometimes a simple number is better:
 
 ### Pie Chart Rules
 
-1. **Limit slices** - Maximum 5; combine small values into "Other"
-2. **Order by size** - Largest slice starting at 12 o'clock
-3. **Label directly** - Put labels on or near slices, not in legend
-4. **Show percentages** - Values help interpretation
-5. **Consider donut** - Center can show total or key metric
+- Limit slices - Maximum 5; combine small values into "Other"
+- Order by size - Largest slice starting at 12 o'clock
+- Label directly - Put labels on or near slices, not in legend
+- Show percentages - Values help interpretation
+- Consider donut - Center can show total or key metric
 
 ### Alternative: Simple Numbers
 
@@ -170,7 +170,7 @@ Purple:  #8b5cf6
 Yellow:  #eab308
 ```
 
-**Rules:**
+#### Rules:
 - Maximum 5-7 distinct colors
 - Avoid red/green together (colorblindness)
 - Test with colorblind simulator
@@ -203,7 +203,7 @@ Test your palette with:
 - Coblis Color Blindness Simulator
 - Chrome DevTools rendering settings
 
-**Safe combinations:**
+#### Safe combinations:
 - Blue + Orange (deuteranopia safe)
 - Blue + Yellow
 - Purple + Green + Orange
@@ -221,7 +221,7 @@ Test your palette with:
 
 ### Table Design Principles
 
-**1. Align numbers right**
+#### 1. Align numbers right
 ```
 Revenue
 ────────
@@ -230,7 +230,7 @@ Revenue
 $123,789
 ```
 
-**2. Align text left**
+#### 2. Align text left
 ```
 Product Name
 ────────────
@@ -239,13 +239,13 @@ Premium Widget
 Widget Pro Max
 ```
 
-**3. Use consistent precision**
+#### 3. Use consistent precision
 ```
 ✗  $1234, $567.89, $2.5k
 ✓  $1,234.00, $567.89, $2,500.00
 ```
 
-**4. Minimize borders**
+#### 4. Minimize borders
 ```css
 /* Light horizontal lines only */
 tr {
@@ -254,7 +254,7 @@ tr {
 /* No vertical borders, no heavy lines */
 ```
 
-**5. Generous padding**
+#### 5. Generous padding
 ```css
 td {
   padding: 12px 16px;
@@ -263,21 +263,21 @@ td {
 
 ### Table Patterns
 
-**Zebra striping:**
+#### 6. Zebra striping:
 ```css
 tr:nth-child(even) {
   background-color: #f9fafb;
 }
 ```
 
-**Hover highlighting:**
+#### 7. Hover highlighting:
 ```css
 tr:hover {
   background-color: #f3f4f6;
 }
 ```
 
-**Sortable columns:**
+#### 8. Sortable columns:
 ```html
 <th>
   Revenue
@@ -285,7 +285,7 @@ tr:hover {
 </th>
 ```
 
-**Sticky headers:**
+#### 9. Sticky headers:
 ```css
 thead th {
   position: sticky;
@@ -365,21 +365,21 @@ thead th {
 
 ### Annotation Patterns
 
-**Event markers:**
+#### Event markers:
 ```
                     ╭─── Product launch
 Revenue ──────────/│\──────────────
                     │
 ```
 
-**Threshold lines:**
+#### Threshold lines:
 ```
 Revenue ──────────────────────
 - - - - - Target: $50k - - - -
 ──────────────────────────────
 ```
 
-**Callout boxes:**
+#### Callout boxes:
 ```
 ┌──────────────────────────┐
 │ + Best month ever!      │

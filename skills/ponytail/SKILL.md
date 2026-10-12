@@ -17,13 +17,13 @@ written.
 
 Stop at the first rung that holds:
 
-1. **Does this need to exist at all?** Speculative need = skip it, say so in one line. (YAGNI)
-2. **Already in this codebase?** A helper, util, type, or pattern that already lives here → reuse it. Look before you write; re-implementing what's a few files over is the most common slop.
-3. **Stdlib does it?** Use it.
-4. **Native platform feature covers it?** `<input type="date">` over a picker lib, CSS over JS, DB constraint over app code.
-5. **Already-installed dependency, native feature, or available plugin solves it?** Use it. Never add a package (or a browser-driver lib like playwright/puppeteer) for what an installed dep, the platform, or an already-available plugin/running server already does.
-6. **Can it be one line?** One line.
-7. **Only then:** the minimum code that works.
+1. Does this need to exist at all? Speculative need = skip it, say so in one line. (YAGNI)
+2. Already in this codebase? A helper, util, type, or pattern that already lives here → reuse it. Look before you write; re-implementing what's a few files over is the most common slop.
+3. Stdlib does it? Use it.
+4. Native platform feature covers it? `<input type="date">` over a picker lib, CSS over JS, DB constraint over app code.
+5. Already-installed dependency, native feature, or available plugin solves it? Use it. Never add a package (or a browser-driver lib like playwright/puppeteer) for what an installed dep, the platform, or an already-available plugin/running server already does.
+6. Can it be one line? One line.
+7. Only then: the minimum code that works.
 
 The ladder is a reflex, not a research project — but it runs *after* you
 understand the problem, not instead of it. Read the task and the code it
@@ -31,7 +31,7 @@ touches first, trace the real flow end to end, then climb. Two rungs work →
 take the higher one and move on. The first minimal solution that works is the
 right one — once you actually know what the change has to touch.
 
-**Bug fix = root cause, not symptom.** A report names a symptom. Before you
+Bug fix = root cause, not symptom. A report names a symptom. Before you
 edit, rg every caller of the function you are about to touch. The minimal
 fix IS the root-cause fix: one guard in the shared function is a smaller
 diff than a guard in every caller — and patching only the path the ticket
@@ -68,7 +68,7 @@ Pattern: `[code] → skipped: [X], add when [Y].`
 | **full** | The ladder enforced. Stdlib and native first. Shortest diff, shortest explanation. Default. |
 | **ultra** | YAGNI extremist. Deletion before addition. Ship the one-liner and challenge the rest of the requirement in the same breath. |
 
-Default: **full**. Set per invocation: `/skill:ponytail lite` / `full` / `ultra`.
+Default: full. Set per invocation: `/skill:ponytail lite` / `full` / `ultra`.
 
 Example: "Add a cache for these API responses."
 - lite: "Done, cache added. FYI: `functools.lru_cache` covers this in one line if you'd rather not own a cache class."
@@ -77,9 +77,14 @@ Example: "Add a cache for these API responses."
 
 ## What never to cut
 
-Never cut: input validation at trust boundaries, error handling that prevents
-data loss, security measures, accessibility basics, anything explicitly
-requested. User insists on the full version → build it, no re-arguing.
+Never cut:
+- input validation at trust boundaries
+- error handling that prevents data loss
+- security measures
+- accessibility basics
+- anything explicitly requested.
+
+User insists on the full version → build it, no re-arguing.
 
 Never minimize understanding. The ladder shortens the solution, never the
 reading. Trace the whole thing first — every file the change touches, the

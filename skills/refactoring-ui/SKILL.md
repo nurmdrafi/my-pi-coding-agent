@@ -12,7 +12,7 @@ disable-model-invocation: true
 
 Audit-first system for **fixing existing UIs**. Sibling of `frontend-design` (greenfield). Apply when reviewing or polishing frontend code.
 
-**Core: design in grayscale first, add color last.** Great UI is systems, not talent — constrained scales for spacing, type, color, and shadows. Start with too much whitespace, then remove.
+Core: **design in grayscale first, add color last.** Great UI is systems, not talent — constrained scales for spacing, type, color, and shadows. Start with too much whitespace, then remove.
 
 ## 0. House style wins over this skill (hard rules from real failures)
 - Before redesigning ANY page, audit 2-3 sibling pages in the same app section and copy their EXACT layout idiom: wrapper padding, page width (full-width vs constrained), heading size/tag, card style object. The app's established pattern beats this skill's generic advice every time. A "better" design that breaks app consistency is a bug, not an improvement.
@@ -58,7 +58,7 @@ Rate the UI 0–10 on the principles below. State the score and the specific fix
 ## 2. Spacing & sizing — relationships, not arbitrary values
 - Scale: **4, 8, 16, 24, 32, 48, 64** (`p-1 p-2 p-4 p-6 p-8 p-12 p-16`).
 - Start with too much whitespace, then remove — you'll almost never remove enough.
-- Space **between** groups > space **within** groups.
+- Space between groups > space within groups.
 - Constrain text to 45–75 chars (`max-w-prose` ~65ch); forms 300–500px (`max-w-md`). Full-width is almost never right.
 
 ## 3. Typography — modular scale, two families max

@@ -5,35 +5,35 @@ SKILL.md body.
 
 ## Acceptance & artifacts
 
-1. **Style-load ≠ a rendered map.** `isStyleLoaded()` + logo-visible + no-page-errors
+- Style-load ≠ a rendered map. `isStyleLoaded()` + logo-visible + no-page-errors
    can ALL pass while the canvas is white (tiles never painted). A render claim
    needs a render gate: `idle` event (tiles parsed by the worker and painted) or
    a pixel sample. If the suite can pass on a white map, it does not verify
    rendering — say so, don't report "all green".
-2. **Port the sibling repo's branding patterns verbatim before authoring.** When
+- Port the sibling repo's branding patterns verbatim before authoring. When
    an upstream/sibling library already solved the exact UI contract (attribution
    dedupe via MutationObserver content-replace, logo size/margins, attribution
    expansion, control stacking), copy that implementation — inventing a different mechanism
    (e.g. `customAttribution` where the style also carries source attributions)
    ships duplicate copyright text and size/position mismatches on first headed
    review. Read the sibling's control components and CSS before writing a line.
-3. **Preserve run artifacts the maintainer traces by hand.** Playwright empties
+- Preserve run artifacts the maintainer traces by hand. Playwright empties
    `outputDir` at every run start — a maintainer who checks `test-results/`
    afterwards finds it wiped and cannot distinguish pass from never-ran. Use a
    timestamped `outputDir` (or copy artifacts to a retained `report/`) whenever
    a human reviews results.
-4. **Headless-green is not acceptance for visual work.** Before reporting "all
+- Headless-green is not acceptance for visual work. Before reporting "all
    pass" on anything with visual requirements (branding, rendering, control
    layout), run the headed review flow or capture a per-case screenshot set, and
    point the maintainer at the artifacts — the maintainer must never have to
    click through each case to discover what actually failed.
-5. **Set acceptance criteria first when a reference implementation exists** —
+- Set acceptance criteria first when a reference implementation exists —
    derive them from the sibling repo's shipped behavior (component code + CSS +
    its own e2e assertions), get them acknowledged, then implement.
 
 ## Timeout budgeting (measure, then set once)
 
-- ONE global `timeout` in `playwright.config.ts`, set from **measurement**, not dogma:
+- ONE global `timeout` in `playwright.config.ts`, set from measurement, not dogma:
   run one representative spec, note phase costs (server start, load-to-app-ready, each
   interaction), then budget.
 - Light pages: 10 s is plenty. Heavy pages — real network assets, CPU-rendered graphics
@@ -45,7 +45,7 @@ SKILL.md body.
   `expect.poll(..., { timeout })`.
 - Budget setup separately from assertions: a full-load `goto` can eat the whole per-test
   budget before the first assertion runs.
-- **A flake is a race, not a budget problem** — never bump timeouts or loosen polls in
+- A flake is a race, not a budget problem — never bump timeouts or loosen polls in
   response; root-cause the registration/consumption race.
 - User repeats a discipline correction → encode it in config immediately; a runtime
   promise is not a fix (one topic took four corrections before landing in config).

@@ -18,7 +18,7 @@ presence-only middleware cookie checks, and post-login side-effect chains
 
 ## Migration sequence
 
-**Phase 0 — inventory (before writing any new code)**
+### Phase 0 — inventory (before writing any new code)
 
 ```bash
 # token storage keys and readers
@@ -34,7 +34,7 @@ rg -n "cookies.get" proxy.ts middleware.ts
 Record: every reader of the stored token/user, every writer, every redirect
 call site, the logout path, and the 401 handler.
 
-**Phase 1 — build alongside (zero user impact)**
+### Phase 1 — build alongside (zero user impact)
 
 Add the full new stack (sequence in SKILL.md steps 1–4) without touching
 legacy: `lib/auth/options.ts` + route handler, session-token plumbing, `AuthProvider`,
@@ -43,17 +43,17 @@ work. The base query change is the only shared piece — land it behind a
 feature flag or a separate exported slice if the legacy token must keep working
 during the window.
 
-**Phase 2 — cut over (one surface per deploy)**
+### Phase 2 — cut over (one surface per deploy)
 
 Order minimizes broken windows:
 
-1. **Login form** → `signIn("credentials", ...)` + `hydrateSessionToken()` + redirect chain. Both cookies exist now; either authenticates.
-2. **Route guard** → `proxy.ts` rewrite with `getToken()`; delete the presence check. Keep the legacy cookie readable (don't clear it) so already-logged-in sessions survive until natural expiry.
-3. **API base query** → read `getSessionToken()`, drop the legacy storage read. Existing sessions without a NextAuth cookie get the 401 ladder → re-login once. Acceptable; announce if needed.
-4. **Logout** → `signOut({ redirect: true, callbackUrl })` + cleanup helper.
-5. **Register / forgot-password / OTP** → rewire submit handlers onto the step machines (`references/otp-flows.md`); endpoints themselves usually don't change.
+1. Login form → `signIn("credentials", ...)` + `hydrateSessionToken()` + redirect chain. Both cookies exist now; either authenticates.
+2. Route guard → `proxy.ts` rewrite with `getToken()`; delete the presence check. Keep the legacy cookie readable (don't clear it) so already-logged-in sessions survive until natural expiry.
+3. API base query → read `getSessionToken()`, drop the legacy storage read. Existing sessions without a NextAuth cookie get the 401 ladder → re-login once. Acceptable; announce if needed.
+4. Logout → `signOut({ redirect: true, callbackUrl })` + cleanup helper.
+5. Register / forgot-password / OTP → rewire submit handlers onto the step machines (`references/otp-flows.md`); endpoints themselves usually don't change.
 
-**Phase 3 — delete legacy (do not leave it dormant)**
+### Phase 3 — delete legacy (do not leave it dormant)
 
 Remove everything Phase 0 recorded: storage keys + crypto helpers, internal
 cookie routes, `setAuthData`/`clearAuthData`-style helpers, side-effect blocks
@@ -64,7 +64,7 @@ that `ignoreBuildErrors` silently hides), and run `npx tsc --noEmit` — the
 error count must not grow versus baseline. Dormant legacy auth code is the #1
 source of "ghost sessions" reported months later.
 
-**Phase 4 — parity verification (all must pass)**
+### Phase 4 — parity verification (all must pass)
 
 - [ ] Login → redirect lands without refresh, on slow network too (throttle in devtools)
 - [ ] Wrong password → backend message surfaces, button re-enables

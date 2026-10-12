@@ -20,10 +20,10 @@ Read only the reference the current phase needs — not all three.
 1. Ask (once) for the skill's purpose and trigger phrases if not obvious from the request.
 2. `ls ~/.pi/agent/skills/` — reuse or extend an existing skill instead of creating a near-duplicate.
    Overlapping skills fragment triggering; prefer editing the older skill.
-3. **Creating**: write `<skill-dir>/SKILL.md` following the references above; place bundled files per
+3. Creating: write `<skill-dir>/SKILL.md` following the references above; place bundled files per
    the layout in `references/skill-spec.md` — docs in `references/`, executables in `scripts/`, static
    data in `assets/`.
-   **Modifying**: preserve the original `name` and directory name — never version-suffix (`-v2`);
+   Modifying: preserve the original `name` and directory name — never version-suffix (`-v2`);
    keep the description's trigger scope unless the user asks to change it; after moving or renaming
    any file, rg the whole skill dir for references to it, not just SKILL.md.
 4. Anti-pattern gate: sweep the draft per `references/anti-patterns.md` — run its rg signatures over

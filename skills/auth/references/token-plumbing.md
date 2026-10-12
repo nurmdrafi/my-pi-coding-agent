@@ -2,9 +2,9 @@
 
 Three layers, one token:
 
-1. **Server** — session resolved in layout, passed to `SessionProvider`.
-2. **React tree** — `useSession()` for UI concerns (header, gated widgets).
-3. **Non-React** — module holder read synchronously per API request.
+- Server — session resolved in layout, passed to `SessionProvider`.
+- React tree — `useSession()` for UI concerns (header, gated widgets).
+- Non-React — module holder read synchronously per API request.
 
 ## `lib/auth/session.ts`
 

@@ -48,13 +48,13 @@ export const authApi = apiSlice.injectEndpoints({
 
 Step machine state: `"initial" | "password" | "otp" | "registration"`.
 
-1. **Identifier submit** → `checkUserExistence({ mobile })`:
+1. Identifier submit → `checkUserExistence({ mobile })`:
    - `http_code === 200` → existing user → step `"password"` (normal credentials login)
    - `http_code === 404` → new user → **not an error**; fall through to send OTP
    - other → `toast.error(result.message)`
-2. **Send OTP** (new users): `sendOtp({ resend: 0, storeId, mobile, eventType: '<signup otp event>', rtoken })` → step `"otp"`. Attach a CAPTCHA token if the backend requires one; abort silently if the challenge fails.
-3. **Verify OTP**: `verifyOtp({ mobile, otp, storeId })` → hold the OTP in state → step `"registration"`.
-4. **Registration form** → `signup({ ...accountFields, mobile, otp })` → then immediately:
+2. Send OTP (new users): `sendOtp({ resend: 0, storeId, mobile, eventType: '<signup otp event>', rtoken })` → step `"otp"`. Attach a CAPTCHA token if the backend requires one; abort silently if the challenge fails.
+3. Verify OTP: `verifyOtp({ mobile, otp, storeId })` → hold the OTP in state → step `"registration"`.
+4. Registration form → `signup({ ...accountFields, mobile, otp })` → then immediately:
    `signIn("credentials", { mobile, password, redirect: false })` → `hydrateSessionToken()` → redirect chain. No separate "please log in" step.
 
 Resend OTP reuses step 2 with `eventType: '<account edit otp event>'` and a visible

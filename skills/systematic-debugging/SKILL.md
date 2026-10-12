@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## Overview
 
-**Core principle:** Find the root cause before attempting fixes — a symptom fix leaves the cause in place, which is why the same error keeps coming back. Proposing fixes before Phase 1 completes is guessing.
+Core principle: Find the root cause before attempting fixes — a symptom fix leaves the cause in place, which is why the same error keeps coming back. Proposing fixes before Phase 1 completes is guessing.
 
 ## When to Use
 
@@ -20,7 +20,7 @@ Use for any technical issue:
 - Build failures
 - Integration issues
 
-**Reach for this especially when:**
+Reach for this especially when:
 - Under time pressure (emergencies make guessing tempting)
 - "Just one quick fix" seems obvious
 - You've already tried multiple fixes
@@ -29,7 +29,7 @@ Use for any technical issue:
 
 ## The Error-Class Loop
 
-When the **same class** of error appears a second time (TS2345 null-check,
+When the same class of error appears a second time (TS2345 null-check,
 TS2304 cannot-find-name, a test importing a nonexistent module, the same
 build error on another file): stop instance-patching. An error that survives
 two fixes means the fixes targeted instances, not the cause.
@@ -41,7 +41,7 @@ two fixes means the fixes targeted instances, not the cause.
 3. Run the narrow check once (`tsc --noEmit` / the single failing test file)
    and confirm zero occurrences — not one-turn-per-instance.
 
-**Don't skip when:**
+Don't skip when:
 - Issue seems simple (simple bugs have root causes too)
 - You're in a hurry (rushing guarantees rework)
 - Manager wants it fixed NOW (systematic is faster than thrashing)
@@ -55,19 +55,19 @@ evidence the next one consumes.
 
 **BEFORE attempting ANY fix:**
 
-1. **Read Error Messages Carefully**
+1. Read Error Messages Carefully
    - Don't skip past errors or warnings
    - They often contain the exact solution
    - Read stack traces completely
    - Note line numbers, file paths, error codes
 
-2. **Reproduce Consistently**
+2. Reproduce Consistently
    - Can you trigger it reliably?
    - What are the exact steps?
    - Does it happen every time?
    - If not reproducible → gather more data, don't guess
 
-3. **Check Recent Changes**
+3. Check Recent Changes
    - What changed that could cause this?
    - Git diff, recent commits
    - New dependencies, config changes
@@ -76,17 +76,17 @@ evidence the next one consumes.
      current HEAD before acting; the claim may already be fixed, or that fix
      may itself be the source of the bug you're now chasing
 
-4. **Gather Evidence in Multi-Component Systems**
+4. Gather Evidence in Multi-Component Systems
 
    **WHEN system has multiple components (CI → build → signing, API → service → database):** add diagnostic instrumentation at each component boundary and run once to localize the failing layer — the full technique, multi-layer example, and the intermittent external-API throttle-counter case are in `references/evidence-gathering.md`.
 
-5. **Trace Data Flow**
+5. Trace Data Flow
 
    **WHEN error is deep in call stack:**
 
    See `references/root-cause-tracing.md` for the complete backward tracing technique.
 
-   **Quick version:**
+   Quick version:
    - Where does bad value originate?
    - What called this with bad value?
    - Keep tracing up until you find the source
@@ -94,9 +94,9 @@ evidence the next one consumes.
 
 ### Phase 2: Pattern Analysis
 
-**Find the pattern before fixing:**
+Find the pattern before fixing:
 
-1. **Find Working Examples**
+1. Find Working Examples
    - Locate similar working code in same codebase
    - What works that's similar to what's broken?
    - For wrong/null API data: read a sibling consumer of the same
@@ -104,41 +104,41 @@ evidence the next one consumes.
      actual post-unwrap shape settles it in one glance; variable names like
      `res.data` lie (`.unwrap()` already returns the body)
 
-2. **Compare Against References**
+2. Compare Against References
    - If implementing pattern, read reference implementation COMPLETELY
    - Don't skim - read every line
    - Understand the pattern fully before applying
 
-3. **Identify Differences**
+3. Identify Differences
    - What's different between working and broken?
    - List every difference, however small
    - Don't assume "that can't matter"
 
-4. **Understand Dependencies**
+4. Understand Dependencies
    - What other components does this need?
    - What settings, config, environment?
    - What assumptions does it make?
 
 ### Phase 3: Hypothesis and Testing
 
-**Scientific method:**
+Scientific method:
 
-1. **Form Single Hypothesis**
+1. Form Single Hypothesis
    - State clearly: "I think X is the root cause because Y"
    - Write it down
    - Be specific, not vague
 
-2. **Test Minimally**
+2. Test Minimally
    - Make the SMALLEST possible change to test hypothesis
    - One variable at a time
    - Don't fix multiple things at once
 
-3. **Verify Before Continuing**
+3. Verify Before Continuing
    - Did it work? Yes → Phase 4
    - Didn't work? Form NEW hypothesis
    - DON'T add more fixes on top
 
-4. **When You Don't Know**
+4. When You Don't Know
    - Say "I don't understand X"
    - Don't pretend to know
    - Ask for help
@@ -146,9 +146,9 @@ evidence the next one consumes.
 
 ### Phase 4: Implementation
 
-**Fix the root cause, not the symptom:**
+Fix the root cause, not the symptom:
 
-1. **Create Failing Test Case**
+1. Create Failing Test Case
    - Simplest possible reproduction
    - Automated test if possible
    - One-off test script if no framework
@@ -157,46 +157,46 @@ evidence the next one consumes.
      confirm the test goes red — a regression test that has never failed
      proves nothing about detection
 
-2. **Implement Single Fix**
+2. Implement Single Fix
    - Address the root cause identified
    - ONE change at a time
    - No "while I'm here" improvements
    - No bundled refactoring
 
-3. **Verify Fix**
+3. Verify Fix
    - Test passes now?
    - No other tests broken?
    - Issue actually resolved?
    - Original failing command re-run end-to-end and green? Failures stack —
      one root cause masks the next, so a green on the fixed layer alone is
      not done
-   - **Adjacent-path check** (fixes themselves are the most common source of
+   - Adjacent-path check (fixes themselves are the most common source of
      regressions): enumerate every other path the touched guard/effect/state
      participates in and verify each still behaves. A guard that closes the
      reported hole must neither skip a legitimate run nor fire when it should
      stay silent; re-entered blocks must not stack handlers/listeners
      (remove-then-add or a flag the right event resets).
 
-4. **If Fix Doesn't Work**
+4. If Fix Doesn't Work
    - STOP
    - Count: How many fixes have you tried?
    - If < 3: Return to Phase 1, re-analyze with new information
    - **If ≥ 3: STOP and question the architecture (step 5 below)**
    - DON'T attempt Fix #4 without architectural discussion
 
-5. **If 3+ Fixes Failed: Question Architecture**
+5. If 3+ Fixes Failed: Question Architecture
 
-   **Pattern indicating architectural problem:**
+   Pattern indicating architectural problem:
    - Each fix reveals new shared state/coupling/problem in different place
    - Fixes require "massive refactoring" to implement
    - Each fix creates new symptoms elsewhere
 
-   **STOP and question fundamentals:**
+   STOP and question fundamentals:
    - Is this pattern fundamentally sound?
    - Are we "sticking with it through sheer inertia"?
    - Should we refactor architecture vs. continue fixing symptoms?
 
-   **Discuss with your human partner before attempting more fixes**
+   Discuss with your human partner before attempting more fixes
 
    This is NOT a failed hypothesis - this is a wrong architecture.
 
@@ -226,14 +226,14 @@ If systematic investigation reveals issue is truly environmental, timing-depende
 3. Implement appropriate handling (retry, timeout, error message)
 4. Add monitoring/logging for future investigation
 
-**But:** 95% of "no root cause" cases are incomplete investigation.
+But: 95% of "no root cause" cases are incomplete investigation.
 
 ## Supporting Techniques
 
 These techniques are part of systematic debugging and available in `references/`:
 
-- **`references/root-cause-tracing.md`** - Trace bugs backward through call stack to find original trigger
-- **`references/defense-in-depth.md`** - Add validation at multiple layers after finding root cause
-- **`references/condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
-- **`references/evidence-gathering.md`** - Multi-component instrumentation technique and the external-API throttle-counter case
-- **`references/red-flags.md`** - Red-flag thoughts, human-partner signals, rationalization→reality table
+- `references/root-cause-tracing.md` - Trace bugs backward through call stack to find original trigger
+- `references/defense-in-depth.md` - Add validation at multiple layers after finding root cause
+- `references/condition-based-waiting.md` - Replace arbitrary timeouts with condition polling
+- `references/evidence-gathering.md` - Multi-component instrumentation technique and the external-API throttle-counter case
+- `references/red-flags.md` - Red-flag thoughts, human-partner signals, rationalization→reality table

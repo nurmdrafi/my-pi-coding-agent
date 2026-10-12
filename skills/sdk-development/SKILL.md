@@ -13,7 +13,7 @@ built artifact.
 
 ## Archetypes (detect first)
 
-1. **Generated SDK** — OpenAPI spec via codegen (oapi-codegen / openapi-ts). Two layers, separate:
+- Generated SDK — OpenAPI spec via codegen (oapi-codegen / openapi-ts). Two layers, separate:
    - `gen/` / `*.gen.ts` — auto-generated, **never hand-edit**; change the spec, regenerate,
      re-apply scripted post-fixes (e.g. `float32`→`float64`, casing-collision field drops).
    - `client/` / `src/lib/` — hand-written: simplified request types, client-side validation
@@ -23,51 +23,53 @@ built artifact.
    - API drift lives in a "Known API drift — intentional, do not fix" table in CONTRIBUTING.md;
      absorb it in the hand-written layer (tolerant `UnmarshalJSON`/zod for number-or-string
      fields, documented auth ambiguities like `api_key` vs `key`).
-2. **Hand-written library** (component lib, plugin, CLI) — no codegen layer; tests and docs carry
+- Hand-written library (component lib, plugin, CLI) — no codegen layer; tests and docs carry
    the safety net instead.
 
 ## Package surface (npm)
 
 - Define `exports` in package.json (`.` import/require conditions, plus subpaths like
-  `./styles`). List `files`. Peer-deps for host frameworks (`react`, `react-dom`).
+  `./styles`).
+- List `files`.
+- Peer-deps for host frameworks (`react`, `react-dom`).
 - Verify the surface mechanically (pack smoke below), never by eyeballing config — the exports
   map is what consumers resolve, and typos are invisible until install.
 
 ### Bundle externals
 
-Externals come from the **build config / emitted output**, not from scanning top-of-file
+Externals come from the build config / emitted output, not from scanning top-of-file
 imports — a scan once missed `maplibre-gl` because it was imported mid-file, and the offline
 smoke sandbox then failed on resolution. Grep the built `dist/` entry for `require(` / `from`
 specifiers, or read the bundler config.
 
 ## Testing
 
-- **SDKs: real API, real responses.** No mocks, no smoke-only tests. Required env
+- SDKs: real API, real responses. No mocks, no smoke-only tests. Required env
   (e.g. `API_KEY`) read properly — tests fail loudly when missing, never skip silently.
-- **Native test runners** — `node:test`, `go test`. No heavy test-framework dependency.
+- Native test runners — `node:test`, `go test`. No heavy test-framework dependency.
 - Table-driven per endpoint/method: happy path, each validation error, non-2xx and timeout
   mapped to SDK error types distinguishable via `errors.As` / typed catches.
-- **Coverage:** ≥80%, excluding auto-generated files — coverage *and* lint configs both
+- Coverage: ≥80%, excluding auto-generated files — coverage *and* lint configs both
   exclude `gen/` (`.golangci.yml` paths, vitest coverage exclude). npm: `vitest run
   --coverage` wired into `npm test` itself, so every run reports coverage, not just CI;
   Go: `make cover` in CI with `go tool cover -func=coverage.out` as the source of truth.
-- **Completeness rule:** every public API/method ships at least one test — "do the tests
+- Completeness rule: every public API/method ships at least one test — "do the tests
   cover all APIs we provide?" is a pre-release question, answer it before tagging.
-- **Test layout:** per-module test files mirroring source (`client_test.go`,
+- Test layout: per-module test files mirroring source (`client_test.go`,
   `geocoding_test.go`, `routing_test.go`, `search_test.go`, `integration_test.go`, …) plus
   `helpers_test.go` for shared fixtures; unit tests run without env vars where possible,
   integration tests behind the real env keys.
-- **Plugins/CLIs:** smoke-test a real local install (`claude --plugin-dir <dir>`, packed tarball,
+- Plugins/CLIs: smoke-test a real local install (`claude --plugin-dir <dir>`, packed tarball,
   or `go run` from a consumer repo); store reports under `docs/smoke-tests/` with findings and
   token cost so runs stay comparable across versions.
-- **Consumer testing (npm): tarball method, never `npm link`** (symlinks cause phantom-symbol
+- Consumer testing (npm): tarball method, never `npm link` (symlinks cause phantom-symbol
   bugs — two React/peer copies):
   ```bash
   npm pack                      # builds <pkg>-<version>.tgz
   cd ../consumer-app && npm install ../<pkg>/<pkg>-<version>.tgz
   ```
   Alternative: `yalc publish` + `yalc add <pkg>`. Exercise the core feature in the real app.
-- **Regression rule:** the previous published version is the behavior contract. When something
+- Regression rule: the previous published version is the behavior contract. When something
   breaks after a bump (asset, rendering, export), diff against how the previous version did it
   and match — don't invent new behavior mid-version.
 
@@ -86,12 +88,12 @@ typecheck → lint → unit → browser-mode (npm) → e2e vs dist → README ex
    don't bypass. Anything gated/deferred gets a tracked issue, not a silent skip.
 2. README validation: extract every fenced example, compile against the real package
    (`go vet` scratch program / `tsc --noEmit`). An example that doesn't build is a bug.
-   Documented examples are **executable specs** — test each verbatim as an e2e case; docs and
+   Documented examples are executable specs — test each verbatim as an e2e case; docs and
    library must move together. No local toolchain? Run through Docker (`docker run --rm -v
    "$PWD":/app -w /app golang:… go vet …`) — never skip it.
 3. `npx publint` (npm) — fix exports/types/package.json warnings.
 4. Consumer check: packed tarball installed in a real app, core feature exercised. The e2e host
-   app must import **every published entry point** (main, `./styles`, subpaths) — not just the
+   app must import every published entry point (main, `./styles`, subpaths) — not just the
    main import; a branding element once tested as "missing" because the host never imported the
    styles export.
 5. Dependency hygiene if touched: exact pins (no `^`), committed `.npmrc`,
@@ -126,11 +128,11 @@ protocol): `references/ci-and-upgrades.md`.
 
 ## R&D and comparison workflow
 
-- **New feature / R&D on the library surface:** document first (README entry), then implement
+- New feature / R&D on the library surface: document first (README entry), then implement
   against the test pyramid — unit mock → browser spec → e2e case → pack smoke — so every
   feature lands with its executable spec. Spike R&D in a branch, but the merge gate is the
   full pyramid, never a demo.
-- **Comparing with other packages:** read the comparison target's docs AND its shipped dist —
+- Comparing with other packages: read the comparison target's docs AND its shipped dist —
   compare API surface, exports, peer-dep handling, event-payload contracts. Comparing from
   docs/source surface alone once missed mid-file externals and behavior deltas. When adopting
   a pattern, note the delta in README/CHANGELOG.

@@ -56,7 +56,8 @@ const DeckGLOverlay = (props: MapboxOverlayProps) => {
 ```
 
 - Paths: `PathLayer` with `PathStyleExtension({ dashed })`. Markers: `IconLayer` / `ScatterplotLayer`.
-- Performance rules: never `setState` inside `onHover`/view-state callbacks — they fire per frame and rerender the tree; throttle them (the dashboards use `useThrottle(popupData, 250)`). Recreating layer instances each render is fine (deck diffs props), but appending live data must not rebuild the whole buffer — append into a stable structure or emit one layer per chunk.
+- Performance rules: never `setState` inside `onHover`/view-state callbacks — they fire per frame and rerender the tree; throttle them (the dashboards use `useThrottle(popupData, 250)`).
+- Recreating layer instances each render is fine (deck diffs props), but appending live data must not rebuild the whole buffer — append into a stable structure or emit one layer per chunk.
 - Existing layers to reuse before writing new ones (marker/trace/boundary layers) — search the repo for its layer components first.
 - The dashboards share one template: `components/Map/DeckGLMap.jsx` (Map shell, `MAP.STYLES[0]`, throttled tooltip) + `OverLayers.jsx` (the DeckGLOverlay above — `useControl` imported from `react-bkoi-gl`) + `Map/Layers/` composite layer classes (`TraceLayer`, `RouteLayer`…), all fed from a Redux slice. Before writing a new one, diff against a sibling dashboard — they are forks of the same shape.
 
@@ -110,13 +111,13 @@ For anything beyond this shape, follow the github-actions skill (SHA pinning, le
 
 ## Checklist before writing map code
 
-1. Does an equivalent Layer/hook/util already exist in this repo (or a sibling/fork repo)? Reuse first — sibling dashboards are forks of the same template.
-2. Barikoi repos: import map code from `react-bkoi-gl`/`bkoi-gl` only (never `maplibre-gl` directly); style key goes in the `?key=` query param; check a sibling dashboard's DeckGLMap template before starting fresh.
-2. Coord order `[lng, lat]`. Validate before flyTo/bounds.
-3. Guard `queryRenderedFeatures` / any style-dependent call.
-4. Real-time: batch messages, LRU-cap markers, guard subscriptions, cleanup on unmount.
-5. Shared map state in a store slice — map components subscribe, don't own.
-6. Map wrapper library work: framework apps install the fresh packed tarball (never link); every README claim covered by an e2e case; engine majors = silent render failures — run the README matrix first.
-7. Draw/edit flows: idempotent polygon-sync upsert covering all three triggers (`references/known-pitfalls.md` #5); guarded geometry loads with failure-path clearing (`references/known-pitfalls.md` #6); resets touch every derived field; markers capture `dragend` and draw-clears propagate to parent state (`references/known-pitfalls.md` #7–8).
-8. CI touched: secrets step-scoped, actions SHA-pinned, least-privilege permissions (§11).
-9. No provider key literal in source or a bundled config (`app.config.ts` etc.) — keys ride env vars; anything `NEXT_PUBLIC_*` or client-imported is public by definition. Server-side Barikoi/routing calls go through an API proxy, never a client-held key.
+- Does an equivalent Layer/hook/util already exist in this repo (or a sibling/fork repo)? Reuse first — sibling dashboards are forks of the same template.
+- Barikoi repos: import map code from `react-bkoi-gl`/`bkoi-gl` only (never `maplibre-gl` directly); style key goes in the `?key=` query param; check a sibling dashboard's DeckGLMap template before starting fresh.
+- Coord order `[lng, lat]`. Validate before flyTo/bounds.
+- Guard `queryRenderedFeatures` / any style-dependent call.
+- Real-time: batch messages, LRU-cap markers, guard subscriptions, cleanup on unmount.
+- Shared map state in a store slice — map components subscribe, don't own.
+- Map wrapper library work: framework apps install the fresh packed tarball (never link); every README claim covered by an e2e case; engine majors = silent render failures — run the README matrix first.
+- Draw/edit flows: idempotent polygon-sync upsert covering all three triggers (`references/known-pitfalls.md` #5); guarded geometry loads with failure-path clearing (`references/known-pitfalls.md` #6); resets touch every derived field; markers capture `dragend` and draw-clears propagate to parent state (`references/known-pitfalls.md` #7–8).
+- CI touched: secrets step-scoped, actions SHA-pinned, least-privilege permissions (§11).
+- No provider key literal in source or a bundled config (`app.config.ts` etc.) — keys ride env vars; anything `NEXT_PUBLIC_*` or client-imported is public by definition. Server-side Barikoi/routing calls go through an API proxy, never a client-held key.

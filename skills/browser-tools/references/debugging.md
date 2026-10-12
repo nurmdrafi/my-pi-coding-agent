@@ -16,14 +16,14 @@ rerunning the suite — blind reruns reproduce the same freeze.
 
 ## Procedure
 
-0. **Consume runner artifacts first**: the failure screenshot/trace/report and
+0. Consume runner artifacts first: the failure screenshot/trace/report and
    saved run logs usually answer the question with zero execution (see
    `playwright-tester` "Debugging a FAIL"). When the user asks for a screenshot
    of a failing case, prefer the runner's failure screenshot over a live one.
    Go live only when the artifacts don't explain the failure.
 1. Start the dev/test server in the background (e.g. `npm run e2e:serve &`).
 2. `{baseDir}/scripts/browser-start.js` → `{baseDir}/scripts/browser-nav.js <failing case URL>`.
-3. **Install the error collector immediately after navigation** (snippet
+3. Install the error collector immediately after navigation (snippet
    below — idempotent, survives this tab), then run the standard recon eval
    (`references/efficiency.md`) as the baseline.
 4. Replay the spec's steps with `browser-eval.js` IIFEs — query the DOM, read
@@ -65,12 +65,12 @@ For requests made before the collector, read
 
 ## Pitfalls seen in practice
 
-- **Blank page, no error overlay**: read trapped page errors — if the harness
+- Blank page, no error overlay: read trapped page errors — if the harness
   exposes a page-error recorder (`window.__pageErrors__`), read it; otherwise
   install `window.addEventListener('error'/'unhandledrejection')` collectors
   via an init script, reload, then read. Swallowed render errors are invisible
   otherwise.
-- **Bare-specifier imports don't resolve in page context** — `browser-eval`
+- Bare-specifier imports don't resolve in page context — `browser-eval`
   runs in the page, not a bundler. Use IIFEs over already-loaded globals, or
   probe via the harness.
 

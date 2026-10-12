@@ -25,14 +25,16 @@ the agent know exactly when to pick this one?
 ## Body guidelines
 
 - Under 500 lines and ideally <5000 tokens — loaded fully once activated. Three-level loading:
-  1. metadata (name + description) — always in context; 2. SKILL.md body — on trigger;
+  1. metadata (name + description) — always in context
+  2. SKILL.md body — on trigger
   3. bundled resources — on demand, scripts can run without loading at all.
 - Add only context the agent doesn't already have — it knows how to code, common formats, and
   libraries. Challenge every paragraph ("does this need explaining?"); every filler token
   pushes out the user's request.
-- Match freedom to fragility: creative/analysis work → goal-level steps; established patterns →
-  preferred shape with room to adapt; fragile operations (migrations, deploys, publish) →
-  exact commands ("run exactly this, do not modify").
+- Match freedom to fragility:
+  - creative/analysis work → goal-level steps
+  - established patterns → preferred shape with room to adapt
+  - fragile operations (migrations, deploys, publish) → exact commands ("run exactly this, do not modify").
 - Multi-step operations → numbered steps (sequences are followed far better than prose);
   branching tasks → explicit conditional routing ("creating? §A; editing? §B"), with large
   workflows in their own reference file.
@@ -41,11 +43,12 @@ the agent know exactly when to pick this one?
 - Sections: concise instructions, worked examples (commands/code), common pitfalls/checklist.
 - Progressive disclosure: keep the main SKILL.md tight (table of contents, not encyclopedia);
   push long reference material into `references/*.md` files linked with **relative paths one
-  level deep** from the skill root (SKILL.md → A → B chains get partially read). Give a
-  reference file over ~100 lines a table of contents. When a skill spans multiple
-  domains/frameworks, split by variant (`references/aws.md`, `references/gcp.md`, ...) so only
-  the relevant file is read. Name files descriptively (`form-validation.md`, not `doc2.md`) —
-  filenames drive what the agent chooses to read.
+  level deep** from the skill root (SKILL.md → A → B chains get partially read).
+- Give a reference file over ~100 lines a table of contents.
+- When a skill spans multiple domains/frameworks, split by variant (`references/aws.md`,
+  `references/gcp.md`, ...) so only the relevant file is read.
+- Name files descriptively (`form-validation.md`, not `doc2.md`) — filenames drive what the
+  agent chooses to read.
 - `scripts/` for deterministic/repetitive code, `assets/` for files used in output (templates,
   icons, fonts). Helper commands go in `scripts/`; script security rules live in `anti-patterns.md`.
 - Prose only unless a script is truly needed; if a skill ships scripts, they must be self-contained.
@@ -54,7 +57,7 @@ the agent know exactly when to pick this one?
 ## Writing style
 
 - Imperative form ("Extract…", "Run…"), not "you should…".
-- Explain **why** an instruction matters instead of stacking MUST/ALWAYS — models generalize
+- Explain why an instruction matters instead of stacking MUST/ALWAYS — models generalize
   from reasoning better than from rigid rules. Heavy caps-lock MUSTs are a yellow flag.
 - For output formats, give an exact template; for conventions, give short Input → Output examples.
 - Generalize: a skill runs across many unseen prompts. Don't overfit instructions to the current

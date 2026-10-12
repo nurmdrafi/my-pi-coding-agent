@@ -30,9 +30,9 @@ Launch Chrome with remote debugging on `:9222`. Chrome is auto-detected per OS
 `CHROME_PATH` if detection fails.
 
 Fresh vs `--profile`:
-- **Fresh (default)** — clean, reproducible state; use whenever the task
+- Fresh (default) — clean, reproducible state; use whenever the task
   doesn't need the developer's logins.
-- **`--profile`** — only when the target requires the user's auth/cookies.
+- `--profile` — only when the target requires the user's auth/cookies.
   Costs: extensions, service workers, stale caches and other profile state can
   interfere. Never assert through `--profile` state when reproducibility
   matters — record a `storageState` instead and feed it to Playwright.

@@ -15,8 +15,8 @@ If you catch yourself thinking:
 - "Pattern says X but I'll adapt it differently"
 - "Here are the main problems: [lists fixes without investigation]"
 - Proposing solutions before tracing data flow
-- **"One more fix attempt" (when already tried 2+)**
-- **Each fix reveals new problem in different place**
+- "One more fix attempt" (when already tried 2+)
+- Each fix reveals new problem in different place
 
 **ALL of these mean: STOP. Return to Phase 1.**
 
@@ -24,7 +24,7 @@ If you catch yourself thinking:
 
 ## your human partner's Signals You're Doing It Wrong
 
-**Watch for these redirections:**
+Watch for these redirections:
 - "Is that not happening?" - You assumed without verifying
 - "Will it show us...?" - You should have added evidence gathering
 - "Stop guessing" - You're proposing fixes without understanding

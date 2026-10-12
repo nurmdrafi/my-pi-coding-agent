@@ -15,21 +15,21 @@ disable-model-invocation: true
 
 ## Modes — pick before scaffolding
 
-1. **CDP attach (default)**: live dev server + developer's Chrome on `:9222`, real
+- CDP attach (default): live dev server + developer's Chrome on `:9222`, real
    logged-in session, `workers: 1`. For stress runs, update-flow crosschecks, live debugging.
-2. **CI / isolated fallback**: fresh launch, auth via `storageState` — record once
+- CI / isolated fallback: fresh launch, auth via `storageState` — record once
    (`context.storageState({ path: 'e2e/.auth/state.json' })`), then
    `use: { storageState: … }`. Parallel workers fine here — `workers: 1` is a
    shared-session constraint. `webServer` serves the production build,
    `reuseExistingServer: !process.env.CI`. The CDP-attach fixture never ships to CI;
    guard with `process.env.CI` so one config serves both modes.
-3. **Boundary with component tests**: component-level behavior against repo source
+- Boundary with component tests: component-level behavior against repo source
    (rendering, props, events) belongs in Vitest browser mode; whole-app/user flows and
-   anything against the **built artifact** belong here.
+   anything against the built artifact belong here.
 
 ## Pre-flight (mandatory, ~30 s)
 
-0. **Detect, don't assume the URL**: before writing a target URL, find running
+0. Detect, don't assume the URL: before writing a target URL, find running
    dev servers (poll common ports, `lsof -iTCP -sTCP:LISTEN`, or the repo's
    documented start command). One running server → use it silently. Multiple →
    ask. None → offer to start one. This is the same one-owner rule as §3,
@@ -40,16 +40,16 @@ disable-model-invocation: true
    inside the test command).
 2. Env/credentials present; commit `.env.example`, gitignore `.env` precisely — a broad
    `.env*` pattern once swallowed the example file.
-3. **Ports — one server owner**: kill zombie dev servers from aborted tool calls
+3. Ports — one server owner: kill zombie dev servers from aborted tool calls
    (`pkill -f "[v]ite e2e"` — bracket so pkill never self-matches). Never mix a manual
    server with the runner's `webServer`: with `reuseExistingServer` local, the runner once
    silently reused a zombie → whole suite failed in ~250 ms, misread for two rounds as
    "server never started". If a port answers, `curl` its health; when diagnosing, verify
    run output actually contains `[WebServer]` startup lines.
-4. **Recon first, full suite second**: run the single failing spec before any full-suite
+4. Recon first, full suite second: run the single failing spec before any full-suite
    run; long suites via `nohup … > /tmp/e2e.log 2>&1 &` + poll — a full suite can outlive
    a tool call and get aborted mid-run.
-5. **"Nothing happened" = diagnose the window, not the app** — blind reruns of a
+5. "Nothing happened" = diagnose the window, not the app — blind reruns of a
    headed suite are the failure mode: Chromium freezes rendering (rAF + compositing)
    for occluded/backgrounded windows, so map/canvas/animation steps silently no-op in a
    headed browser that isn't visible. Before rerunning anything, capture a screenshot
@@ -58,21 +58,21 @@ disable-model-invocation: true
 
 ## Performance rules
 
-1. Built-in fixtures (`test('…', async ({ page }) => …)`) — `browser` is worker-scoped
+- Built-in fixtures (`test('…', async ({ page }) => …)`) — `browser` is worker-scoped
    and shared; `page` is per-test isolated. Never `chromium.launch()` inside a test.
-2. Expensive shared setup → worker-scoped custom fixture, not per-test setup.
-3. Browser install is environment setup, never part of the test command.
-4. `reuseExistingServer: !process.env.CI`; see Pre-flight §3 on mixing servers.
-5. CI prefers the production build; library repos run e2e against `dist/`.
-6. Always `headless: true` — headed only when the user explicitly asks for it.
+- Expensive shared setup → worker-scoped custom fixture, not per-test setup.
+- Browser install is environment setup, never part of the test command.
+- `reuseExistingServer: !process.env.CI`; see Pre-flight §3 on mixing servers.
+- CI prefers the production build; library repos run e2e against `dist/`.
+- Always `headless: true` — headed only when the user explicitly asks for it.
    No need to announce or explain the headless default; the user knows.
-7. Never `slowMo` as a perf fix; no per-test launches to "isolate" flake.
-8. Chromium flags: none by default — add one only when required, documented, reason
+- Never `slowMo` as a perf fix; no per-test launches to "isolate" flake.
+- Chromium flags: none by default — add one only when required, documented, reason
    recorded in config, and measurably better. (Legit exception: headless GPU/WebGL needs
    `--use-angle=swiftshader --enable-unsafe-swiftshader`, plus `--disable-dev-shm-usage`
    in containers; `--no-sandbox` only in Docker/CI.)
-9. Tracing/screenshots/video limited to `on-first-retry` / `retain-on-failure`.
-10. Report before/after timings with every performance change.
+- Tracing/screenshots/video limited to `on-first-retry` / `retain-on-failure`.
+- Report before/after timings with every performance change.
 
 ## Locator strategy
 

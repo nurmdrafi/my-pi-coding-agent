@@ -109,28 +109,28 @@ That's it — no env vars to export, no paths to fix.
 
 All 20 skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
 
-| Skill                | Purpose                                                                                                 | Invocation                    |
-| -------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| ponytail             | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder + over-engineering review mode | `/skill:ponytail`             |
-| web-search           | Web search + URL extraction via Tavily CLI (`tvly search` / `tvly extract`)                             | `/skill:web-search`           |
-| systematic-debugging | Phased root-cause debugging (incl. error-class loops) before proposing any fix                          | `/skill:systematic-debugging` |
-| pre-push-review      | CI-parity correctness review of the diff before commit/push                                             | `/skill:pre-push-review`      |
-| auth                 | NextAuth v4 credentials auth for Next.js App Router against an external REST IdP                        | `/skill:auth`                 |
-| brainstorming        | Explore genuinely-unclear feature direction; one question at a time                                     | `/skill:brainstorming`        |
-| browser-tools        | Live DOM via CDP `:9222` — Playwright/e2e only (deps: `npm install` at skill root)                      | `/skill:browser-tools`        |
-| documentation-writer | Diátaxis-based tech writer: SDK docs, READMEs, CONTRIBUTING, docs audits                                | `/skill:documentation-writer` |
-| fallow-audit         | Dead-code / unused-export / unused-dependency cleanup (fallow, knip, ts-prune, depcheck)                | `/skill:fallow-audit`         |
-| frontend-design      | New web components/pages/apps from scratch (detects the UI stack)                                       | `/skill:frontend-design`      |
-| github-actions       | Author/harden CI workflows: SHA-pinned actions, scoped secrets, actionlint                              | `/skill:github-actions`       |
-| grill-me             | Relentless one-question-at-a-time stress-testing of a plan/decision                                     | `/skill:grill-me`             |
-| harness-engineer     | Meta: audit/improve this harness (budgets, evidence, skill audits, anti-pattern sweep)                  | `/skill:harness-engineer`     |
-| map-integration      | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw; Barikoi stack                                    | `/skill:map-integration`      |
-| markdown-optimizer   | LLM-rule markdown formatting (AGENTS.md, system prompts, SKILL.md bodies): bold/heading/list discipline | `/skill:markdown-optimizer`   |
-| playwright-tester    | e2e specs, stress/update-flow runs, bug-hunt iterations, untested-critical-path coverage                | `/skill:playwright-tester`    |
-| refactoring-ui       | Audit/fix existing UI: hierarchy, spacing, color, depth, small UI defects                               | `/skill:refactoring-ui`       |
-| sdk-development      | Installable packages (Go/npm/CLI): OpenAPI codegen, test, publish                                       | `/skill:sdk-development`      |
-| session-audit        | Token/cost waste audit of `~/.pi/agent/sessions`                                                        | `/skill:session-audit`        |
-| skill-manager        | Create/modify SKILL.md + mandatory validator gate                                                       | `/skill:skill-manager`        |
+| Skill                     | Purpose                                                                                                 | Invocation                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| ponytail                  | Lazy-minimum intensity modes (lite/full/ultra) over the AGENTS.md ladder + over-engineering review mode | `/skill:ponytail`                   |
+| web-search                | Web search + URL extraction via Tavily CLI (`tvly search` / `tvly extract`)                             | `/skill:web-search`                 |
+| systematic-debugging      | Phased root-cause debugging (incl. error-class loops) before proposing any fix                          | `/skill:systematic-debugging`       |
+| pre-push-review           | CI-parity correctness review of the diff before commit/push                                             | `/skill:pre-push-review`            |
+| auth                      | NextAuth v4 credentials auth for Next.js App Router against an external REST IdP                        | `/skill:auth`                       |
+| brainstorming             | Explore genuinely-unclear feature direction; one question at a time                                     | `/skill:brainstorming`              |
+| browser-tools             | Live DOM via CDP `:9222` — Playwright/e2e only (deps: `npm install` at skill root)                      | `/skill:browser-tools`              |
+| documentation-writer      | Diátaxis-based tech writer: SDK docs, READMEs, CONTRIBUTING, docs audits                                | `/skill:documentation-writer`       |
+| fallow-audit              | Dead-code / unused-export / unused-dependency cleanup (fallow, knip, ts-prune, depcheck)                | `/skill:fallow-audit`               |
+| frontend-design           | New web components/pages/apps from scratch (detects the UI stack)                                       | `/skill:frontend-design`            |
+| github-actions            | Author/harden CI workflows: SHA-pinned actions, scoped secrets, actionlint                              | `/skill:github-actions`             |
+| grill-me                  | Relentless one-question-at-a-time stress-testing of a plan/decision                                     | `/skill:grill-me`                   |
+| harness-engineer          | Meta: audit/improve this harness (budgets, evidence, skill audits, anti-pattern sweep)                  | `/skill:harness-engineer`           |
+| map-integration           | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw; Barikoi stack                                    | `/skill:map-integration`            |
+| llm-instruction-formatter | LLM-rule markdown formatting (AGENTS.md, system prompts, SKILL.md bodies): bold/heading/list discipline | `/skill:llm-instruction-formatter`  |
+| playwright-tester         | e2e specs, stress/update-flow runs, bug-hunt iterations, untested-critical-path coverage                | `/skill:playwright-tester`          |
+| refactoring-ui            | Audit/fix existing UI: hierarchy, spacing, color, depth, small UI defects                               | `/skill:refactoring-ui`             |
+| sdk-development           | Installable packages (Go/npm/CLI): OpenAPI codegen, test, publish                                       | `/skill:sdk-development`            |
+| session-audit             | Token/cost waste audit of `~/.pi/agent/sessions`                                                        | `/skill:session-audit`              |
+| skill-manager             | Create/modify SKILL.md + mandatory validator gate                                                       | `/skill:skill-manager`              |
 
 ### Skill layout (validator-enforced)
 

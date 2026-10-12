@@ -7,16 +7,16 @@ at <https://agentskills.io/specification>; Pi's loader behavior at
 
 ## Hard rules (spec-enforced)
 
-1. Skill = a directory containing exactly one `SKILL.md`; everything else freeform.
-2. Frontmatter fields — only these (unknown fields are ignored by Pi):
+- Skill = a directory containing exactly one `SKILL.md`; everything else freeform.
+- Frontmatter fields — only these (unknown fields are ignored by Pi):
    - `name` (required): 1–64 chars, lowercase `a-z 0-9 -` only, no leading/trailing hyphen, no `--`,
      no XML tags, no reserved words (`anthropic`, `claude`), and **must match the directory name**.
    - `description` (required): 1–1024 chars. This alone decides when the agent loads the skill.
    - Optional: `license`, `compatibility` (≤500 chars), `metadata`, `allowed-tools`,
      `disable-model-invocation`. Omit optionals unless genuinely needed. `allowed-tools` format:
      `Bash(tvly *)` — pre-approves only that tool pattern; use when a skill wraps one CLI.
-3. Missing description → Pi refuses to load the skill. Everything else warns but loads.
-4. Location for personal skills: `~/.pi/agent/skills/<name>/`. Project skills: `.pi/skills/<name>/`.
+- Missing description → Pi refuses to load the skill. Everything else warns but loads.
+- Location for personal skills: `~/.pi/agent/skills/<name>/`. Project skills: `.pi/skills/<name>/`.
 
 ## Directory layout
 

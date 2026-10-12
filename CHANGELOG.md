@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **AGENTS.md restructured for LLM adherence** — bold-label bullets became `###` rule sections with one-clause bullets; bold kept only on the two hard constraints. Wording preserved verbatim; 2,218 → 2,249 bytes (~0.5K tokens, always-on budget unchanged). Prefix bytes changed — fresh session after pull.
 - **`docs/` rule sets restructured** — security: comma-blob bullets → `## Ask before` / `## Never` lists; token-economy: 13 flat bullets → five `##` groups; change-discipline/portability/workflow: compound bullets split. Wording verbatim, zero semantic changes (+99/−30 lines across AGENTS.md + docs/).
 - **README synced** — badge and skill counts 19 → 20, markdown-optimizer roster row, AGENTS.md byte figure 1,991 → 2,249.
+- **`skills/markdown-optimizer` renamed `skills/llm-instruction-formatter`** — name now self-scopes to LLM rule/instruction markdown only; invocation `/skill:llm-instruction-formatter`; README roster row updated, roster table columns realigned. Behavior unchanged.
+- **`skills/` + `prompts/` instruction markdown optimized (first llm-instruction-formatter run)** — 59 files audited (19 SKILL.md bodies, 37 skill references, 3 prompt templates), 45 changed, 14 already compliant: label/aesthetic bolds stripped (constraint/entity bolds kept), bold pseudo-headers converted to real headings at correct levels, non-sequential numbered lists converted to bullets, compound and comma-blob bullets split. Wording verbatim — verified per-file by word-diff and globally by alpha-stream equality; frontmatter, code fences, tables, URLs untouched.
 
 ## [1.33.0] - 12-10-2026
 

@@ -17,8 +17,9 @@ disable-model-invocation: true
   fixtures), not ad-hoc scripting here. This skill is for interactive/live
   work; its rules complement, never duplicate, that skill's.
 - Reuse: do not launch a second Chrome if an existing debug session on :9222
-  is alive and safe to reuse — connect to it. Reuse existing tabs/contexts
-  when safe (`--new` only when the current tab must not be disturbed).
+  is alive and safe to reuse — connect to it.
+- Reuse existing tabs/contexts when safe (`--new` only when the current tab
+  must not be disturbed).
 - **Verify tab targeting before trusting eval output**: after `browser-nav`
   (especially `--new`), confirm the next eval lands in the intended tab — the
   standard recon reports URL + title first, and they must match the target.
@@ -30,8 +31,8 @@ disable-model-invocation: true
   public host port-forwarding for :9222).
 - After each session, record evidence: URL, title, console errors, network
   errors, screenshot paths — in the reply or task report.
-- Record whether the browser was **launched fresh, reused, or attached via
-  CDP** in any report that involves timings.
+- Record whether the browser was launched fresh, reused, or attached via
+  CDP in any report that involves timings.
 
 ## Routing
 
@@ -41,7 +42,13 @@ disable-model-invocation: true
 - Manual QA / visual review → refactoring-ui or user-driven, not agent browser driving.
 - General debugging (runtime errors, wrong data) → systematic-debugging; go live only when the failing spec needs it.
 - Failing e2e/browser-mode spec the runner log doesn't explain → live replay: `references/debugging.md` (go live after ONE unexplained failure).
-- Out of scope: frontend feature testing outside e2e specs, visual inspection for design review, scraping for research, auth debugging outside e2e sessions, one-off DOM poking. If a task is not part of a Playwright/e2e effort, it does not need this skill's Chrome.
+- Out of scope:
+  - frontend feature testing outside e2e specs
+  - visual inspection for design review
+  - scraping for research
+  - auth debugging outside e2e sessions
+  - one-off DOM poking.
+- If a task is not part of a Playwright/e2e effort, it does not need this skill's Chrome.
 
 ## Tools
 

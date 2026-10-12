@@ -12,17 +12,17 @@ disable-model-invocation: true
 
 # Harness Engineer
 
-Make **this** harness leaner, more cache-stable, and fully portable (macOS + Linux).
+Make this harness leaner, more cache-stable, and fully portable (macOS + Linux).
 Evidence over opinion. Prefer deletion and lazy-loading.
 
 ## Non-negotiable principles
 
-1. **Minimal core** — delete before add. Never bloat the permanent prefix.
-2. **Cache is sacred** — system prompt + tool defs + AGENTS.md + skill *descriptions* must stay byte-stable for a session. Prefer a fresh session after prefix changes.
-3. **rg first** — code navigation via `rg`. Bash only for real side-effects (tests, builds, git, package managers).
-4. **Progressive disclosure** — skills expose only name + description; bodies load on demand.
-5. **Portability** — no absolute user paths in functional files (`~` / `$HOME` only). No unguarded OS-only commands. No pi env vars for config location (default `~/.pi/agent`).
-6. **Never move permanent behavioral rules** out of `AGENTS.md` into this skill or other skills.
+1. Minimal core — delete before add. Never bloat the permanent prefix.
+2. Cache is sacred — system prompt + tool defs + AGENTS.md + skill *descriptions* must stay byte-stable for a session. Prefer a fresh session after prefix changes.
+3. rg first — code navigation via `rg`. Bash only for real side-effects (tests, builds, git, package managers).
+4. Progressive disclosure — skills expose only name + description; bodies load on demand.
+5. Portability — no absolute user paths in functional files (`~` / `$HOME` only). No unguarded OS-only commands. No pi env vars for config location (default `~/.pi/agent`).
+6. Never move permanent behavioral rules out of `AGENTS.md` into this skill or other skills.
 
 ## Snapshot loop (mandatory)
 
@@ -48,38 +48,41 @@ If `README.md` is missing, create a minimal version first.
 
 One skill covers the full loop: inspect → audit/score → diagnose → change → measure → log. Audit-only mode: **do not modify any files** (except the report, watermark advance, and the 30-day session prune) unless the user asks.
 
-0. **Watermark check** — read `~/.pi/agent/audit-reports/.watermark.json` (`auditedThrough`, ISO ts). Scope every session-derived scan strictly to session files whose ISO-prefixed filename timestamp is newer (parse it — filenames dash the time (`YYYY-MM-DDTHH-MM-SS…`), and plain string compare mis-orders the same-hour case against the colon-format watermark); never re-audit covered sessions. No watermark yet: everything is unaudited.
-1. **Inventory** (chars/4 as token heuristic):
+0. Watermark check — read `~/.pi/agent/audit-reports/.watermark.json` (`auditedThrough`, ISO ts). Scope every session-derived scan strictly to session files whose ISO-prefixed filename timestamp is newer (parse it — filenames dash the time (`YYYY-MM-DDTHH-MM-SS…`), and plain string compare mis-orders the same-hour case against the colon-format watermark); never re-audit covered sessions. No watermark yet: everything is unaudited.
+1. Inventory (chars/4 as token heuristic):
    - Context files: `AGENTS.md` (+ any always-loaded file) byte size → tokens.
    - Every skill: `description` field char count → tokens (extract frontmatter only, never load bodies).
    ```sh
    wc -c ~/.pi/agent/AGENTS.md
    awk '/^description:/{f=1;next} /^---/{f=0} f' ~/.pi/agent/skills/*/SKILL.md | wc -c
    ```
-2. **Compute permanent floor** = context tokens + Σ skill-description tokens.
-3. **Health Score** — start at 100, deduct:
-   - context > 800 tok: −10; skill count > 15: −10
-   - any single desc > 250 tok: −10; avg desc > 100 tok: −10
+2. Compute permanent floor = context tokens + Σ skill-description tokens.
+3. Health Score — start at 100, deduct:
+   - context > 800 tok: −10
+   - skill count > 15: −10
+   - any single desc > 250 tok: −10
+   - avg desc > 100 tok: −10
    - huge body (>2,000 tok) AND long desc (>100 tok): −5 per skill (progressive-disclosure failure)
    - AGENTS.md ↔ skill rule duplication: −5 per overlap
-   - vague/missing descriptions: −5 each; skills-dir pollution (node_modules, .zip, ._*): −5 each class
+   - vague/missing descriptions: −5 each
+   - skills-dir pollution (node_modules, .zip, ._*): −5 each class
    - portability quick-check hits in functional files: −5 per class
-4. **Anti-pattern sweep** — prompt-quality + security checks orthogonal to
+4. Anti-pattern sweep — prompt-quality + security checks orthogonal to
    the score: run the checklist in `references/anti-pattern-audit.md` over
    skills, prompts, and extensions (rg-signature pass first, read only
    flagged regions, calibrate earned emphasis vs boosters). Findings get
    their own report section; fixes are separate proposals (Workflow step 3).
-5. **Write the report** into the matching `~/.pi/agent/audit-reports/{harness,skills,sessions}/` subdir as `<date>T<time>Z-<topic>.md` (every filename carries its date; header records machine provenance — `uname -srm` + `uname -n`, this repo runs from multiple machines/OSes) — structure: executive summary, inventory table, top consumers, overlaps, score breakdown, comparison to previous report if present (delta per metric).
+5. Write the report into the matching `~/.pi/agent/audit-reports/{harness,skills,sessions}/` subdir as `<date>T<time>Z-<topic>.md` (every filename carries its date; header records machine provenance — `uname -srm` + `uname -n`, this repo runs from multiple machines/OSes) — structure: executive summary, inventory table, top consumers, overlaps, score breakdown, comparison to previous report if present (delta per metric).
 6. Report BEFORE → AFTER numbers; recommendations ranked by impact. Implement only on request, then log per *Workflow* step 5.
-7. **Close the audit** — advance `.watermark.json`'s `auditedThrough` to the newest session covered; prune: delete `~/.pi/agent/sessions/**/*.jsonl` not modified in 30 days, then remove emptied cwd-slug dirs.
+7. Close the audit — advance `.watermark.json`'s `auditedThrough` to the newest session covered; prune: delete `~/.pi/agent/sessions/**/*.jsonl` not modified in 30 days, then remove emptied cwd-slug dirs.
 
 ## Workflow
 
-1. **Discover** — list loaded context files, skills (name + desc + path), prompts, non-portable items. Re-read `README.md`. Capture BEFORE snapshot.
-2. **Diagnose** — rank by impact: unused/overlapping skills, AGENTS.md bloat that belongs in a skill, bash-used-for-search, non-portable paths, unstable prefix material.
-3. **Propose** — prefer deletions/merges. For each change: path, before→after, why (cache/tokens/portability), risk, rollback.
-4. **Implement** — only approved/safe edits. Ask before destructive or large writes. Tell user to start a fresh session after prefix changes.
-5. **Persist** — add dated entry at the TOP of `CHANGELOG.md` (latest-first; include `Measured:` before→after). Update `README.md` or `skills-audit.md` when architecture or skill set changes.
+1. Discover — list loaded context files, skills (name + desc + path), prompts, non-portable items. Re-read `README.md`. Capture BEFORE snapshot.
+2. Diagnose — rank by impact: unused/overlapping skills, AGENTS.md bloat that belongs in a skill, bash-used-for-search, non-portable paths, unstable prefix material.
+3. Propose — prefer deletions/merges. For each change: path, before→after, why (cache/tokens/portability), risk, rollback.
+4. Implement — only approved/safe edits. Ask before destructive or large writes. Tell user to start a fresh session after prefix changes.
+5. Persist — add dated entry at the TOP of `CHANGELOG.md` (latest-first; include `Measured:` before→after). Update `README.md` or `skills-audit.md` when architecture or skill set changes.
 
 Optional deep evidence (only when user asks for skill-usage or token audit):
 
