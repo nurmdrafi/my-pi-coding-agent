@@ -7,5 +7,8 @@
   "hideThinkingBlock": true,
   "compaction": {
     "enabled": true
-  }
+  },
+  "packages": [
+    "git:github.com/NVlabs/SoL-Pi"
+  ]
 }
