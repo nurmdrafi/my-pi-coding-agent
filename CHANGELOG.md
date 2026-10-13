@@ -7,6 +7,12 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.1] - 13-10-2026
+
+### Changed
+
+- **`prompts/ship.md`** — ships now require the diff to have passed the `pre-push-review` checklist against every `docs/issue-classes.md` class it touches (run the skill first if not); previously the catalog check hung on the always-on rule and manual skill invocation alone, so an unchecked diff could ship.
+
 ## [1.37.0] - 13-10-2026
 
 ### Added
