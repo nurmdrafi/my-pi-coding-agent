@@ -395,7 +395,10 @@ export default function (pi: ExtensionAPI) {
       // whole — block with the targeted-window fix. Windows narrower than
       // BIG_READ_WIN lines pass untouched, small files pass, R1 covers
       // re-reads of what is already certified in context.
-      if (win.end === Infinity || win.end - win.start >= BIG_READ_WIN) {
+      if (
+        !nested && // nested read lands in the script sandbox, not context
+        (win.end === Infinity || win.end - win.start >= BIG_READ_WIN)
+      ) {
         const snap = await snapshot(path);
         if (snap && snap.size > BIG_READ_BYTES) {
           return blockCall(
@@ -494,7 +497,7 @@ export default function (pi: ExtensionAPI) {
     for (const seg of normSegs) {
       const tc = toolchainCheck(seg, cmd, ctx?.cwd);
       if (tc) return blockCall(tc);
-      const sc = searchCheck(seg, isDarwin);
+      const sc = searchCheck(seg, isDarwin, nested);
       if (sc) return blockCall(sc);
     }
 

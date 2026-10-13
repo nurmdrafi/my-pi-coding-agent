@@ -84,7 +84,16 @@ const isEarendilExempt = (t: string) =>
   t.startsWith("node_modules/@earendil-works/") ||
   t.includes("/node_modules/@earendil-works/");
 
-export function searchCheck(seg: string, isDarwin: boolean): string | undefined {
+/**
+ * nested = codemode/executeTool sub-call: the result reaches only the calling
+ * script, which filters it — SS1's crawl-cost premise does not apply. PB1
+ * (deterministic BSD failure) and NM1 (user-approval policy) still block.
+ */
+export function searchCheck(
+  seg: string,
+  isDarwin: boolean,
+  nested = false,
+): string | undefined {
   const toks = tokens(seg);
   let i = 0;
   if (toks[i] === "sudo") i++;
@@ -122,7 +131,7 @@ export function searchCheck(seg: string, isDarwin: boolean): string | undefined 
   const unscoped =
     paths.length === 0 ||
     paths.every((p) => p === "." || p === "./" || p === "..");
-  if (recursive && unscoped && !includeScoped)
+  if (recursive && unscoped && !includeScoped && !nested)
     return "Search (Scope): recursive grep with no path/glob scope crawls node_modules/.git and timed out at 30s — scope it (grep -rn --include='*.ts' PATTERN src/) or use rg PATTERN src/.";
   if ([...paths, ...opts].some((t) => isNodeModulesToken(t) && !isEarendilExempt(t)))
     return NM1_MSG;

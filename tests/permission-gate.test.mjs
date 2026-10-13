@@ -536,6 +536,25 @@ const cases = [
     async (pi) => nestedBash(pi, 'git commit -m "Fix the thing"'),
   ],
   [
+    "nested unscoped recursive grep passes (script filters output)",
+    "pass",
+    async (pi) => nestedBash(pi, "grep -rn 'permission' ."),
+  ],
+  [
+    "nested node_modules grep still NM1-blocked (policy stays)",
+    "blocked",
+    async (pi) => nestedBash(pi, "grep -r webpack node_modules/ | head -3"),
+  ],
+  [
+    "nested big whole-file read passes (R1b exempt)",
+    "pass",
+    async (pi) =>
+      pi.invoke("tool_call", {
+        type: "tool_call", toolName: "read", toolCallId: `cm0/${++seqId}`, parentToolCallId: "cm0",
+        input: { path: hugeFile },
+      }).then((b) => (b ? { blocked: true, reason: b.reason } : { blocked: false })),
+  ],
+  [
     "re-run of a failed command passes",
     "pass",
     async (pi) => bash(pi, "gh run list --limit 3"),
