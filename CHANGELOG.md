@@ -7,6 +7,12 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.2] - 13-10-2026
+
+### Changed
+
+- **`prompts/ship.md`** — reverted the 1.37.1 `pre-push-review` precondition (user direction: no pre-push-review during ship); ship stays commit-mechanics only. Issue-class prevention rests on the always-on `AGENTS.md` GitHub-issues rule + `docs/issue-classes.md` catalog, invoked at the agent's judgment, not the ship gate.
+
 ## [1.37.1] - 13-10-2026
 
 ### Changed
