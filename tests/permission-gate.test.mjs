@@ -321,7 +321,7 @@ const cases = [
     "blocked",
     async (pi) => {
       await pi.invoke("before_agent_start", {
-        type: "before_agent_start",
+        type: "before_agent_start", messageType: "user",
         prompt: `redo this <file name="${fileInj}">\ni1\ni2\ni3\n</file>\nnow`,
         systemPromptOptions: {},
       });
@@ -333,7 +333,7 @@ const cases = [
     "pass",
     async (pi) => {
       await pi.invoke("before_agent_start", {
-        type: "before_agent_start",
+        type: "before_agent_start", messageType: "user",
         prompt: `<file name="${fileInj}">\nold content\n</file>`,
         systemPromptOptions: {},
       });
@@ -345,7 +345,7 @@ const cases = [
     "pass",
     async (pi) => {
       await pi.invoke("before_agent_start", {
-        type: "before_agent_start",
+        type: "before_agent_start", messageType: "user",
         prompt: `<file name="${fileInj}">\ni1\ni2\ni3\n</file>`,
         systemPromptOptions: {},
       });
@@ -658,7 +658,7 @@ const cases = [
     async (pi) => {
       for (let i = 0; i < 200; i++)
         await pi.invoke("before_agent_start", {
-          type: "before_agent_start",
+          type: "before_agent_start", messageType: "user",
           prompt: `msg ${i}`,
           systemPromptOptions: {},
         });
@@ -714,7 +714,7 @@ const cases = [
     async (pi) => {
       for (let i = 0; i < 200; i++)
         await pi.invoke("before_agent_start", {
-          type: "before_agent_start",
+          type: "before_agent_start", messageType: "user",
           prompt: `m${i}`,
           systemPromptOptions: {},
         });
@@ -768,7 +768,7 @@ const cases = [
     "pass",
     async (pi) => {
       const ev = {
-        type: "before_agent_start",
+        type: "before_agent_start", messageType: "user",
         prompt: "",
         systemPrompt: "",
         systemPromptOptions: { appendSystemPrompt: "" },
@@ -792,7 +792,7 @@ const cases = [
     "pass",
     async (pi) => {
       const ev = () => ({
-        type: "before_agent_start",
+        type: "before_agent_start", messageType: "user",
         prompt: "",
         systemPrompt: "",
         systemPromptOptions: { appendSystemPrompt: "" },
@@ -812,7 +812,7 @@ const cases = [
     "pass",
     async (pi) => {
       const ev = {
-        type: "before_agent_start",
+        type: "before_agent_start", messageType: "user",
         prompt: "",
         systemPrompt: "",
         systemPromptOptions: {},
@@ -829,7 +829,7 @@ const cases = [
     "pass",
     async (pi) => {
       const ev = {
-        type: "before_agent_start",
+        type: "before_agent_start", messageType: "user",
         prompt: "",
         systemPrompt: "",
         systemPromptOptions: { appendSystemPrompt: "" },
@@ -1916,7 +1916,7 @@ const cases = [
     "pass",
     async (pi) => {
       await pi.invoke("before_agent_start", {
-        type: "before_agent_start",
+        type: "before_agent_start", messageType: "user",
         prompt: "yes, run the deploy now",
         systemPromptOptions: {},
       });
@@ -1931,12 +1931,12 @@ const cases = [
     "blocked",
     async (pi) => {
       await pi.invoke("before_agent_start", {
-        type: "before_agent_start",
+        type: "before_agent_start", messageType: "user",
         prompt: "yes go ahead",
         systemPromptOptions: {},
       });
       await pi.invoke("before_agent_start", {
-        type: "before_agent_start",
+        type: "before_agent_start", messageType: "user",
         prompt: "what does the code do?",
         systemPromptOptions: {},
       });
