@@ -305,6 +305,9 @@ export default function (pi: ExtensionAPI) {
   // read results. Hint/empty/mismatched blocks certify nothing — err toward
   // allowing (never over-block on unverifiable injections).
   pi.on("before_agent_start", async (event) => {
+    // prompt exists only on user-triggered runs (custom messages carry
+    // "message", not "prompt" - BeforeAgentStartEvent is a union)
+    if (event.messageType !== "user") return;
     if (!event.prompt.includes('<file name="')) return;
     for (const m of event.prompt.matchAll(
       /<file name="([^"]+)">([\s\S]*?)<\/file>/g,
@@ -337,7 +340,8 @@ export default function (pi: ExtensionAPI) {
   // latest prompt arms/disarms chat approval for the destructive gate
   pi.on("before_agent_start", (event) => {
     turnsSeen++;
-    promptApproves = APPROVAL_RE.test(String(event.prompt ?? ""));
+    const prompt = event.messageType === "user" ? event.prompt : "";
+    promptApproves = APPROVAL_RE.test(prompt);
   });
 
   pi.on("tool_call", async (event, ctx) => {
