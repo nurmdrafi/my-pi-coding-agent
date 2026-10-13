@@ -7,6 +7,51 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.0] - 13-10-2026
+
+### Added
+
+- **permission-gate TC1/TC2 (toolchain pins)** — `npm`/`npx`/`yarn` blocked in a pnpm repo (`packageManager`/`pnpm-lock.yaml`; `npx pnpm` allowed); node-family binaries blocked under an exact x.y.z Node pin (`.nvmrc`/`engines`) the interpreter misses. Version-manager commands (`nvm use … &&`), explicit binary paths and range pins pass; `PGATE_TOOLCHAIN=0` disables. Audit basis: 7 failed npm-in-pnpm runs, 4× `Unsupported engine` + module-not-found.
+- **permission-gate SS1/PB1/NM1 (search scope)** — unscoped recursive grep, `grep -P` on darwin, and read-tool/`grep`/`find`/`rg`/`cat`/`head`/`tail` into `node_modules` blocked (`ls node_modules` allowed; rg passes by design). Audit basis: two 30s grep timeouts, a `node_modules/.pnpm` read, `grep: invalid option -- P`.
+- **violation-memory lessons** for the five new families; block-family recognition extended (`Toolchain`/`Search`/`Portability`).
+- **tests** — 17 new black-box cases; suite 150 → 167, all pass.
+- **`audit-reports/2026-10-13T114943Z-coverage.md`** (local, gitignored like all audit reports) — mistake/issue-class × mechanism × enforcement-status matrix from the 38-session mining; documents the two deliberately advisory classes.
+
+### Changed
+
+- **`AGENTS.md`** — Mechanical checks lists the new gate families (toolchain pins, search scope, node_modules reads); measured 2,933 → 2,986 bytes (~733 → ~739 tokens, under the 800-token floor).
+- **`docs/agent-hygiene.md`** / **`docs/portability.md`** — mirror notes: TC1/TC2/SS1/PB1/NM1 enforced by permission-gate.
+- **`skills/research/`** — removed: empty orphan dir (no SKILL.md, zero files); it was never a skill and the README count (20) was correct.
+
+## [1.36.0] - 13-10-2026
+
+### Added
+
+- **`docs/issue-classes.md`** — project-agnostic prevention catalog compiled from a repo-wide review audit: secrets/credentials, authorization/auth, HTTP client & data contract, runtime robustness, realtime/maps, CI/container, maintainability/testing. Each class is a pre-ship check; goal is these issues never recur. Zero always-on cost.
+- **`AGENTS.md` `GitHub issues` rule** — extended: prevent the known failure classes for the domains a task touches.
+- **`docs/issue-classes.md` global error handling** — one owner catches/normalizes/logs/renders the fallback at process, router, subtree, and data-layer levels; every status/kind classified with a recovery action; no swallowed errors, no retry that cannot succeed. Wired into `pre-push-review` and `frontend-design`.
+- **Skill wiring** — `pre-push-review` checklist gains runtime-robustness/HTTP/cache/TLS/dependency items + catalog pointer; `auth` gains backend-session-revocation and cross-origin-token rules + pointer; `github-actions` gains `concurrency` and prod quality-gate items + pointer; `map-integration` gains rebuild-perf rule + pointer; `frontend-design` gains error-boundary/loading-state note + pointer.
+
+### Changed
+
+- **`AGENTS.md`** — lists `docs/issue-classes.md` in scoped rule sets. Measured: 2,673 → 2,933 bytes (~668 → ~733 tokens, under the 800-token floor).
+
+## [1.35.0] - 13-10-2026
+
+### Added
+
+- **`docs/agent-hygiene.md`** — scoped rule set (loaded via AGENTS.md link): toolchain (activate the pinned Node/package manager, no `node_modules` reads, scoped `rg`), edit anchors (re-read before edit, no-op edits), issue/commit discipline (read the issue's acceptance criteria and suggested fix, one comment per commit with short SHA, no close on unpushed work, commitlint before commit). Zero always-on cost.
+- **`AGENTS.md` `GitHub issues` rule** — always-on: any task in a gh-tracked repo checks for a related issue and covers its acceptance criteria and suggested fix before acting.
+
+### Changed
+
+- **`AGENTS.md`** — toolchain/edit/issue detail kept out of the always-on core (linked to `docs/agent-hygiene.md`); adds the always-on `GitHub issues` rule. Measured: 3,683 → 2,673 bytes (~920 → ~668 tokens, under the 800-token floor).
+- **`prompts/ship.md`** — on commit/push failure: read the error once, fix the cause; never re-issue with altered quoting, never retry without a change (audit `01a129ba`, `01a12ffa`).
+- **`prompts/issue.md`** — one comment per commit, quoting the short SHA; edit instead of reposting (audit `01a134b4`).
+- **`skills/pre-push-review/SKILL.md`** — per-issue ship loop: one comment per commit with short SHA, edit not re-post; closing requires the diff to satisfy the issue's acceptance criteria and the fix to be pushed.
+- **`docs/token-economy.md`** — release/changelog/issue-close run as separate short sessions (audit `01a12f56`, 269 turns / 318K prefix).
+- **`docs/portability.md`** — no `grep -P`; no single-quoted `python3 -c` with embedded quotes.
+
 ## [1.34.0] - 12-10-2026
 
 ### Added

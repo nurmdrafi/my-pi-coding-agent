@@ -56,3 +56,4 @@ Wait for: **Continue** · **Skip** (end) · **feedback** (revise and re-propose)
 - No state files.
 - Never fabricate tool output; if a required tool is missing, report and stop.
 - `gh issue close $1 -c '<comment>'` only on an explicit "close issue #N" with N = $1; otherwise ask. Escape apostrophes.
+- One comment per commit: the close/status comment must quote the short commit SHA. If the wording was wrong, edit the existing comment — never post a second comment for the same commit.

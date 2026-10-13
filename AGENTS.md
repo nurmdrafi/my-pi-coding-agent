@@ -17,6 +17,12 @@ Global rules for the pi coding agent, loaded into every session. Task-scoped rul
 - Within an approved task, run plan → do → verify autonomously.
 - Only installs, destructive ops, and out-of-scope changes need an ask.
 
+### GitHub issues
+
+- Any task in a repo with gh-tracked issues: check for a related issue (`gh issue list -S '<keywords>' --state all`), cover its acceptance criteria and suggested fix, and state any deviation.
+- Prevent the known failure classes for the domains you touch — see [docs/issue-classes.md](docs/issue-classes.md).
+- Cite the issue number when committing or closing; operational detail in [docs/agent-hygiene.md](docs/agent-hygiene.md).
+
 ### Precedence
 
 - Pi loads global and repo context files together — neither replaces the other.
@@ -35,11 +41,13 @@ Global rules for the pi coding agent, loaded into every session. Task-scoped rul
 
 ### Mechanical checks
 
-- Re-reads, output caps, re-runs, commit format, edit anchors, destructive confirms are enforced by the `permission-gate` extension; block reasons carry the fix.
+- Re-reads, output caps, re-runs, commit format, edit anchors, destructive confirms, toolchain pins, search scope and node_modules reads are enforced by the `permission-gate` extension; block reasons carry the fix.
 
 ## Scoped rule sets
 
 - [docs/change-discipline.md](docs/change-discipline.md) — surgical scope, ponytail ladder, root-cause bug fixes
+- [docs/agent-hygiene.md](docs/agent-hygiene.md) — toolchain, edit anchors, issue/commit discipline
+- [docs/issue-classes.md](docs/issue-classes.md) — preventive catalog of known failure classes (secrets, auth, HTTP, CI, tests)
 - [docs/security.md](docs/security.md) — build-time auth checks, secrets server-side, guard-fix re-checks
 - [docs/portability.md](docs/portability.md) — macOS + Linux shell subset, no absolute user paths
 - [docs/token-economy.md](docs/token-economy.md) — search discipline, batching, verify baselines, session limits

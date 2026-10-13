@@ -25,6 +25,8 @@ Read whole functions/components around each hunk, not just the hunk.
 
 ## 2. Checklist
 
+Domain prevention catalog: `~/.pi/agent/docs/issue-classes.md` — check every class the diff touches.
+
 - Async/state lifecycle
    - Late response: fetch-in-effect has a staleness guard (cancelled flag /
      AbortController / compare requested id before applying).
@@ -87,6 +89,20 @@ Read whole functions/components around each hunk, not just the hunk.
      unpinned third-party actions/tags.
 - CI/env awareness: browser/tool launches must go headless when `CI`
    is set; env-aware defaults everywhere.
+- Runtime robustness: new routes/subtrees sit under an error boundary; async
+   surfaces have loading/empty/error states; a failed poll keeps the last good
+   view rather than blanking.
+- Error handling (global): one owner catches/normalizes/logs/renders the
+   fallback; handlers exist at process, router, subtree, and data-layer levels;
+   every status/kind is classified with a recovery action; no swallowed error
+   and no retry that cannot succeed.
+- HTTP client: non-2xx rejects (never returned as data), requests carry
+   timeouts, and out-of-order responses are guarded (requested id carried
+   through to fulfillment).
+- Cache/SW: no authenticated response cached across logout; no `skipWaiting`
+   + runtime chunk rewrite that strands clients on stale config.
+- TLS: certificate verification is never disabled (including proxy agents).
+- Dependencies: no new unmaintained/CVE-affected dep in the production tree.
 - Regression-test discrimination: a test added for a fixed bug must be
    shown to fail on the bug — restore the buggy line once, watch it go red,
    re-apply the fix. A regression test that has never failed proves nothing
@@ -133,4 +149,8 @@ waiving a finding with corrected reasoning is a valid outcome.
 
 When the work is tied to a gh issue, the loop is: fix → review (this skill)
 → conventional-commit message ending `(issue #N)` → push → `gh issue close N
---comment` with a summary of the shipped changes.
+--comment` with a summary of the shipped changes. One comment per commit:
+include the short commit SHA, and edit the existing comment rather than posting
+a second one for the same commit. Before closing, check the diff against the
+issue's acceptance criteria and any suggested fix — an unmet criterion blocks
+the close, and closing is only valid once the fix is pushed.

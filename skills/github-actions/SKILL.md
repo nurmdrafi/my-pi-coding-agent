@@ -143,3 +143,7 @@ env:
       the commit message and the related issue
 - [ ] Self-hosted runners only on private repos or with isolated/ephemeral
       runners — never on public repos (pull_request_target pwn risk)
+- [ ] `concurrency` set so a stale run cannot overwrite the same branch/tag
+- [ ] The production image build runs the quality gate (lint/typecheck/test) —
+      not skipped via Dockerfile or `.dockerignore`
+- [ ] Domain prevention catalog checked: `~/.pi/agent/docs/issue-classes.md` §CI/container

@@ -9,6 +9,8 @@ This skill guides creation of distinctive, production-grade frontend interfaces 
 
 The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
 
+Prevention catalog: `~/.pi/agent/docs/issue-classes.md` — new UI ships under an error boundary with loading/empty/error states, wired into the app's global error handler, and heavy work stays off the render path.
+
 ## Pattern Audit (MANDATORY FIRST STEP — overrides every aesthetic directive below)
 
 Before writing any UI, determine whether you are **extending** an existing design system or **creating from scratch**. In an existing codebase you are ALWAYS extending.

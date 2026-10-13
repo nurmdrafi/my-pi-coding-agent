@@ -111,6 +111,8 @@ For anything beyond this shape, follow the github-actions skill (SHA pinning, le
 
 ## Checklist before writing map code
 
+Prevention catalog: `~/.pi/agent/docs/issue-classes.md` §Realtime & maps.
+
 - Does an equivalent Layer/hook/util already exist in this repo (or a sibling/fork repo)? Reuse first — sibling dashboards are forks of the same template.
 - Barikoi repos: import map code from `react-bkoi-gl`/`bkoi-gl` only (never `maplibre-gl` directly); style key goes in the `?key=` query param; check a sibling dashboard's DeckGLMap template before starting fresh.
 - Coord order `[lng, lat]`. Validate before flyTo/bounds.
@@ -121,3 +123,4 @@ For anything beyond this shape, follow the github-actions skill (SHA pinning, le
 - Draw/edit flows: idempotent polygon-sync upsert covering all three triggers (`references/known-pitfalls.md` #5); guarded geometry loads with failure-path clearing (`references/known-pitfalls.md` #6); resets touch every derived field; markers capture `dragend` and draw-clears propagate to parent state (`references/known-pitfalls.md` #7–8).
 - CI touched: secrets step-scoped, actions SHA-pinned, least-privilege permissions (§11).
 - No provider key literal in source or a bundled config (`app.config.ts` etc.) — keys ride env vars; anything `NEXT_PUBLIC_*` or client-imported is public by definition. Server-side Barikoi/routing calls go through an API proxy, never a client-held key.
+- Layers/scenes rebuild on data/selection change, not on hover/zoom/tick; heavy math stays off the main thread; no O(N²) scans or pagination.

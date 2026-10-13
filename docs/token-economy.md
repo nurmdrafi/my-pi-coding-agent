@@ -2,6 +2,7 @@
 
 ## Reads and runs
 
+- Scope reads: open only files the task names or that directly implement/reference the named target. Never open `node_modules`, lockfiles, `CHANGELOG`/unrelated docs, git history, or adjacent modules "for context" — `rg -n` the symbol first and read the hit only. Stop the moment the named target is located; extra evidence needs a reason tied to the symptom.
 - Big read: unfamiliar file — `rg -n 'pattern' <file> -A10` first, then read only the hit regions (offset/limit ≤ 500 lines).
 - Whole-file reads of >24 KB files are gated; the block reason carries the fix.
 - Re-read: never re-read a window already in context this session (reads/edits/writes/@files cover it) — offset past it. Legitimate again after compaction.
@@ -28,3 +29,4 @@
 
 - Load: extensions per project, never globally (each re-bills its prompt every turn); sole exception: permission-gate, the enforcement layer itself.
 - Cadence: at ~200 user turns or ~150K context tokens, propose compaction or a fresh session — prefix size, not turn count, dominates cost.
+- Release work: run each concern (version bump, changelog update, issue close) as its own short session — never chain them into one long session (2026-10-13 audit: a 269-turn release session re-read a 318K prefix every turn).

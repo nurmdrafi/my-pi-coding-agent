@@ -12,6 +12,11 @@
  * | H1  | output cap (non-blocking)     | bash output capped at 100 lines / 4KB UTF-8; oversized first line head+tail; tail spilled to $TMPDIR/pgate-spill; errors capped too |
  * | H2  | Permission Gate (Destructive) | destructive commands need approval: chat yes / UI confirm; fail closed headless; re-send re-prompts |
  * | R9  | Commitlint                    | conventional-commit headers, subject case, body line length (incl. heredoc bodies), pre-hook |
+ * | TC1 | Toolchain (pnpm)              | npm/npx/yarn in a pnpm repo (packageManager/pnpm-lock) — pnpm run/exec/dlx |
+ * | TC2 | Toolchain (Node)              | node-family binary under an exact x.y.z Node pin (.nvmrc/engines) the interpreter misses — nvm use first |
+ * | SS1 | Search (Scope)                | recursive grep with no path/glob scope — scope it or use rg |
+ * | PB1 | Portability (grep -P)         | grep -P on darwin — rg / grep -E |
+ * | NM1 | Search (node_modules)         | read tool + grep/find/rg/cat/head/tail into node_modules — deps' docs/types, not the tree |
  * | R10 | Token Economy (Re-run)         | identical command re-run within 10 min without an edit/write/mutating-bash since is blocked |
  * | RB  | Token Economy (Re-block)      | verbatim re-send of a just-blocked command escalates (never armed for H2) |
  * | VM  | violation memory              | cross-session per-family block counts inject lessons into the next system prompt (threshold: 5 distinct sessions / 30d) |
@@ -58,6 +63,8 @@ import {
   snapshot,
 } from "./read-coverage.ts";
 import type { CoverKind, LineSpan } from "./read-coverage.ts";
+import { toolchainCheck } from "./toolchain.ts";
+import { nodeModulesPath, searchCheck } from "./search-guard.ts";
 
 // ---- R1b + cadence thresholds (see index header table: R1b, CN) ----
 /** big-read gate: a whole-file-ish request for a file larger than this is
@@ -356,6 +363,10 @@ export default function (pi: ExtensionAPI) {
       const path = normPath(display, ctx?.cwd);
       // clamp the path contribution so the reason stays inside the 220c diet cap for any path length or kind
       const shown = display.length > 57 ? `…${display.slice(-56)}` : display;
+      // NM1 (2026-10-13 audit): dependency internals — a node_modules/.pnpm
+      // path was read straight through the read tool; never crawl the tree
+      const nm = nodeModulesPath(display);
+      if (nm) return blockCall(nm);
       const start = Math.max(
         1,
         typeof event.input.offset === "number" ? event.input.offset : 1,
@@ -458,6 +469,17 @@ export default function (pi: ExtensionAPI) {
         const lint = validateCommitMessages(seg);
         if (lint) return blockCall(lint);
       }
+    }
+
+    // TC1/TC2/SS1/PB1/NM1 (2026-10-13 audit): toolchain pins + search scope —
+    // BEFORE H2 for the same reason as R9: never ask the confirm dialog for a
+    // command a rule rejects anyway
+    const isDarwin = process.platform === "darwin";
+    for (const seg of normSegs) {
+      const tc = toolchainCheck(seg, cmd, ctx?.cwd);
+      if (tc) return blockCall(tc);
+      const sc = searchCheck(seg, isDarwin);
+      if (sc) return blockCall(sc);
     }
 
     // H2 (2026-10-08): destructive/mutating commands need explicit user

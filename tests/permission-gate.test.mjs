@@ -1974,6 +1974,210 @@ const cases = [
         : { blocked: false };
     },
   ],
+  // ---- TC/SS/PB/NM (2026-10-13 audit): toolchain pins + search scope ----
+  // fixtures carry their own manifests; the harness root (.nvmrc "24", no
+  // pnpm marker) stays TC-inert so the legacy default-cwd cases are unaffected
+  [
+    "TC1: npm blocked in a pnpm repo (packageManager)",
+    "blocked",
+    async (pi) => {
+      const repo = join(tmp, "tc-pnpm1");
+      mkdirSync(repo, { recursive: true });
+      writeFileSync(
+        join(repo, "package.json"),
+        JSON.stringify({ name: "r", packageManager: "pnpm@9.15.0" }),
+      );
+      const r = await bash(pi, "npm install lodash", {
+        ...approveUi(),
+        cwd: repo,
+      });
+      return r.blocked && !r.reason.startsWith("Toolchain (pnpm)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
+  ],
+  [
+    "TC1: yarn blocked in a pnpm repo (pnpm-lock)",
+    "blocked",
+    async (pi) => {
+      const repo = join(tmp, "tc-pnpm2");
+      mkdirSync(repo, { recursive: true });
+      writeFileSync(join(repo, "pnpm-lock.yaml"), "\n");
+      const r = await bash(pi, "yarn install", { ...approveUi(), cwd: repo });
+      return r.blocked && !r.reason.startsWith("Toolchain (pnpm)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
+  ],
+  [
+    "TC1: npx pnpm and pnpm itself pass in a pnpm repo",
+    "pass",
+    async (pi) => {
+      const repo = join(tmp, "tc-pnpm3");
+      mkdirSync(repo, { recursive: true });
+      writeFileSync(
+        join(repo, "package.json"),
+        JSON.stringify({ name: "r", packageManager: "pnpm@9.15.0" }),
+      );
+      const ctx = { ...approveUi(), cwd: repo };
+      const a = await bash(pi, "npx pnpm dlx typescript", ctx);
+      if (a.blocked) return a;
+      return bash(pi, "pnpm run check-types", ctx);
+    },
+  ],
+  [
+    "TC2: exact Node pin mismatch blocks node-family binaries",
+    "blocked",
+    async (pi) => {
+      const repo = join(tmp, "tc-node1");
+      mkdirSync(repo, { recursive: true });
+      writeFileSync(
+        join(repo, "package.json"),
+        JSON.stringify({ name: "r", engines: { node: "99.9.9" } }),
+      );
+      const r = await bash(pi, "pnpm run check-types", {
+        ...approveUi(),
+        cwd: repo,
+      });
+      return r.blocked && !r.reason.startsWith("Toolchain (Node)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
+  ],
+  [
+    "TC2: nvm use in the same command bypasses the pin check",
+    "pass",
+    async (pi) => {
+      const repo = join(tmp, "tc-node2");
+      mkdirSync(repo, { recursive: true });
+      writeFileSync(
+        join(repo, "package.json"),
+        JSON.stringify({ name: "r", engines: { node: "99.9.9" } }),
+      );
+      return bash(
+        pi,
+        "source ~/.nvm/nvm.sh && nvm use 99.9.9 >/dev/null 2>&1 && pnpm run check-types",
+        { ...approveUi(), cwd: repo },
+      );
+    },
+  ],
+  [
+    "TC2: explicit pinned binary path passes",
+    "pass",
+    async (pi) => {
+      const repo = join(tmp, "tc-node3");
+      mkdirSync(repo, { recursive: true });
+      writeFileSync(
+        join(repo, "package.json"),
+        JSON.stringify({ name: "r", engines: { node: "99.9.9" } }),
+      );
+      return bash(pi, "/x/.nvm/versions/node/v99.9.9/bin/node -v", {
+        ...approveUi(),
+        cwd: repo,
+      });
+    },
+  ],
+  [
+    "TC2: range engines pins stay advisory",
+    "pass",
+    async (pi) => {
+      const repo = join(tmp, "tc-node4");
+      mkdirSync(repo, { recursive: true });
+      writeFileSync(
+        join(repo, "package.json"),
+        JSON.stringify({ name: "r", engines: { node: "^22.0.0" } }),
+      );
+      return bash(pi, "node -v", { ...approveUi(), cwd: repo });
+    },
+  ],
+  [
+    "PB1: grep -P blocked on darwin",
+    process.platform === "darwin" ? "blocked" : "pass",
+    async (pi) => {
+      const r = await bash(pi, "grep -Prn 'foo\\.bar' src/", approveUi());
+      return r.blocked && !r.reason.startsWith("Portability (grep -P)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
+  ],
+  [
+    "SS1: unscoped recursive grep blocked",
+    "blocked",
+    async (pi) => {
+      const r = await bash(
+        pi,
+        "grep -rn 'allNotifications consumers' .",
+        approveUi(),
+      );
+      return r.blocked && !r.reason.startsWith("Search (Scope)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
+  ],
+  [
+    "SS1: path-scoped grep passes",
+    "pass",
+    async (pi) => bash(pi, "grep -rn 'x' src/", approveUi()),
+  ],
+  [
+    "SS1: --include glob scope passes",
+    "pass",
+    async (pi) =>
+      bash(pi, "grep -rn --include='*.ts' 'x' .", approveUi()),
+  ],
+  [
+    "SS1: non-recursive grep passes",
+    "pass",
+    async (pi) => bash(pi, "grep -n 'x' package.json", approveUi()),
+  ],
+  [
+    "SS1: unscoped rg passes (gitignore-aware by design)",
+    "pass",
+    async (pi) => bash(pi, "rg 'pattern'", approveUi()),
+  ],
+  [
+    "NM1: grep into node_modules blocked",
+    "blocked",
+    async (pi) => {
+      const r = await bash(
+        pi,
+        "grep -rn 'x' node_modules/vite-tsconfig-paths/",
+        approveUi(),
+      );
+      return r.blocked && !r.reason.startsWith("Search (node_modules)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
+  ],
+  [
+    "NM1: find/cat into node_modules blocked",
+    "blocked",
+    async (pi) => {
+      const a = await bash(pi, "find node_modules -name '*.md'", approveUi());
+      if (!a.blocked) return a;
+      return bash(pi, "cat node_modules/.pnpm/foo/index.js", approveUi());
+    },
+  ],
+  [
+    "NM1: ls node_modules passes (presence check is legitimate)",
+    "pass",
+    async (pi) => bash(pi, "ls node_modules", approveUi()),
+  ],
+  [
+    "NM1: read tool into node_modules blocked",
+    "blocked",
+    async (pi) => {
+      const r = await read(
+        pi,
+        join(tmp, "node_modules", "x", "index.js"),
+        { offset: 1, limit: 5 },
+        { outputLines: 5 },
+      );
+      return r.blocked && !r.reason.startsWith("Search (node_modules)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
+  ],
 ];
 
 // ---- runner: each case replays its preamble on a fresh gate, then the probe ----

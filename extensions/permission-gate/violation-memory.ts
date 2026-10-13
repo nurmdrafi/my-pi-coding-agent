@@ -14,11 +14,21 @@ export const FAMILY_LESSONS: Record<string, string> = {
     "edit oldText is exact bytes from a read this session, unique in the file, non-overlapping with sibling edits.",
   Commitlint:
     "Commit messages are conventional: 'type(scope?): subject', lowercase subject, no trailing dot.",
+  "Toolchain (pnpm)":
+    "In a pnpm repo use pnpm run/exec/dlx — never npm/npx/yarn against its tree.",
+  "Toolchain (Node)":
+    "Match the repo's exact Node pin (.nvmrc/engines): prefix node binaries with 'nvm use <pin> &&'.",
+  "Search (Scope)":
+    "Never run a recursive grep without a path/glob scope — scope it (path, --include) or use rg.",
+  "Portability (grep -P)":
+    "No grep -P on macOS (BSD grep) — use rg or grep -E.",
+  "Search (node_modules)":
+    "Never read or search node_modules — use the dep's docs/types (lockfile version), or ask the user.",
 };
 
 /** the gate's own synthesized block results carry isError + a family-prefixed text */
 const BLOCK_FAMILY_RE =
-  /^(Token Economy|Anchor Guard|Commitlint|Permission Gate)[^:]*/;
+  /^(Token Economy|Anchor Guard|Commitlint|Permission Gate|Toolchain|Search|Portability)[^:]*/;
 export function blockFamilyOf(event: {
   isError?: boolean;
   content?: unknown[];

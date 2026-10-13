@@ -67,8 +67,11 @@ File map (every piece exists for a reason; do not skip one):
 - 401 ladder in the base query: retry only if something can actually rotate the token between attempts (a refresh endpoint, a re-fetch of the session). With a static module-holder token the retry is byte-identical — skip it and go straight to `signOut({redirect:false})` + `location.replace('/login?callbackUrl=...')` gated by `isProtectedRoute()` so public pages don't bounce. Sign-out is single-flight: only the base-query ladder owns it — never fire `signOut` from per-request listeners, or one expired token triggers N parallel 401s → N sign-outs → users logged out mid-action.
 - **No token in localStorage, ever.** The only client-visible token copy is the NextAuth session; API layers read it via the module holder.
 - Social logins exchange the provider token for a backend token inside the `jwt` callback — the provider token is never stored as the app token.
+- Logout revokes the backend session server-side, not only local state; a session token is never attached to a cross-origin or scheme-less URL.
 
 ## Checklist
+
+Prevention catalog: `~/.pi/agent/docs/issue-classes.md` §Authorization & auth.
 
 - [ ] `authorize()` throws with backend message; does all backend auth calls
 - [ ] Login failures class-distinct: 401 credentials / 429 throttled / other or network → service-unavailable; non-401 causes captured server-side
