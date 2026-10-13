@@ -8,205 +8,73 @@ disable-model-invocation: true
 
 ## Overview
 
-Core principle: Find the root cause before attempting fixes — a symptom fix leaves the cause in place, which is why the same error keeps coming back. Proposing fixes before Phase 1 completes is guessing.
+Root cause before any fix. Symptom fix leaves cause in place = same error returns. Fix proposals before Phase 1 done = guessing.
 
 ## When to Use
 
-Use for any technical issue:
-- Test failures
-- Bugs in production
-- Unexpected behavior
-- Performance problems
-- Build failures
-- Integration issues
+Any technical issue: test failures, prod bugs, unexpected behavior, perf, build failures, integration issues.
 
-Reach for this especially when:
-- Under time pressure (emergencies make guessing tempting)
-- "Just one quick fix" seems obvious
-- You've already tried multiple fixes
+Especially when:
+- Time pressure (emergencies tempt guessing)
+- "Quick fix" seems obvious
+- Multiple fixes already tried
 - Previous fix didn't work
-- You don't fully understand the issue
+- Issue not fully understood
 
 ## The Error-Class Loop
 
-When the same class of error appears a second time (TS2345 null-check,
-TS2304 cannot-find-name, a test importing a nonexistent module, the same
-build error on another file): stop instance-patching. An error that survives
-two fixes means the fixes targeted instances, not the cause.
+Same error class second time (TS2345 null-check, TS2304 cannot-find-name, test importing nonexistent module, same build error in another file): stop instance-patching. Error surviving two fixes = fixes hit instances, not cause.
 
-1. `rg` the pattern repo-wide — enumerate every occurrence, not the one the
-   compiler happened to show first.
-2. Fix the whole class as one change (shared guard, real import path, actual
-   module name).
-3. Run the narrow check once (`tsc --noEmit` / the single failing test file)
-   and confirm zero occurrences — not one-turn-per-instance.
+1. `rg` pattern repo-wide — every occurrence, not just the one compiler showed first
+2. Fix whole class as one change (shared guard, real import path, actual module name)
+3. Run narrow check once (`tsc --noEmit` / single failing test file), confirm zero occurrences — not one turn per instance
 
 Don't skip when:
 - Issue seems simple (simple bugs have root causes too)
-- You're in a hurry (rushing guarantees rework)
-- Manager wants it fixed NOW (systematic is faster than thrashing)
+- Hurrying (rushing = rework guaranteed)
+- Manager wants it NOW (systematic beats thrashing)
 
 ## The Four Phases
 
-Complete each phase before proceeding to the next — each phase produces the
-evidence the next one consumes.
+Each phase before next — each produces evidence the next consumes.
 
 ### Phase 1: Root Cause Investigation
 
-**BEFORE attempting ANY fix:**
+**BEFORE any fix:**
 
-1. Read Error Messages Carefully
-   - Don't skip past errors or warnings
-   - They often contain the exact solution
-   - Read stack traces completely
-   - Note line numbers, file paths, error codes
-
-2. Reproduce Consistently
-   - Can you trigger it reliably?
-   - What are the exact steps?
-   - Does it happen every time?
-   - If not reproducible → gather more data, don't guess
-
-3. Check Recent Changes
-   - What changed that could cause this?
-   - Git diff, recent commits
-   - New dependencies, config changes
-   - Environmental differences
-   - Bug reports quote code at the commit they were filed against — re-read
-     current HEAD before acting; the claim may already be fixed, or that fix
-     may itself be the source of the bug you're now chasing
-
-4. Gather Evidence in Multi-Component Systems
-
-   **WHEN system has multiple components (CI → build → signing, API → service → database):** add diagnostic instrumentation at each component boundary and run once to localize the failing layer — the full technique, multi-layer example, and the intermittent external-API throttle-counter case are in `references/evidence-gathering.md`.
-
-5. Trace Data Flow
-
-   **WHEN error is deep in call stack:**
-
-   See `references/root-cause-tracing.md` for the complete backward tracing technique.
-
-   Quick version:
-   - Where does bad value originate?
-   - What called this with bad value?
-   - Keep tracing up until you find the source
-   - Fix at source, not at symptom
+1. Read errors carefully — don't skip; often contain exact solution. Full stack traces, note line numbers, paths, error codes
+2. Reproduce consistently — exact steps? every time? Not reproducible → gather more data, don't guess
+3. Check recent changes — git diff, recent commits, new deps, config, env differences. Bug reports quote code at the filed commit — re-read current HEAD first; may already be fixed, or that fix may itself be the bug you're chasing
+4. Multi-component systems (CI → build → signing, API → service → database): instrument each component boundary, run once, localize failing layer — full technique + multi-layer example + intermittent external-API throttle-counter case in `references/evidence-gathering.md`
+5. Error deep in call stack: see `references/root-cause-tracing.md` for full backward-trace technique. Quick version: where does bad value originate? what called this with it? trace up to source, fix at source not symptom
 
 ### Phase 2: Pattern Analysis
 
-Find the pattern before fixing:
-
-1. Find Working Examples
-   - Locate similar working code in same codebase
-   - What works that's similar to what's broken?
-   - For wrong/null API data: read a sibling consumer of the same
-     endpoint/hook plus the endpoint definition (transformResponse?) — the
-     actual post-unwrap shape settles it in one glance; variable names like
-     `res.data` lie (`.unwrap()` already returns the body)
-
-2. Compare Against References
-   - If implementing pattern, read reference implementation COMPLETELY
-   - Don't skim - read every line
-   - Understand the pattern fully before applying
-
-3. Identify Differences
-   - What's different between working and broken?
-   - List every difference, however small
-   - Don't assume "that can't matter"
-
-4. Understand Dependencies
-   - What other components does this need?
-   - What settings, config, environment?
-   - What assumptions does it make?
+1. Find working examples — similar working code in same codebase. Wrong/null API data: read sibling consumer of same endpoint/hook + endpoint definition (transformResponse?) — actual post-unwrap shape settles it in one glance; variable names like `res.data` lie (`.unwrap()` already returns body)
+2. Compare against references — implementing a pattern? read reference implementation COMPLETELY, every line
+3. Identify differences — list every difference, however small; never assume "that can't matter"
+4. Understand dependencies — needed components, settings, config, environment, assumptions
 
 ### Phase 3: Hypothesis and Testing
 
-Scientific method:
-
-1. Form Single Hypothesis
-   - State clearly: "I think X is the root cause because Y"
-   - Write it down
-   - Be specific, not vague
-
-2. Test Minimally
-   - Make the SMALLEST possible change to test hypothesis
-   - One variable at a time
-   - Don't fix multiple things at once
-
-3. Verify Before Continuing
-   - Did it work? Yes → Phase 4
-   - Didn't work? Form NEW hypothesis
-   - DON'T add more fixes on top
-
-4. When You Don't Know
-   - Say "I don't understand X"
-   - Don't pretend to know
-   - Ask for help
-   - Research more
+1. Single hypothesis — "X is root cause because Y", write it down, be specific
+2. Test minimally — smallest possible change, one variable at a time
+3. Verify before continuing — worked → Phase 4; didn't → NEW hypothesis; DON'T stack fixes
+4. Don't know? Say "I don't understand X". Don't pretend. Ask, research
 
 ### Phase 4: Implementation
 
-Fix the root cause, not the symptom:
+Fix root cause, not symptom:
 
-1. Create Failing Test Case
-   - Simplest possible reproduction
-   - Automated test if possible
-   - One-off test script if no framework
-   - Required before fixing starts
-   - Written after the fix already exists? Flip the fix back once and
-     confirm the test goes red — a regression test that has never failed
-     proves nothing about detection
+1. Failing test case first — simplest reproduction, automated test or one-off script, required before fixing. Written after fix exists? Flip fix back once, confirm test goes red — regression test that never failed proves nothing
+2. Single fix — root cause only, ONE change, no "while I'm here", no bundled refactoring
+3. Verify — test passes? no other tests broken? issue resolved? original failing command re-run end-to-end green? Failures stack — one root cause masks the next; green on fixed layer alone ≠ done. Adjacent-path check (fixes = most common regression source): enumerate every other path the touched guard/effect/state participates in, verify each. Guard closing reported hole must neither skip legit run nor fire when silent; re-entered blocks must not stack handlers/listeners (remove-then-add or flag the right event resets)
+4. Fix doesn't work → STOP. Count fixes tried. <3 → Phase 1 with new info. **≥3 → STOP, question architecture (step 5)**. No fix #4 without architectural discussion
+5. 3+ fixes failed = architecture problem. Signals: each fix reveals new shared state/coupling elsewhere, fixes need "massive refactoring", each fix creates new symptoms. STOP, question fundamentals: pattern sound? inertia alone? refactor architecture vs keep patching symptoms? Discuss with human partner first. Not failed hypothesis — wrong architecture
 
-2. Implement Single Fix
-   - Address the root cause identified
-   - ONE change at a time
-   - No "while I'm here" improvements
-   - No bundled refactoring
+## Red Flags — STOP and Follow Process
 
-3. Verify Fix
-   - Test passes now?
-   - No other tests broken?
-   - Issue actually resolved?
-   - Original failing command re-run end-to-end and green? Failures stack —
-     one root cause masks the next, so a green on the fixed layer alone is
-     not done
-   - Adjacent-path check (fixes themselves are the most common source of
-     regressions): enumerate every other path the touched guard/effect/state
-     participates in and verify each still behaves. A guard that closes the
-     reported hole must neither skip a legitimate run nor fire when it should
-     stay silent; re-entered blocks must not stack handlers/listeners
-     (remove-then-add or a flag the right event resets).
-
-4. If Fix Doesn't Work
-   - STOP
-   - Count: How many fixes have you tried?
-   - If < 3: Return to Phase 1, re-analyze with new information
-   - **If ≥ 3: STOP and question the architecture (step 5 below)**
-   - DON'T attempt Fix #4 without architectural discussion
-
-5. If 3+ Fixes Failed: Question Architecture
-
-   Pattern indicating architectural problem:
-   - Each fix reveals new shared state/coupling/problem in different place
-   - Fixes require "massive refactoring" to implement
-   - Each fix creates new symptoms elsewhere
-
-   STOP and question fundamentals:
-   - Is this pattern fundamentally sound?
-   - Are we "sticking with it through sheer inertia"?
-   - Should we refactor architecture vs. continue fixing symptoms?
-
-   Discuss with your human partner before attempting more fixes
-
-   This is NOT a failed hypothesis - this is a wrong architecture.
-
-## Red Flags - STOP and Follow Process
-
-The red-flag thoughts, your human partner's redirection signals, and the
-rationalization→reality table live in `references/red-flags.md` — read them
-when you catch yourself (or are told) you're guessing. ALL red flags mean:
-STOP. Return to Phase 1. If 3+ fixes failed: Question the architecture
-(Phase 4, step 5).
+Red-flag thoughts, human partner's redirect signals, rationalization→reality table in `references/red-flags.md` — read when caught (or told) guessing. ALL red flags: STOP, return to Phase 1. 3+ fixes failed → question architecture (Phase 4 step 5).
 
 ## Quick Reference
 
@@ -219,21 +87,18 @@ STOP. Return to Phase 1. If 3+ fixes failed: Question the architecture
 
 ## When Process Reveals "No Root Cause"
 
-If systematic investigation reveals issue is truly environmental, timing-dependent, or external:
-
-1. You've completed the process
-2. Document what you investigated
+Truly environmental / timing-dependent / external:
+1. Process complete
+2. Document what was investigated
 3. Implement appropriate handling (retry, timeout, error message)
-4. Add monitoring/logging for future investigation
+4. Add monitoring/logging for future
 
-But: 95% of "no root cause" cases are incomplete investigation.
+But: 95% of "no root cause" = incomplete investigation.
 
 ## Supporting Techniques
 
-These techniques are part of systematic debugging and available in `references/`:
-
-- `references/root-cause-tracing.md` - Trace bugs backward through call stack to find original trigger
-- `references/defense-in-depth.md` - Add validation at multiple layers after finding root cause
-- `references/condition-based-waiting.md` - Replace arbitrary timeouts with condition polling
-- `references/evidence-gathering.md` - Multi-component instrumentation technique and the external-API throttle-counter case
-- `references/red-flags.md` - Red-flag thoughts, human-partner signals, rationalization→reality table
+- `references/root-cause-tracing.md` — trace bugs backward through call stack to original trigger
+- `references/defense-in-depth.md` — validation at multiple layers after finding root cause
+- `references/condition-based-waiting.md` — replace arbitrary timeouts with condition polling
+- `references/evidence-gathering.md` — multi-component instrumentation + external-API throttle-counter case
+- `references/red-flags.md` — red-flag thoughts, human-partner signals, rationalization→reality table

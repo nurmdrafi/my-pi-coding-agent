@@ -24,8 +24,8 @@ const handleSubmit = async (mobile: string, password: string) => {
   await handleLoginSuccess();
 };
 
-// Query params are user-controllable: "?callbackUrl=https://evil.com" must
-// not survive into router.push — an absolute URL full-navigates off-origin.
+// Query params user-controllable: "?callbackUrl=https://evil.com" must not
+// survive into router.push — absolute URL full-navigates off-origin.
 const toSameOriginPath = (value: string): string | null => {
   try {
     const url = new URL(value, window.location.origin);
@@ -57,9 +57,7 @@ const handleLoginSuccess = async () => {
 };
 ```
 
-Button loading state lives in the component (`isLoading` true on submit, false
-in catch, **left true on success** — navigation unmounts the page). Never
-derive the redirect from a mutation's fulfillment; `signIn` is the only await.
+Button loading state in the component (`isLoading` true on submit, false in catch, **left true on success** — navigation unmounts the page). Never derive redirect from mutation fulfillment; `signIn` = only await.
 
 ## Register → auto-login
 
@@ -73,8 +71,7 @@ if (result) {
 }
 ```
 
-No "please log in now" step. Errors normalize through
-`extractErrorMessage(error, "Registration failed")`.
+No "please log in now" step. Errors normalize through `extractErrorMessage(error, "Registration failed")`.
 
 ## Error normalization helper (use everywhere)
 
@@ -111,7 +108,7 @@ export async function handleLogout(callbackUrl: string = "/") {
 
 | Where | Fallback |
 |---|---|
-| Session cookie maxAge | backend JWT `exp` — no fallback; sign-in fails if the token has no usable expiry |
+| Session cookie maxAge | backend JWT `exp` — no fallback; sign-in fails if token has no usable expiry |
 | Login redirect | `callbackUrl` (same-origin validated) → same-origin referrer (≠ auth page) → default route |
 | Auth-page redirect (proxy) | referer path if non-auth → `/` |
 | `authorize()` failure | thrown backend message → `result.error` → toast; `null` only for missing input |
@@ -119,11 +116,11 @@ export async function handleLogout(callbackUrl: string = "/") {
 | 401 on API call | retry only with real token rotation → `signOut` + `/login?callbackUrl=` (public pages: silent signOut) |
 | `hydrateSessionToken` | fetch fail → token `null` → anonymous requests, login proceeds |
 | Logout | try/catch → unconditional final `signOut` |
-| Post-login deferred intents (e.g. buy-now) | keep intent in sessionStorage; target page replays it after session hydrates — don't act while `useSession` is still stale |
+| Post-login deferred intents (e.g. buy-now) | keep intent in sessionStorage; target page replays after session hydrates — don't act while `useSession` stale |
 
 ## Pitfalls
 
-- Multi-second `setTimeout` before redirect — never; await the chain instead.
-- Acting on `useSession()` immediately after `signIn` resolves — cache is stale; that's what `hydrateSessionToken` is for.
-- Forgetting `callbackUrl` propagation through proxy redirects loses the user's place.
-- Trusting `callbackUrl` because "the proxy sets it safely" — the proxy sets a pathname-only value, but the query param itself is user-editable; sanitize at the consumption site regardless.
+- Multi-second `setTimeout` before redirect — never; await the chain.
+- Acting on `useSession()` right after `signIn` resolves — cache stale; that's `hydrateSessionToken`'s job.
+- Losing `callbackUrl` through proxy redirects = loses user's place.
+- Trusting `callbackUrl` because "proxy sets it safely" — proxy sets pathname-only value, but query param itself user-editable; sanitize at consumption site regardless.

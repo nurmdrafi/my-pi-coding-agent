@@ -33,7 +33,7 @@ export async function proxy(request: NextRequest) {
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   const isAuthenticated = !!token;
 
-  // Authenticated users are pushed away from auth pages, back to where they came from
+  // Authenticated users pushed away from auth pages, back to where they came from
   if (isAuthRoute(pathname) && isAuthenticated) {
     const referer = request.headers.get("referer");
     let redirectPath = "/";
@@ -48,7 +48,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL(redirectPath, request.url));
   }
 
-  // Unauthenticated users on protected pages → login with return path
+  // Unauthenticated on protected pages → login with return path
   if (isProtectedRoute(pathname) && !isAuthenticated) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
@@ -70,8 +70,7 @@ export const config = {
 };
 ```
 
-Explicit matcher beats a catch-all regex: no exclusions to maintain, middleware
-runs only where the decision matters.
+Explicit matcher beats catch-all regex: no exclusions to maintain, middleware runs only where decision matters.
 
 ## Layout bootstrap — zero round-trip session
 
@@ -92,13 +91,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 }
 ```
 
-Passing the server-resolved session into `SessionProvider` means the first paint
-already knows auth state — no initial `/api/auth/session` fetch, no auth-state
-flash on protected shells.
+Server-resolved session into `SessionProvider` → first paint already knows auth state — no initial `/api/auth/session` fetch, no auth-state flash on protected shells.
 
 ## Pitfalls
 
-- `proxy.ts` **is** the middleware on Next 16+ (root-level convention, exported function named `proxy`). Don't report it as dead wiring because `middleware.ts` doesn't exist — pre-16 the same file is `middleware.ts` with the export named `middleware`. Verify wiring by version, not by filename.
-- `getToken()` verifies the cookie signature — replaces presence-only cookie checks (`request.cookies.get('token')`), which anyone can forge with devtools.
-- Public pages that must stay reachable logged-out (e.g. `/tracking`) simply don't appear in the matcher.
-- Do not put `/api/auth/*` in the matcher — NextAuth routes must not be intercepted.
+- `proxy.ts` **is** the middleware on Next 16+ (root-level convention, exported function named `proxy`). Don't report as dead wiring because `middleware.ts` doesn't exist — pre-16 same file is `middleware.ts`, export named `middleware`. Verify wiring by version, not filename.
+- `getToken()` verifies cookie signature — replaces presence-only checks (`request.cookies.get('token')`), forgeable with devtools.
+- Public pages that must stay reachable logged-out (e.g. `/tracking`) simply absent from matcher.
+- Never put `/api/auth/*` in matcher — NextAuth routes must not be intercepted.

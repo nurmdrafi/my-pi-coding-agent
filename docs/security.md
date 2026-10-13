@@ -1,22 +1,20 @@
 # Security
 
 ## Build-time
-
-- Mutating routes carry auth/permission checks when first written.
-- Secrets stay server-side.
-- Guard/effect fixes re-check adjacent paths they unblocked.
+- Mutating routes: auth/permission checks at first write.
+- Secrets server-side.
+- Guard/effect fixes re-check adjacent unblocked paths.
 
 ## Ask before
-
 - Installing packages
 - Destructive commands
-- Anything outside the repo (dotfiles, global config)
+- Outside repo (dotfiles, global config)
 - Network side effects
-- `sudo` or `curl | sh`
-- Migrations or deploys
+- `sudo`, `curl | sh`
+- Migrations, deploys
 
 ## Never
-
 - Overwrite uncommitted user changes
-- `git add -A`, `git commit --amend`, or `--no-verify` unprompted
-- Print or log `.env` contents or any secret
+- `git add -A`, `git commit --amend`, `--no-verify` unprompted
+- Print/log `.env` or any secret
+- Run command whose output may contain secret without redaction pipe — near known secret: pipe through `sed`/`jq` redaction or print length/hash only; verify redaction pattern matches quoting style first; raw value never reaches tool output or transcript

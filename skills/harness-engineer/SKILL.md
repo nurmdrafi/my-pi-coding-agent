@@ -12,99 +12,82 @@ disable-model-invocation: true
 
 # Harness Engineer
 
-Make this harness leaner, more cache-stable, and fully portable (macOS + Linux).
-Evidence over opinion. Prefer deletion and lazy-loading.
+Make harness leaner, more cache-stable, fully portable (macOS+Linux). Evidence over opinion. Prefer deletion + lazy-loading.
 
 ## Non-negotiable principles
 
-1. Minimal core — delete before add. Never bloat the permanent prefix.
-2. Cache is sacred — system prompt + tool defs + AGENTS.md + skill *descriptions* must stay byte-stable for a session. Prefer a fresh session after prefix changes.
-3. rg first — code navigation via `rg`. Bash only for real side-effects (tests, builds, git, package managers).
-4. Progressive disclosure — skills expose only name + description; bodies load on demand.
-5. Portability — no absolute user paths in functional files (`~` / `$HOME` only). No unguarded OS-only commands. No pi env vars for config location (default `~/.pi/agent`).
-6. Never move permanent behavioral rules out of `AGENTS.md` into this skill or other skills.
+1. Minimal core — delete before add. Never bloat permanent prefix.
+2. Cache sacred — system prompt + tool defs + AGENTS.md + skill *descriptions* byte-stable per session. Fresh session after prefix changes.
+3. rg first — code navigation via `rg`. Bash only for real side-effects (tests, builds, git, pkg managers).
+4. Progressive disclosure — skills expose name + description only; bodies load on demand.
+5. Portability — no absolute user paths in functional files (`~`/`$HOME` only). No unguarded OS-only commands. No pi env vars for config location (default `~/.pi/agent`).
+6. Never move permanent behavioral rules out of `AGENTS.md` into skills.
 
 ## Snapshot loop (mandatory)
 
-Before any edit and again at the end, capture:
+Before any edit + at end, capture:
 
 ```sh
 wc -c ~/.pi/agent/AGENTS.md
 # skill count + description byte sizes
 ls ~/.pi/agent/prompts/*.md 2>/dev/null | wc -l
-# portability hits (see check below)
+# portability hits (check below)
 ```
 
-Report BEFORE → AFTER for every field. No improvement claim without a number.
+Report BEFORE → AFTER every field. No improvement claim without number.
 
 ## Scope
 
-- `~/.pi/agent/` (and project `.pi/`): `AGENTS.md`, `settings.json`, `models.json`, skills, prompts
-- `README.md`, `CHANGELOG.md`, `audit-reports/skills/skills-audit.md` — the living map; re-read before any change
+- `~/.pi/agent/` (+ project `.pi/`): `AGENTS.md`, `settings.json`, `models.json`, skills, prompts
+- `README.md`, `CHANGELOG.md`, `audit-reports/skills/skills-audit.md` — living map; re-read before any change
 
-If `README.md` is missing, create a minimal version first.
+`README.md` missing → create minimal first.
 
 ## Audit mode
 
-One skill covers the full loop: inspect → audit/score → diagnose → change → measure → log. Audit-only mode: **do not modify any files** (except the report, watermark advance, and the 30-day session prune) unless the user asks.
+One skill = full loop: inspect → audit/score → diagnose → change → measure → log. Audit-only: **modify nothing** (except report, watermark advance, 30-day session prune) unless user asks.
 
-0. Watermark check — read `~/.pi/agent/audit-reports/.watermark.json` (`auditedThrough`, ISO ts). Scope every session-derived scan strictly to session files whose ISO-prefixed filename timestamp is newer (parse it — filenames dash the time (`YYYY-MM-DDTHH-MM-SS…`), and plain string compare mis-orders the same-hour case against the colon-format watermark); never re-audit covered sessions. No watermark yet: everything is unaudited.
-1. Inventory (chars/4 as token heuristic):
-   - Context files: `AGENTS.md` (+ any always-loaded file) byte size → tokens.
-   - Every skill: `description` field char count → tokens (extract frontmatter only, never load bodies).
+0. Watermark check — read `~/.pi/agent/audit-reports/.watermark.json` (`auditedThrough`, ISO ts). Session-derived scans scope strictly to session files whose filename timestamp is newer (parse it — filenames dash the time `YYYY-MM-DDTHH-MM-SS…`; plain string compare mis-orders same-hour case vs colon-format watermark); never re-audit covered sessions. No watermark → everything unaudited.
+1. Inventory (chars/4 = token heuristic):
+   - Context files: `AGENTS.md` (+ always-loaded files) byte size → tokens.
+   - Every skill: `description` char count → tokens (extract frontmatter only, never load bodies).
    ```sh
    wc -c ~/.pi/agent/AGENTS.md
    awk '/^description:/{f=1;next} /^---/{f=0} f' ~/.pi/agent/skills/*/SKILL.md | wc -c
    ```
-2. Compute permanent floor = context tokens + Σ skill-description tokens.
-3. Health Score — start at 100, deduct:
+2. Permanent floor = context tokens + Σ skill-description tokens.
+3. Health Score — start 100, deduct:
    - context > 800 tok: −10
    - skill count > 15: −10
    - any single desc > 250 tok: −10
    - avg desc > 100 tok: −10
-   - huge body (>2,000 tok) AND long desc (>100 tok): −5 per skill (progressive-disclosure failure)
-   - AGENTS.md ↔ skill rule duplication: −5 per overlap
+   - huge body (>2,000 tok) AND long desc (>100 tok): −5/skill (progressive-disclosure failure)
+   - AGENTS.md ↔ skill rule duplication: −5/overlap
    - vague/missing descriptions: −5 each
-   - skills-dir pollution (node_modules, .zip, ._*): −5 each class
-   - portability quick-check hits in functional files: −5 per class
-4. Anti-pattern sweep — prompt-quality + security checks orthogonal to
-   the score: run the checklist in `references/anti-pattern-audit.md` over
-   skills, prompts, and extensions (rg-signature pass first, read only
-   flagged regions, calibrate earned emphasis vs boosters). Findings get
-   their own report section; fixes are separate proposals (Workflow step 3).
-5. Write the report into the matching `~/.pi/agent/audit-reports/{harness,skills,sessions}/` subdir as `<date>T<time>Z-<topic>.md` (every filename carries its date; header records machine provenance — `uname -srm` + `uname -n`, this repo runs from multiple machines/OSes) — structure: executive summary, inventory table, top consumers, overlaps, score breakdown, comparison to previous report if present (delta per metric).
+   - skills-dir pollution (node_modules, .zip, ._*): −5/class
+   - portability quick-check hits in functional files: −5/class
+4. Anti-pattern sweep — prompt-quality + security checks orthogonal to score: run `references/anti-pattern-audit.md` checklist over skills, prompts, extensions (rg-signature pass first, read flagged regions only, calibrate earned emphasis vs boosters). Findings get own report section; fixes = separate proposals (Workflow step 3).
+5. Report → matching `~/.pi/agent/audit-reports/{harness,skills,sessions}/` subdir, `<date>T<time>Z-<topic>.md` (filename carries date; header records machine provenance — `uname -srm` + `uname -n`, repo runs from multiple machines/OSes) — structure: executive summary, inventory table, top consumers, overlaps, score breakdown, delta vs previous report if present.
 6. Report BEFORE → AFTER numbers; recommendations ranked by impact. Implement only on request, then log per *Workflow* step 5.
-7. Close the audit — advance `.watermark.json`'s `auditedThrough` to the newest session covered; prune: delete `~/.pi/agent/sessions/**/*.jsonl` not modified in 30 days, then remove emptied cwd-slug dirs.
+7. Close audit — advance `.watermark.json` `auditedThrough` to newest covered session; prune: delete `~/.pi/agent/sessions/**/*.jsonl` unmodified 30 days, remove emptied cwd-slug dirs.
 
 ## Workflow
 
-1. Discover — list loaded context files, skills (name + desc + path), prompts, non-portable items. Re-read `README.md`. Capture BEFORE snapshot.
-2. Diagnose — rank by impact: unused/overlapping skills, AGENTS.md bloat that belongs in a skill, bash-used-for-search, non-portable paths, unstable prefix material.
-3. Propose — prefer deletions/merges. For each change: path, before→after, why (cache/tokens/portability), risk, rollback.
-4. Implement — only approved/safe edits. Ask before destructive or large writes. Tell user to start a fresh session after prefix changes.
-5. Persist — add dated entry at the TOP of `CHANGELOG.md` (latest-first; include `Measured:` before→after). Update `README.md` or `skills-audit.md` when architecture or skill set changes.
+1. Discover — loaded context files, skills (name + desc + path), prompts, non-portable items. Re-read `README.md`. BEFORE snapshot.
+2. Diagnose — rank by impact: unused/overlapping skills, AGENTS.md bloat belonging in a skill, bash-used-for-search, non-portable paths, unstable prefix material.
+3. Propose — prefer deletions/merges. Per change: path, before→after, why (cache/tokens/portability), risk, rollback.
+4. Implement — approved/safe edits only. Ask before destructive/large writes. Tell user fresh session after prefix changes.
+5. Persist — dated entry at TOP of `CHANGELOG.md` (latest-first; include `Measured:` before→after). Update `README.md`/`skills-audit.md` when architecture or skill set changes.
 
-Optional deep evidence (only when user asks for skill-usage or token audit):
+Optional deep evidence (only on request — skill-usage/token audit):
 
-- Run `python3 scripts/usage-metrics.py` (skill dir) — per-model token profile
-  (input/output/reasoning per turn, cache %, cost), top-5 cost-tail sessions,
-  first-turn prefix trend. Prefer it over hand-written JSONL analysis.
-- Run `python3 scripts/audit_toolcall_rules.py [path]` (skill dir) — checks a session
-  .jsonl (or dir; default: last 5 sessions) for AGENTS.md Token-Economy violations
-  (grep-on-file, cat-for-viewing, re-runs, speculative previews, pollution) plus
-  per-turn call batching stats.
-- Run `python3 scripts/error_audit.py [path]` (skill dir) — error mining:
-  joins toolResult.isError back to the originating toolCall input; reports by
-  tool/kind/project + top failing command heads (default scans all sessions).
-- A/B prefix cost: `bash scripts/make_test_home.sh <skills-csv> [dest]` builds a temp
-  HOME with those skills model-visible (real harness untouched), then
-  `bash scripts/ab_prefix.sh "<prompt>" <dest> [model]` runs one prompt under both
-  configs and prints first-turn tokens / cache-read / cost / wall time.
-- Evidence (L2-vs-L3 benchmark, 10 runs):
-  `assets/l2-vs-l3-matrix.json` — only tavily-search fired (enabled
-  model-visible as a result); L3-as-a-set failed the ≤20% median-cost rule.
+- `python3 scripts/usage-metrics.py` (skill dir) — per-model token profile (input/output/reasoning per turn, cache %, cost), top-5 cost-tail sessions, first-turn prefix trend. Prefer over hand-written JSONL analysis.
+- `python3 scripts/audit_toolcall_rules.py [path]` — checks session .jsonl (or dir; default last 5) for AGENTS.md Token-Economy violations (grep-on-file, cat-for-viewing, re-runs, speculative previews, pollution) + per-turn call batching stats.
+- `python3 scripts/error_audit.py [path]` — error mining: joins toolResult.isError back to originating toolCall input; reports by tool/kind/project + top failing command heads (default all sessions).
+- A/B prefix cost: `bash scripts/make_test_home.sh <skills-csv> [dest]` builds temp HOME with those skills model-visible (real harness untouched); `bash scripts/ab_prefix.sh "<prompt>" <dest> [model]` runs one prompt under both configs, prints first-turn tokens / cache-read / cost / wall time.
+- Evidence (L2-vs-L3 benchmark, 10 runs): `assets/l2-vs-l3-matrix.json` — only tavily-search fired (enabled model-visible as result); L3-as-a-set failed ≤20% median-cost rule.
 - pi sessions: `~/.pi/agent/sessions/*/*.jsonl` — skill loads, `/skill:` invocations, correction words
-- Rank skills: auto-load vs explicit vs never fire — `uv run --script scripts/skill_usage_audit.py` (from this skill dir) counts per-skill invocations across all sessions and tiers them high/medium/low/unused
+- Rank skills: auto-load vs explicit vs never fire — `uv run --script scripts/skill_usage_audit.py` (from skill dir) counts per-skill invocations across all sessions, tiers high/medium/low/unused
 
 ## Portability quick-check
 
@@ -129,4 +112,4 @@ Zero hits required in functional files.
 
 ## Goal
 
-Smaller, more stable, cache-friendly, rg-first, fully portable harness.
+Smaller, stable, cache-friendly, rg-first, fully portable harness.

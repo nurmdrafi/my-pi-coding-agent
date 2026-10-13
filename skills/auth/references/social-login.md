@@ -1,9 +1,6 @@
 # Social login (Google / Facebook token exchange)
 
-Social buttons never authenticate the user directly against the app backend.
-The provider's access token is **exchanged for a backend bearer token** inside
-the NextAuth `jwt` callback; everything downstream (session, API calls,
-protection) is identical to credentials login.
+Social buttons never authenticate user directly against app backend. Provider's access token is **exchanged for a backend bearer token** inside NextAuth `jwt` callback; everything downstream (session, API calls, protection) identical to credentials login.
 
 ## Provider config (`lib/auth/options.ts`)
 
@@ -69,17 +66,13 @@ const handleGoogleLogin = async () => {
 };
 ```
 
-Social sign-ins use the provider's redirect dance, so `redirect: false` doesn't
-apply. The provider returns to `NEXTAUTH_URL/api/auth/callback/<provider>` and
-NextAuth then honors `callbackUrl` (same-origin only, by design).
+Social sign-ins use provider's redirect dance — `redirect: false` doesn't apply. Provider returns to `NEXTAUTH_URL/api/auth/callback/<provider>`; NextAuth honors `callbackUrl` (same-origin only, by design).
 
-Because the exchange happens server-side in the callback, the landing request
-already carries the session — no `hydrateSessionToken()` needed on the social
-path (still required after credentials `signIn({redirect:false})`).
+Exchange happens server-side in callback → landing request already carries session — no `hydrateSessionToken()` on social path (still required after credentials `signIn({redirect:false})`).
 
 ## Pitfalls
 
-- Never store the provider token as the app token; the backend wouldn't accept it.
-- Wrap the exchange in try/catch returning the bare token on failure — an exception in the `jwt` callback breaks every subsequent session read, not just social login.
+- Never store provider token as app token; backend wouldn't accept it.
+- Wrap exchange in try/catch returning bare token on failure — exception in `jwt` callback breaks every subsequent session read, not just social login.
 - `callbackUrl` must be same-origin or NextAuth silently drops it.
-- Test the provider callback URL registration against the exact `NEXTAUTH_URL` origin (http/https and www mismatches are the usual failure).
+- Test provider callback URL registration against exact `NEXTAUTH_URL` origin (http/https and www mismatches = usual failure).

@@ -6,49 +6,32 @@ disable-model-invocation: true
 
 # GitHub Actions workflows
 
-Editing workflow files is a privileged operation: every `uses:` runs third-party
-code with whatever secrets and GITHUB_TOKEN scopes the job holds. Treat the
-steps below as the standard procedure for creating or hardening workflows.
+Workflow editing = privileged: every `uses:` runs third-party code with job's secrets + GITHUB_TOKEN scopes. Steps below = standard procedure for creating/hardening.
 
 ## 1. Validate every edit with actionlint
 
-The schema check catches what review misses — invalid step keys, bad
-expressions, wrong `permissions` placement. Never eyeball a workflow diff as
-the only check.
+Schema check catches what review misses — invalid step keys, bad expressions, wrong `permissions` placement. Never eyeball-only.
 
 ```sh
 docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color
 ```
 
-Docker daemon down → standalone binary (args are `VERSION DIR`, in that order —
-`latest /tmp`, not `/tmp latest`):
+Docker down → standalone binary (args `VERSION DIR` — `latest /tmp`, not `/tmp latest`):
 
 ```sh
 curl -sfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash -o /tmp/dl-actionlint.sh
 bash /tmp/dl-actionlint.sh latest /tmp && /tmp/actionlint
 ```
 
-Use `-shellcheck=` to skip shellcheck if unavailable locally. Re-run after
-every fix until exit 0.
+`-shellcheck=` skips shellcheck if unavailable. Re-run after every fix until exit 0.
 
-Exit 0 alone proves nothing — actionlint reports success when it parsed
-nothing at all. Two ways it silently passes:
+Exit 0 alone proves nothing — actionlint reports success on valid-but-wrong YAML parsed from wrong dir. Confirm parser live before trusting pass: append real error (step-level `permissions:` key guaranteed invalid), check exit 1 + key named. Delete temp copy after.
 
-- Outside a git repository it prints `no project was found` and exits 0.
-- Injected YAML that is syntactically valid but semantically wrong (unpinned
-  `@v4`, a job nothing `needs:`) also exits 0.
+## 2. Pin every `uses:` to full commit SHA
 
-Confirm the parser is live before trusting a pass: temporarily append a real
-error (a step-level `permissions:` key is guaranteed invalid) and check that
-actionlint exits 1 and names the key. Delete the temp copy afterwards.
+Mutable tags (`@v3`) movable by anyone with write access to action repo — moved tag = remote code execution in workflow. Pin 40-char SHA + tag comment.
 
-## 2. Pin every `uses:` to a full commit SHA
-
-Mutable tags (`@v3`, `@v1`) can be moved by anyone with write access to the
-action repo — a moved tag is remote code execution inside the workflow. Pin to
-the 40-char SHA with the tag as a comment.
-
-Resolve tag → SHA via gh api:
+Resolve tag → SHA:
 
 ```sh
 for spec in actions/checkout:4 docker/login-action:3; do
@@ -64,19 +47,13 @@ done
 uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
 ```
 
-- Pin everything, including first-party (`actions/*`, `docker/*`) — uniform
-  pinning costs nothing and removes the
-  "is this third-party?" judgment call.
-- Pin the current major only. Do not jump majors in the same change.
-- Reusable workflows pin the same way:
-  `uses: org/repo/.github/workflows/x.yml@<sha> # v1`. Repos with a single
-  moving major tag (only `v1`, no patches) still pin.
+- Pin everything incl. first-party (`actions/*`, `docker/*`) — uniform pinning costs nothing, removes third-party judgment call.
+- Current major only; never jump majors in same change.
+- Reusable workflows same way: `uses: org/repo/.github/workflows/x.yml@<sha> # v1`. Single moving major tag (only `v1`, no patches) still pins.
 
-## 3. Permissions: workflow and job level only — never step level
+## 3. Permissions: workflow + job level only — never step level
 
-`permissions` is not a valid step key (valid action-step keys: continue-on-error,
-env, id, if, name, timeout-minutes, uses, with). Planning a step-level
-permissions block is a known trap; the schema rejects it.
+`permissions` invalid step key (valid step keys: continue-on-error, env, id, if, name, timeout-minutes, uses, with). Step-level permissions block = known trap; schema rejects.
 
 ```yaml
 permissions:
@@ -88,62 +65,45 @@ jobs:
   release:
     needs: build
     permissions:
-      contents: write   # the only place write is granted
+      contents: write   # only place write granted
 ```
 
-Scope a write grant by splitting the write-needing steps into their own job
-(`needs:` + job-level `permissions`), passing data through job outputs. The
-extra job costs ~1 billed minute; the write-scoped token never reaches build
-or notify steps.
+Scope write grants: split write-needing steps into own job (`needs:` + job-level `permissions`), data via job outputs. Extra job ~1 billed minute; write-scoped token never reaches build/notify steps.
 
-## 4. Keep secrets out of workflow-level `env`
+## 4. Secrets out of workflow-level `env`
 
-Everything in workflow-level `env` is visible to every step — including
-third-party actions that have no business seeing it. Move each secret to the
-consuming step's `with:`:
+Workflow-level `env` visible to every step — incl. third-party actions with no business seeing it. Move each secret to consuming step's `with:`:
 
 ```yaml
 # BAD: whole-workflow exposure
 env:
   DOCKER_PASSWORD: ${{ secrets.DOCKER_PAT }}
-# GOOD: only the consuming (pinned!) action sees it
+# GOOD: only consuming (pinned!) action sees it
 - uses: docker/login-action@<sha> # vX.Y.Z
   with:
     password: ${{ secrets.DOCKER_PAT }}
 ```
 
-- The consuming third-party action necessarily sees the secret — which is why
-  it must be SHA-pinned (step 2).
-- Non-secrets (usernames, image names) may stay in workflow `env` — they are
-  used by multiple steps and carry no exposure risk.
-- After removing an env var, rg the whole workflow dir for stale
-  `env.<NAME>` references; actionlint does not catch undefined runtime env.
+- Consuming third-party action necessarily sees secret — hence SHA-pinning (step 2).
+- Non-secrets (usernames, image names) may stay in workflow `env` — multi-step use, no exposure risk.
+- Removed env var → `rg` workflow dir for stale `env.<NAME>` refs; actionlint misses undefined runtime env.
 
-## 5–8. Restructuring and release workflows
+## 5–8. Restructuring + release workflows
 
-- Removing a job (dangling `needs:`, lost toolchain setup) and deleting a build
-  gates → `references/restructuring.md`.
-- Version/tag derivation from one parser, tag-overwrite guards, multiline data
-  between jobs → `references/release-versioning.md`.
+- Job removal (dangling `needs:`, lost toolchain) + build-gate deletion → `references/restructuring.md`.
+- Version/tag derivation from one parser, tag-overwrite guards, multiline data between jobs → `references/release-versioning.md`.
 
 ## Checklist
 
-- [ ] actionlint exit 0, confirmed against a deliberately broken temp copy
-      (a pass from a non-git dir or from valid-but-wrong YAML means nothing)
+- [ ] actionlint exit 0, confirmed vs deliberately broken temp copy (pass from non-git dir / valid-but-wrong YAML = meaningless)
 - [ ] YAML re-parsed after structural edits; every `needs:` target resolves
-- [ ] Removing a job: no dangling `needs:`, and any language toolchain the job
-      set up (`setup-node` and friends) restored where it is still needed
-- [ ] Every `uses:` is a 40-char SHA with a `# vX.Y.Z` comment
+- [ ] Job removed: no dangling `needs:`; toolchain the job set up (`setup-node` etc.) restored where still needed
+- [ ] Every `uses:` = 40-char SHA + `# vX.Y.Z` comment
 - [ ] No `${{ secrets.* }}` in workflow-level `env`
-- [ ] Workflow defaults to least privilege; write grants isolated in their own job
-- [ ] Version/tag derivation calls the repo's own parser, fails on non-semver,
-      refuses an existing remote tag, and the guard was tested in both
-      directions against real remote state
-- [ ] A removed build gate and any waived acceptance criterion are recorded in
-      the commit message and the related issue
-- [ ] Self-hosted runners only on private repos or with isolated/ephemeral
-      runners — never on public repos (pull_request_target pwn risk)
-- [ ] `concurrency` set so a stale run cannot overwrite the same branch/tag
-- [ ] The production image build runs the quality gate (lint/typecheck/test) —
-      not skipped via Dockerfile or `.dockerignore`
-- [ ] Domain prevention catalog checked: `~/.pi/agent/docs/issue-classes.md` §CI/container
+- [ ] Workflow defaults least privilege; write grants isolated in own job
+- [ ] Version/tag derivation calls repo's own parser, fails non-semver, refuses existing remote tag, guard tested both directions vs real remote state
+- [ ] Removed build gate + waived acceptance criteria recorded in commit message + related issue
+- [ ] Self-hosted runners only private repos / isolated-ephemeral runners — never public repos (pull_request_target pwn risk)
+- [ ] `concurrency` set — stale run can't overwrite same branch/tag
+- [ ] Production image build runs quality gate (lint/typecheck/test) — never skipped via Dockerfile/`.dockerignore`
+- [ ] Domain catalog checked: `~/.pi/agent/docs/issue-classes.md` §CI/container

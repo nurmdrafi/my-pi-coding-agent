@@ -2,9 +2,9 @@
 
 ## Overview
 
-Flaky tests often guess at timing with arbitrary delays. This creates race conditions where tests pass on fast machines but fail under load or in CI.
+Flaky tests guess timing with arbitrary delays → race conditions: pass on fast machines, fail under load/CI.
 
-Core principle: Wait for the actual condition you care about, not a guess about how long it takes.
+Core: wait for the actual condition, not a guess about duration.
 
 ## When to Use
 
@@ -22,24 +22,22 @@ digraph when_to_use {
 ```
 
 Use when:
-- Tests have arbitrary delays (`setTimeout`, `sleep`, `time.sleep()`)
-- Tests are flaky (pass sometimes, fail under load)
-- Tests timeout when run in parallel
-- Waiting for async operations to complete
+- Arbitrary delays in tests (`setTimeout`, `sleep`, `time.sleep()`)
+- Flaky tests (pass sometimes, fail under load)
+- Timeouts when run in parallel
+- Waiting on async operations
 
-Don't use when:
-- Testing actual timing behavior (debounce, throttle intervals)
-- Always document WHY if using arbitrary timeout
+Not when testing actual timing behavior (debounce, throttle intervals) — if arbitrary timeout used there, always document WHY.
 
 ## Core Pattern
 
 ```typescript
-// ✗ BEFORE: Guessing at timing
+// ✗ BEFORE: guessing at timing
 await new Promise(r => setTimeout(r, 50));
 const result = getResult();
 expect(result).toBeDefined();
 
-// ✓ AFTER: Waiting for condition
+// ✓ AFTER: waiting for condition
 await waitFor(() => getResult() !== undefined);
 const result = getResult();
 expect(result).toBeDefined();
@@ -57,7 +55,7 @@ expect(result).toBeDefined();
 
 ## Implementation
 
-Generic polling function:
+Generic polling:
 ```typescript
 async function waitFor<T>(
   condition: () => T | undefined | null | false,
@@ -79,18 +77,13 @@ async function waitFor<T>(
 }
 ```
 
-See `condition-based-waiting-example.ts` in this directory for complete implementation with domain-specific helpers (`waitForEvent`, `waitForEventCount`, `waitForEventMatch`) from actual debugging session.
+Full implementation + domain helpers (`waitForEvent`, `waitForEventCount`, `waitForEventMatch`) from real session: `condition-based-waiting-example.ts` in this directory.
 
 ## Common Mistakes
 
-✗ Polling too fast: `setTimeout(check, 1)` - wastes CPU
-✓ Fix: Poll every 10ms
-
-✗ No timeout: Loop forever if condition never met
-✓ Fix: Always include timeout with clear error
-
-✗ Stale data: Cache state before loop
-✓ Fix: Call getter inside loop for fresh data
+✗ Polling too fast: `setTimeout(check, 1)` — wastes CPU. ✓ Poll every 10ms
+✗ No timeout: loops forever if condition never met. ✓ Always timeout + clear error
+✗ Stale data: state cached before loop. ✓ Call getter inside loop for fresh data
 
 ## When Arbitrary Timeout IS Correct
 
@@ -101,15 +94,8 @@ await new Promise(r => setTimeout(r, 200));   // Then: wait for timed behavior
 // 200ms = 2 ticks at 100ms intervals - documented and justified
 ```
 
-Requirements:
-- First wait for triggering condition
-- Based on known timing (not guessing)
-- Comment explaining WHY
+Requirements: first wait for triggering condition; based on known timing (not guessing); comment explaining WHY.
 
 ## Real-World Impact
 
-From debugging session (2025-10-03):
-- Fixed 15 flaky tests across 3 files
-- Pass rate: 60% → 100%
-- Execution time: 40% faster
-- No more race conditions
+Session 2025-10-03: 15 flaky tests fixed across 3 files, pass rate 60% → 100%, execution 40% faster, no race conditions.

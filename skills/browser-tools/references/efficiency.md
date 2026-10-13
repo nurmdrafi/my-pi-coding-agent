@@ -1,18 +1,16 @@
 # Efficiency guide — eval patterns that keep context small
 
-Read before writing browser-eval scripts. One rule drives everything: the DOM
-is queryable — extract structured state in one eval instead of screenshotting
-or making many small calls.
+Read before writing browser-eval scripts. One rule drives everything: DOM is queryable — extract structured state in one eval instead of screenshotting or many small calls.
 
 ## DOM inspection over screenshots
 
-Don't take screenshots to see page state. Parse the DOM directly:
+Never screenshot to see page state. Parse DOM directly:
 
 ```javascript
-// Get page structure
+// Page structure
 document.body.innerHTML.slice(0, 5000)
 
-// Find interactive elements
+// Interactive elements
 Array.from(document.querySelectorAll('button, input, [role="button"]')).map(e => ({
   id: e.id,
   text: e.textContent.trim(),
@@ -22,11 +20,10 @@ Array.from(document.querySelectorAll('button, input, [role="button"]')).map(e =>
 
 ## Complex scripts in single calls
 
-Wrap everything in an IIFE to run multi-statement code:
+Wrap everything in an IIFE for multi-statement code:
 
 ```javascript
 (function() {
-  // Multiple operations
   const data = document.querySelector('#target').textContent;
   const buttons = document.querySelectorAll('button');
 
@@ -40,7 +37,7 @@ Wrap everything in an IIFE to run multi-statement code:
 
 ## Batch interactions
 
-Don't make separate calls for each click. Batch them:
+Never separate calls per click. Batch:
 
 ```javascript
 (function() {
@@ -63,9 +60,7 @@ Don't make separate calls for each click. Batch them:
 })()
 ```
 
-## Reading app/game state
-
-Extract structured state in one call:
+## State snapshot
 
 ```javascript
 (function() {
@@ -83,8 +78,7 @@ Extract structured state in one call:
 
 ## Waiting for readiness (poll, never blind sleep)
 
-Blind sleeps are the flake factory banned in `playwright-tester`; same rule
-here. Poll a predicate — page first, then app readiness:
+Blind sleeps = flake factory banned in `playwright-tester`; same rule here. Poll a predicate — page first, then app readiness:
 
 ```bash
 for i in $(seq 1 20); do
@@ -111,9 +105,7 @@ done
 
 ## Standard recon (always start here)
 
-One eval, one stable shape — URL, title, readyState, trapped errors, console
-errors, interactive elements, exposed app state. Install the error collector
-first (`references/debugging.md`) so the error fields populate:
+One eval, one stable shape — URL, title, readyState, trapped errors, console errors, interactive elements, exposed app state. Install error collector first (`references/debugging.md`) so error fields populate:
 
 ```javascript
 (() => JSON.stringify({

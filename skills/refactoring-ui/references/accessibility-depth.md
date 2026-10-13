@@ -1,60 +1,41 @@
 # Accessibility Deep Dive
 
-Comprehensive WCAG 2.1 AA compliance checklist with practical implementation guidance.
+WCAG 2.1 AA compliance checklist + implementation guidance.
 
+## Philosophy
 
-## Table of Contents
-1. [Accessibility Philosophy](#accessibility-philosophy)
-2. [WCAG 2.1 AA Checklist](#wcag-21-aa-checklist)
-3. [Focus Management](#focus-management)
-4. [Screen Reader Considerations](#screen-reader-considerations)
-5. [Testing Tools](#testing-tools)
-6. [Common Fixes Quick Reference](#common-fixes-quick-reference)
-
----
-
-## Accessibility Philosophy
-
-Accessibility isn't just compliance—it improves UX for everyone:
-- Keyboard navigation helps power users
-- Good contrast helps in bright sunlight
-- Clear focus states help everyone understand what's selected
-- Proper headings help screen readers AND SEO
-
----
+Accessibility = UX for everyone: keyboard nav helps power users, good contrast helps in sunlight, clear focus states help everyone, proper headings help screen readers AND SEO.
 
 ## WCAG 2.1 AA Checklist
 
 ### Perceivable
 
-Users must be able to perceive content.
+#### 1.1 Text alternatives
 
-#### 1.1 Text Alternatives
-
-##### All images need alt text:
+All images need alt text:
 
 ```html
-<!-- Decorative image (no alt) -->
+<!-- Decorative (no alt) -->
 <img src="divider.svg" alt="" role="presentation">
 
-<!-- Informative image -->
+<!-- Informative -->
 <img src="chart.png" alt="Sales increased 40% from Q1 to Q2">
 
-<!-- Functional image (button/link) -->
+<!-- Functional (button/link) -->
 <button>
   <img src="search.svg" alt="Search">
 </button>
 
-<!-- Complex image (needs long description) -->
+<!-- Complex (needs long description) -->
 <figure>
   <img src="diagram.png" alt="System architecture overview" aria-describedby="diagram-desc">
   <figcaption id="diagram-desc">Detailed description of the system architecture...</figcaption>
 </figure>
 ```
 
-##### Icons:
+Icons:
 ```html
-<!-- Icon with visible text (icon is decorative) -->
+<!-- Icon + visible text (icon decorative) -->
 <button>
   <svg aria-hidden="true">...</svg>
   <span>Settings</span>
@@ -68,10 +49,8 @@ Users must be able to perceive content.
 
 #### 1.3 Adaptable
 
-##### Semantic HTML structure:
-
+Semantic HTML:
 ```html
-<!-- Use semantic elements -->
 <header>...</header>
 <nav>...</nav>
 <main>
@@ -84,44 +63,37 @@ Users must be able to perceive content.
 </main>
 <footer>...</footer>
 
-<!-- Not this -->
-<div class="header">...</div>
-<div class="nav">...</div>
+<!-- NOT div class="header" / div class="nav" -->
 ```
 
-##### Heading hierarchy:
-- One `<h1>` per page
-- Don't skip levels (h1 → h3)
-- Headings describe content structure
+Heading hierarchy: one `<h1>` per page, no skipped levels (h1 → h3), headings describe content structure.
 
-##### Form labels:
+Form labels:
 ```html
-<!-- Explicit label -->
+<!-- Explicit -->
 <label for="email">Email</label>
 <input id="email" type="email">
 
-<!-- Implicit label -->
+<!-- Implicit -->
 <label>
   Email
   <input type="email">
 </label>
 
-<!-- Hidden label (for visual designs without labels) -->
+<!-- Hidden (visual design without labels) -->
 <label for="search" class="sr-only">Search</label>
 <input id="search" type="search" placeholder="Search...">
 ```
 
 #### 1.4 Distinguishable
 
-##### Color contrast requirements:
+Contrast:
 
 | Content Type | Minimum Ratio | Tool |
 |--------------|---------------|------|
 | Normal text (<18px) | 4.5:1 | WebAIM Contrast Checker |
 | Large text (≥18px or ≥14px bold) | 3:1 | |
 | UI components & graphics | 3:1 | |
-
-##### Common contrast fixes:
 
 ```css
 /* Too light - fails */
@@ -134,8 +106,7 @@ Users must be able to perceive content.
 .text-strong { color: #374151; } /* gray-700: 9.1:1 on white */
 ```
 
-##### Don't rely on color alone:
-
+Never color alone:
 ```html
 <!-- Bad: only color indicates error -->
 <input class="border-red-500">
@@ -148,53 +119,42 @@ Users must be able to perceive content.
 </p>
 ```
 
-##### Text resize:
-- Content must be readable at 200% zoom
-- Use relative units (rem, em) not px for text
-- Test by zooming browser to 200%
-
----
+Text resize: readable at 200% zoom; relative units (rem, em) not px for text; test by zooming to 200%.
 
 ### Operable
 
-Users must be able to operate the interface.
-
-#### 2.1 Keyboard Accessible
-
-##### All functionality must work with keyboard:
+#### 2.1 Keyboard accessible
 
 | Key | Expected Behavior |
 |-----|-------------------|
-| Tab | Move to next focusable element |
-| Shift+Tab | Move to previous focusable element |
+| Tab | Next focusable element |
+| Shift+Tab | Previous focusable element |
 | Enter | Activate links, buttons |
 | Space | Activate buttons, toggle checkboxes |
 | Arrows | Navigate within components (tabs, menus, radios) |
 | Escape | Close modals, dropdowns, cancel actions |
 
-##### Focus must be visible:
+Visible focus:
 
 ```css
-/* Don't remove focus outlines */
+/* Never remove outlines without replacement */
 :focus {
   outline: none; /* ✗ Never do this without replacement */
 }
 
-/* Do provide visible focus */
+/* Provide visible focus */
 :focus-visible {
   outline: 2px solid #3b82f6;
   outline-offset: 2px;
 }
 
-/* Or use ring utility */
+/* Or ring utility */
 .focusable:focus-visible {
   @apply ring-2 ring-blue-500 ring-offset-2;
 }
 ```
 
-##### Keyboard traps:
-- Modal dialogs should trap focus inside
-- But must have a way to exit (Escape key, close button)
+Keyboard traps: modals trap focus inside but must have exit (Escape, close button):
 
 ```jsx
 // Focus trap for modals
@@ -226,7 +186,7 @@ function Modal({ isOpen, onClose, children }) {
 }
 ```
 
-##### Skip links:
+Skip links:
 
 ```html
 <body>
@@ -240,16 +200,10 @@ function Modal({ isOpen, onClose, children }) {
 
 #### 2.4 Navigable
 
-##### Page titles:
-- Unique, descriptive page titles
-- Format: `Page Name | Site Name`
+- Page titles: unique, descriptive, format `Page Name | Site Name`
+- Focus order: logical reading order; no positive `tabindex` (messes order); only `tabindex="0"` (focusable) or `tabindex="-1"` (programmatically focusable)
 
-##### Focus order:
-- Must follow logical reading order
-- Don't use positive `tabindex` values (messes up order)
-- Only use `tabindex="0"` (make focusable) or `tabindex="-1"` (programmatically focusable)
-
-##### Link purpose:
+Link purpose:
 ```html
 <!-- Bad -->
 <a href="/article">Click here</a>
@@ -262,15 +216,10 @@ function Modal({ isOpen, onClose, children }) {
 <a href="/article" aria-describedby="article-title">Read more</a>
 ```
 
----
-
 ### Understandable
-
-Users must be able to understand content and operation.
 
 #### 3.1 Readable
 
-##### Language declaration:
 ```html
 <html lang="en">
   <body>
@@ -282,27 +231,21 @@ Users must be able to understand content and operation.
 
 #### 3.2 Predictable
 
-##### Consistent navigation:
-- Same navigation in same location across pages
-- Same elements behave the same way
-
-##### No unexpected changes:
-- Form inputs don't auto-submit on change
-- No unexpected pop-ups
-- Focus doesn't move unexpectedly
+- Same navigation in same location across pages; same elements behave same way
+- No unexpected changes: no auto-submit on input change, no unexpected pop-ups, focus doesn't move unexpectedly
 
 ```html
 <!-- Bad: changes page on select -->
 <select onchange="window.location = this.value">...</select>
 
-<!-- Good: requires explicit action -->
+<!-- Good: explicit action -->
 <select id="region">...</select>
 <button onclick="navigate()">Go</button>
 ```
 
-#### 3.3 Input Assistance
+#### 3.3 Input assistance
 
-##### Error identification:
+Error identification:
 ```html
 <label for="email">Email</label>
 <input
@@ -316,7 +259,7 @@ Users must be able to understand content and operation.
 </p>
 ```
 
-##### Required fields:
+Required fields:
 ```html
 <label for="name">
   Name <span aria-hidden="true">*</span>
@@ -325,28 +268,16 @@ Users must be able to understand content and operation.
 <input id="name" required aria-required="true">
 ```
 
-##### Error prevention for critical actions:
-- Confirm destructive actions
-- Allow review before submission
-- Provide undo capability
-
----
+Error prevention for critical actions: confirm destructive, allow review before submission, provide undo.
 
 ### Robust
 
-Content must work with current and future technologies.
-
 #### 4.1 Compatible
 
-##### Valid HTML:
-- Unique IDs
-- Complete start/end tags
-- Proper nesting
+Valid HTML: unique IDs, complete tags, proper nesting.
 
-##### ARIA usage:
+ARIA — use correctly:
 ```html
-<!-- If you use ARIA, use it correctly -->
-
 <!-- Roles -->
 <div role="button" tabindex="0" onclick="...">Fake Button</div>
 <!-- Better: just use <button> -->
@@ -361,11 +292,7 @@ Content must work with current and future technologies.
 </div>
 ```
 
----
-
 ## Focus Management
-
-### When to Manage Focus
 
 | Scenario | Focus Action |
 |----------|--------------|
@@ -374,8 +301,6 @@ Content must work with current and future technologies.
 | Error occurs | Focus error message or first invalid field |
 | New content loads | Focus heading or first new element |
 | Item deleted | Focus previous/next item or container |
-
-### Implementation
 
 ```jsx
 // Store trigger reference
@@ -393,7 +318,7 @@ function closeModal() {
 }
 ```
 
-### Roving Tabindex (for component groups)
+### Roving tabindex (component groups)
 
 ```jsx
 // Tab panels, menu items, radio groups
@@ -427,14 +352,10 @@ function Tabs({ tabs }) {
 }
 ```
 
----
-
 ## Screen Reader Considerations
 
-### Announce Dynamic Changes
-
+Announce dynamic changes:
 ```html
-<!-- Live region for status messages -->
 <div aria-live="polite" class="sr-only" id="status"></div>
 
 <script>
@@ -444,75 +365,59 @@ function showSuccess(message) {
 </script>
 ```
 
-### Hide Decorative Content
-
+Hide decorative content:
 ```html
-<!-- Hidden from screen readers -->
 <svg aria-hidden="true">...</svg>
 <span aria-hidden="true">•</span>
 ```
 
-### Provide Context
-
+Provide context:
 ```html
-<!-- Ambiguous button -->
+<!-- Ambiguous -->
 <button>Delete</button>
 
-<!-- Clear button -->
+<!-- Clear -->
 <button aria-label="Delete comment by John">Delete</button>
 
-<!-- Or use aria-describedby -->
+<!-- Or aria-describedby -->
 <button aria-describedby="comment-123-author">Delete</button>
 <span id="comment-123-author" class="sr-only">comment by John</span>
 ```
 
----
-
 ## Testing Tools
 
-### Automated Testing
-
-| Tool | What It Catches |
-|------|-----------------|
+| Tool | Catches |
+|------|---------|
 | axe DevTools | ~30% of WCAG issues |
 | WAVE | Similar to axe, visual overlay |
 | Lighthouse | Basic accessibility audit |
-| ESLint a11y plugin | Catches issues in JSX |
+| ESLint a11y plugin | Issues in JSX |
 
-### Manual Testing Required
+Manual testing required — automated tools miss ~70%. Check: keyboard navigation flow, screen reader experience, focus management, meaningful alt text, logical heading structure.
 
-Automated tools miss ~70% of issues. Manual testing needed for:
-- Keyboard navigation flow
-- Screen reader experience
-- Focus management
-- Meaningful alt text
-- Logical heading structure
+### Checklist
 
-### Testing Checklist
-
-- [ ] Navigate entire page with keyboard only
-- [ ] Test with screen reader (VoiceOver, NVDA)
-- [ ] Check color contrast with tool
-- [ ] Zoom to 200% and verify usability
-- [ ] Test with high contrast mode
-- [ ] Verify focus indicators visible
-- [ ] Check heading structure with outline tool
-- [ ] Run axe DevTools audit
-- [ ] Test forms with validation errors
-
----
+- [ ] Navigate entire page keyboard-only
+- [ ] Screen reader test (VoiceOver, NVDA)
+- [ ] Color contrast tool check
+- [ ] Zoom to 200%, verify usability
+- [ ] High contrast mode test
+- [ ] Focus indicators visible
+- [ ] Heading structure via outline tool
+- [ ] axe DevTools audit
+- [ ] Forms with validation errors
 
 ## Common Fixes Quick Reference
 
 | Issue | Fix |
 |-------|-----|
-| Missing alt text | Add descriptive alt or `alt=""` for decorative |
-| Low contrast | Use gray-600+ for text on white |
-| Missing focus style | Add `focus-visible` ring/outline |
-| Click-only interaction | Add keyboard handler + focusability |
-| Missing form labels | Add `<label>` with `for` attribute |
-| Heading skip | Use h1→h2→h3 in order |
-| Color-only indicator | Add icon/text alongside color |
-| Modal focus trap | Trap focus, allow Escape to close |
-| Auto-playing media | Add pause control, don't autoplay |
+| Missing alt text | Descriptive alt or `alt=""` for decorative |
+| Low contrast | gray-600+ for text on white |
+| Missing focus style | `focus-visible` ring/outline |
+| Click-only interaction | Keyboard handler + focusability |
+| Missing form labels | `<label>` with `for` attribute |
+| Heading skip | h1→h2→h3 in order |
+| Color-only indicator | Icon/text alongside color |
+| Modal focus trap | Trap focus, Escape closes |
+| Auto-playing media | Pause control, no autoplay |
 | Motion | Respect `prefers-reduced-motion` |

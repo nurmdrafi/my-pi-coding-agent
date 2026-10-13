@@ -4,153 +4,85 @@ description: "Local correctness review of the diff about to be committed/pushed:
 disable-model-invocation: true
 ---
 
-This body is in context once the skill loads — never re-read this file from disk in the same session.
+Body in context once skill loads — never re-read from disk same session.
 
-Review the diff that is about to be committed or pushed. Goal: catch locally
-what a reviewer or CI would flag after the push.
+Review diff about to be committed/pushed. Goal: catch locally what reviewer/CI flags after push.
 
-## 1. Establish the diff
+## 1. Establish diff
 
 ```sh
-# pre-commit: everything not yet committed
+# pre-commit: everything uncommitted
 git diff HEAD
-# pre-push: what a push would send
+# pre-push: what push would send
 git diff @{push}.. 2>/dev/null || git diff "$(git merge-base origin/HEAD HEAD 2>/dev/null || echo origin/main)"..HEAD
-# already pushed: revalidate a commit range (e.g. everything pushed today)
-git log --oneline @{push}..HEAD   # empty = nothing unpushed, then diff the range
+# already pushed: revalidate commit range
+git log --oneline @{push}..HEAD   # empty = nothing unpushed; then diff range
 git diff <base>..HEAD
 ```
 
-Read whole functions/components around each hunk, not just the hunk.
+Read whole functions/components around each hunk, not just hunk.
 
 ## 2. Checklist
 
-Domain prevention catalog: `~/.pi/agent/docs/issue-classes.md` — check every class the diff touches.
+Domain catalog: `~/.pi/agent/docs/issue-classes.md` — check every class diff touches.
 
 - Async/state lifecycle
-   - Late response: fetch-in-effect has a staleness guard (cancelled flag /
-     AbortController / compare requested id before applying).
-   - Failure path: every promise chain handles failure and clears the
-     *previous* entity's data so it cannot be saved against the new selection.
-   - Selector change: lists cleared while refetching; guarded against
-     out-of-order resolution (carry the requested id through to fulfillment).
-   - Mount/enable timing: no syncing against targets that may not be mounted
-     yet (lazy-rendered panes); sync on enable/disable transitions too, not
-     only on data or instance change.
-- Reset completeness: when clearing/changing state, enumerate every
-   derived field and rg each consumer — cleared UI must not leave stale
-   data that still gets submitted.
-- Fix-induced guard regressions: after adding a guard, check BOTH
-   failure modes — skips-when-it-should-run and runs-when-it-should-skip.
-   Handler/listener registration idempotent (remove before re-add, or a
-   one-shot flag the right event resets).
-- Payload/contract correctness: field-by-field vs the API docs and vs
-   sibling configs; request params vs documented caps — paginate or warn,
-   never silently truncate.
-   - Truthiness guards on payload fields drop `false`/`0`/`''` values:
-     `if (k === 'x' && !values[k]) return` makes `x: false` unsendable. For
-     optional booleans use tri-state (undefined = untouched) and
-     `!== undefined` checks, never `!`.
-   - Data-shape reads verified against a sibling consumer of the same
-     endpoint/hook: RTK Query `.unwrap()` returns the response *body*, so
-     `res?.data?.x` after unwrap is silently `undefined` — the sibling's
-     read of the same field settles it in one glance.
-- Null-unsafe member access: API-derived values reach
-   `.charAt`/`.toString`/`.map`/… without optional chaining or a null check
-   — rg the touched file for member access on response fields.
-- Failure paths keep context: failure paths clear loading/spinner state
-   and preserve user context (modal stays open with the server error shown),
-   instead of closing on error.
-- Pre-filled form vs `??` fallback: `values.x ?? o.x` is dead code when
-   the form pre-fills `x` — bulk operations then apply row 1's value to all
-   rows. Leave fields empty or track touched fields.
-- Framework-behavior assumptions: when a fix's correctness hinges on
-   library internals (event order, prop injection, form-store semantics),
-   verify against the installed package source
-   (`node_modules/<pkg>/es|lib/*.js`) instead of reasoning from memory.
-   Real cases where guessing wrong silently inverts a fix:
-   - rc-select fires `onChange` before `onSelect` on option pick
-   - rc-field-form's `Form.Item` injects value/onChange via cloneElement —
-     injected props override the child's explicit ones, and an explicit child
-     handler runs chained *after* the store update
-   - form `initialValues` apply only at mount, so async-loaded data needs a
-     remount gate (loading spinner) or `setFieldsValue`.
-- UI polarity/defaults: visibility conditions and default states.
-- Security (check every one):
-   - Route-level: mutating endpoints/routes carry authN + permission gates
-     (role/permission check, not just "logged in").
-   - Object-level (IDOR): every id-addressed read/write verifies the caller
-     owns / may access that specific record — a route gate does NOT cover this.
-   - Input at trust boundaries: params/body/query validated or allowlisted
-     before use; user-controlled strings reaching HTML/SQL/shell/eval = finding.
-   - Output: responses and logs expose no fields the caller shouldn't see
-     (PII, tokens, internal ids); no secrets compiled into client bundles.
-   - CI/workflow edits: self-hosted runners on public repos, secret exposure,
-     unpinned third-party actions/tags.
-- CI/env awareness: browser/tool launches must go headless when `CI`
-   is set; env-aware defaults everywhere.
-- Runtime robustness: new routes/subtrees sit under an error boundary; async
-   surfaces have loading/empty/error states; a failed poll keeps the last good
-   view rather than blanking.
-- Error handling (global): one owner catches/normalizes/logs/renders the
-   fallback; handlers exist at process, router, subtree, and data-layer levels;
-   every status/kind is classified with a recovery action; no swallowed error
-   and no retry that cannot succeed.
-- HTTP client: non-2xx rejects (never returned as data), requests carry
-   timeouts, and out-of-order responses are guarded (requested id carried
-   through to fulfillment).
-- Cache/SW: no authenticated response cached across logout; no `skipWaiting`
-   + runtime chunk rewrite that strands clients on stale config.
-- TLS: certificate verification is never disabled (including proxy agents).
-- Dependencies: no new unmaintained/CVE-affected dep in the production tree.
-- Regression-test discrimination: a test added for a fixed bug must be
-   shown to fail on the bug — restore the buggy line once, watch it go red,
-   re-apply the fix. A regression test that has never failed proves nothing
-   about detection.
+  - Late response: fetch-in-effect has staleness guard (cancelled flag / AbortController / compare requested id before applying).
+  - Failure path: every promise chain handles failure, clears *previous* entity's data (never saved against new selection).
+  - Selector change: lists cleared while refetching; out-of-order guarded (requested id carried to fulfillment).
+  - Mount/enable timing: no syncing against unmounted targets (lazy panes); sync on enable/disable transitions too, not only data/instance change.
+- Reset completeness: clearing/changing state → enumerate every derived field, `rg` each consumer — cleared UI leaves no stale data that still submits.
+- Fix-induced guard regressions: new guard → check BOTH failure modes: skips-when-should-run + runs-when-it-should-skip. Handler/listener registration idempotent (remove before re-add, or one-shot flag the right event resets).
+- Payload/contract correctness: field-by-field vs API docs + sibling configs; request params vs documented caps — paginate or warn, never silently truncate.
+  - Truthiness guards drop `false`/`0`/`''`: `if (k === 'x' && !values[k]) return` makes `x: false` unsendable. Optional booleans: tri-state (undefined = untouched) + `!== undefined`, never `!`.
+  - Data-shape reads verified vs sibling consumer of same endpoint/hook: RTK Query `.unwrap()` returns response *body*, so `res?.data?.x` after unwrap = silently `undefined` — sibling's read settles it in one glance.
+- Null-unsafe member access: API-derived values hitting `.charAt`/`.toString`/`.map`/… without optional chaining/null check — `rg` touched file for member access on response fields.
+- Failure paths keep context: clear loading/spinner, preserve user context (modal stays open with server error), no close-on-error.
+- Pre-filled form vs `??` fallback: `values.x ?? o.x` dead code when form pre-fills `x` — bulk ops apply row 1's value to all rows. Empty fields or track touched.
+- Framework-behavior assumptions: fix hinges on library internals (event order, prop injection, form-store semantics) → verify vs installed package source (`node_modules/<pkg>/es|lib/*.js`), never memory. Real wrong-guess cases silently inverting fixes:
+  - rc-select fires `onChange` before `onSelect` on option pick
+  - rc-field-form `Form.Item` injects value/onChange via cloneElement — injected props override child's explicit ones; explicit child handler runs chained *after* store update
+  - form `initialValues` apply at mount only → async data needs remount gate (spinner) or `setFieldsValue`
+- UI polarity/defaults: visibility conditions + default states.
+- Security (every one):
+  - Route-level: mutating endpoints/routes carry authN + permission gates (role/permission, not just "logged in").
+  - Object-level (IDOR): every id-addressed read/write verifies caller owns/may access record — route gate does NOT cover this.
+  - Input at trust boundaries: params/body/query validated/allowlisted before use; user-controlled strings reaching HTML/SQL/shell/eval = finding.
+  - Output: responses/logs expose nothing caller shouldn't see (PII, tokens, internal ids); no secrets in client bundles.
+  - CI/workflow edits: self-hosted runners on public repos, secret exposure, unpinned third-party actions/tags.
+- CI/env awareness: browser/tool launches headless when `CI` set; env-aware defaults everywhere.
+- Runtime robustness: new routes/subtrees under error boundary; async surfaces have loading/empty/error states; failed poll keeps last good view.
+- Error handling (global): one owner catches/normalizes/logs/renders fallback; handlers at process, router, subtree, data-layer levels; every status/kind classified with recovery action; no swallowed error, no cannot-succeed retry.
+- HTTP client: non-2xx rejects (never data), request timeouts, out-of-order guarded (requested id to fulfillment).
+- Cache/SW: no authenticated response cached across logout; no `skipWaiting` + runtime chunk rewrite stranding stale config.
+- TLS: cert verification never disabled (incl. proxy agents).
+- Dependencies: no new unmaintained/CVE dep in prod tree.
+- Regression-test discrimination: bug-fix test must be shown failing on bug — restore buggy line once, watch red, re-apply fix. Regression test never failed = proves nothing about detection.
 
 ## 3. Severity
 
-- high: breaks at runtime, loses data, exploitable
-- medium: likely bug or security weakness under realistic conditions
+- high: runtime break, data loss, exploitable
+- medium: likely bug/security weakness under realistic conditions
 - low: minor correctness/robustness concern
 
 ## 4. Output
 
-Prove a finding before you publish it — the verification ladder,
-false-positive cases, and `[UNVERIFIED]` labeling rules are in
-`references/finding-verification.md`.
+Prove finding before publishing — verification ladder, false-positive cases, `[UNVERIFIED]` labeling: `references/finding-verification.md`.
 
 One block per finding:
 
 ```
 file:line [SEVERITY] title
-observed: the concrete input/state and the wrong result it produces (not a suspicion)
+observed: concrete input/state + wrong result produced (not suspicion)
 suggestion: what to change
 ```
 
-Then a verdict: every medium+ is fixed or explicitly waived with a stated
-reason before `git commit` / `git push`. Keep retracted false positives in the
-verdict as "cleared, do NOT chase" so nobody re-raises them — the same reasoning
-that discounts it once discounts it the second time. Commit message must
-pass commitlint convention (`type(scope): subject`, lowercase, imperative)
-*before* committing — fix it before `git commit`, not after commitlint
-rejects it.
+Then verdict: every medium+ fixed or explicitly waived with stated reason before `git commit`/`git push`. Retracted false positives stay in verdict as "cleared, do NOT chase" — same reasoning discounts it twice. Commit message passes commitlint (`type(scope): subject`, lowercase, imperative) *before* committing — fix before `git commit`, not after reject.
 
 ## 5. Fix loop (mandatory)
 
-After applying fixes, re-run this review on the fix diff alone. A fix can
-close the reported finding and open the adjacent one; the fix diff is a new
-diff — review it like one. The re-review may also invalidate the original
-suggestion: hold every suggestion to the same evidence standard (installed
-source, actual id/link sources, payload consumers) before applying it, and
-waiving a finding with corrected reasoning is a valid outcome.
+After fixes, re-run review on fix diff alone. Fix can close reported finding + open adjacent one; fix diff = new diff, review like one. Re-review may invalidate original suggestion: hold every suggestion to same evidence standard (installed source, actual id/link sources, payload consumers) before applying; waiving finding with corrected reasoning = valid outcome.
 
 ## 6. Per-issue ship loop
 
-When the work is tied to a gh issue, the loop is: fix → review (this skill)
-→ conventional-commit message ending `(issue #N)` → push → `gh issue close N
---comment` with a summary of the shipped changes. One comment per commit:
-include the short commit SHA, and edit the existing comment rather than posting
-a second one for the same commit. Before closing, check the diff against the
-issue's acceptance criteria and any suggested fix — an unmet criterion blocks
-the close, and closing is only valid once the fix is pushed.
+Work tied to gh issue: fix → review (this skill) → conventional commit ending `(issue #N)` → push → `gh issue close N --comment` with shipped-changes summary. One comment per commit: short SHA included; edit existing comment, never second for same commit. Before close: diff vs issue acceptance criteria + suggested fix — unmet criterion blocks close; close valid only after push.

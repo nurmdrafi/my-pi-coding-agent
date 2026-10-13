@@ -1,23 +1,20 @@
 # Review mode — over-engineering review format
 
-Detail behind the SKILL.md Review mode section. Moved verbatim from the body.
+Detail behind SKILL.md Review mode.
 
-Review diffs (or whole files) for unnecessary complexity. One line per finding:
-location, what to cut, what replaces it. The diff's best outcome is getting
-shorter. Does not apply the fixes, only lists them.
+Review diffs (or whole files) for unnecessary complexity. One line per finding: location, what to cut, what replaces it. Diff's best outcome = getting shorter. Does not apply fixes, only lists.
 
 ## Format
 
-`L<line>: <tag> <what>. <replacement>.`, or `<file>:L<line>: ...` for
-multi-file diffs.
+`L<line>: <tag> <what>. <replacement>.` or `<file>:L<line>: ...` multi-file diffs.
 
 Tags:
 
 - `delete:` dead code, unused flexibility, speculative feature. Replacement: nothing.
-- `stdlib:` hand-rolled thing the standard library ships. Name the function.
-- `native:` dependency or code doing what the platform already does. Name the feature.
+- `stdlib:` hand-rolled thing stdlib ships. Name function.
+- `native:` dep/code doing what platform already does. Name feature.
 - `yagni:` abstraction with one implementation, config nobody sets, layer with one caller.
-- `shrink:` same logic, fewer lines. Show the shorter form.
+- `shrink:` same logic, fewer lines. Show shorter form.
 
 ## Examples
 
@@ -33,14 +30,10 @@ Tags:
 
 ## Scoring
 
-End with the only metric that matters: `net: -<N> lines possible.`
+End with only metric that matters: `net: -<N> lines possible.`
 
-If there is nothing to cut, say `Lean already. Ship.` and stop.
+Nothing to cut → `Lean already. Ship.` + stop.
 
-## Review scope
+## Scope
 
-Over-engineering and complexity only. Correctness bugs, security holes, and
-performance are out of scope — route them to a normal review pass. A single
-smoke test or `assert`-based self-check is the ponytail minimum, not bloat,
-never flag it for deletion. "stop ponytail-review" / "normal mode": verbose
-review style.
+Over-engineering/complexity only. Correctness bugs, security holes, performance = out of scope → normal review pass. Single smoke test / `assert`-based self-check = ponytail minimum, never bloat, never flag for deletion. "stop ponytail-review"/"normal mode" = verbose review style.

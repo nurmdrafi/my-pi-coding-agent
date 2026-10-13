@@ -5,101 +5,78 @@ license: Complete terms in LICENSE.txt
 disable-model-invocation: true
 ---
 
-This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
+Build distinctive, production-grade frontend interfaces; avoid generic "AI slop" aesthetics. Real working code, exceptional attention to aesthetic detail + creative choices.
 
-The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
+Input: frontend requirements — component/page/app/interface; maybe purpose, audience, constraints.
 
-Prevention catalog: `~/.pi/agent/docs/issue-classes.md` — new UI ships under an error boundary with loading/empty/error states, wired into the app's global error handler, and heavy work stays off the render path.
+Prevention catalog: `~/.pi/agent/docs/issue-classes.md` — new UI ships under error boundary with loading/empty/error states, wired into global error handler, heavy work off render path.
 
-## Pattern Audit (MANDATORY FIRST STEP — overrides every aesthetic directive below)
+## Pattern Audit (MANDATORY FIRST — overrides every aesthetic directive below)
 
-Before writing any UI, determine whether you are **extending** an existing design system or **creating from scratch**. In an existing codebase you are ALWAYS extending.
+Before any UI: **extending** existing design system or **creating from scratch**? Existing codebase → ALWAYS extending.
 
-1. Read the closest siblings first. Find 2–3 existing components/pages nearest to what you're building (`rg -l` for similar component names, then `read` them). Note their exact structure, classes, props, spacing, and how they compose the design-system primitives.
-2. Extract the design language:
-   - Theme/tokens: AntD `ConfigProvider` `theme`/`token` (v5) or less variables (v4); Tailwind `tailwind.config` + CSS variables; global CSS `:root` vars; the design-system package's exports.
-   - Spacing & layout scale
-   - color palette + semantic mapping (bg/text/border/states)
-   - radius
-   - shadows/elevation
-   - typography stack (font families, sizes, weights, line-heights)
-   - motion
-   - Component patterns: how does this codebase build a card / table / modal / form / button / empty-state / page-header? Reuse that pattern verbatim.
-3. Reproduce, don't redesign. Use the SAME utility classes, SAME tokens, SAME primitives, SAME spacing rhythm, SAME file structure. The result must be indistinguishable from a screen the original team shipped.
+1. Read closest siblings first: 2–3 existing components/pages nearest to target (`rg -l` similar names, then `read`). Note exact structure, classes, props, spacing, primitive composition.
+2. Extract design language:
+   - Theme/tokens: AntD `ConfigProvider` `theme`/`token` (v5) or less variables (v4); Tailwind `tailwind.config` + CSS variables; global CSS `:root` vars; design-system package exports.
+   - Spacing/layout scale
+   - Color palette + semantic mapping (bg/text/border/states)
+   - Radius
+   - Shadows/elevation
+   - Typography stack (families, sizes, weights, line-heights)
+   - Motion
+   - Component patterns: how codebase builds card/table/modal/form/button/empty-state/page-header → reuse verbatim.
+3. Reproduce, don't redesign. SAME utility classes, tokens, primitives, spacing rhythm, file structure. Result indistinguishable from original team's screen.
 
-### FORBIDDEN in an existing codebase (unless the user explicitly asks for a redesign)
+### FORBIDDEN in existing codebase (unless user explicitly asks redesign)
 
-introducing new fonts, a new color palette, a new CSS/styled system, a parallel component library, "bold/unforgettable" deviations, or decorative flourishes absent from siblings. "Match existing pages' patterns" is not aspirational — it is the hard requirement.
+New fonts, new palette, new CSS/styled system, parallel component library, "bold/unforgettable" deviations, decorative flourishes absent from siblings. "Match existing patterns" = hard requirement, not aspiration.
 
-### Logic guards when the new UI mutates data
+### Logic guards (new UI mutating data)
 
-- Mutating routes/admin panels: permission gating wired from day one.
-- Fetch-on-selection effects: staleness guard + `.catch` + clear the list while
-  refetching (out-of-order responses must not repaint the old entity's data).
-- Bulk-edit forms: open empty or track touched fields — a pre-filled field
-  makes every `values.x ?? o.x` fallback dead code.
-- AntD edit forms: `initialValues` bind only at Form mount — fetch-then-fill
-  needs a remount gate (loading spinner) or `form.setFieldsValue`; a
-  display-only `defaultValue` inside `Form.Item` leaves the store empty and
-  submits placeholder garbage (e.g. `moment(undefined)` formats as today).
-- Prefill into lazy tab panes (rc-tabs): `forceRender: true` or fill on
-  activation, else the first `setFieldsValue` is silently dropped.
-- Conditional visibility: check the polarity and the DEFAULT state of every
-  span/collapse condition before shipping.
-- Lazy routes + Suspense placement: put the boundary INSIDE the persistent
-  shell, around the content slot (`<Outlet />`), never above the layout. A
-  single top-level `<Suspense>` wrapping the whole route tree unmounts the
-  navbar/sidebar on every navigation, so the shell disappears and a full-height
-  spinner flashes in its place — that reads as a flicker, not a load, and it
-  also loses scroll position. Keep a shell-less fallback (login/403/404) and the
-  first load of the layout chunk at the outer boundary; every in-section
-  navigation is then handled by the inner one. Size the inner fallback to the
-  content area (e.g. `minHeight: 60vh`), not `100vh`, so the shell does not
-  jump. Check whether the codebase already has this scoped pattern before
-  adding one — a sibling layout with `<Suspense fallback={null}>` around local
-  panels is the precedent to copy.
+- Mutating routes/admin panels: permission gating from day one.
+- Fetch-on-selection effects: staleness guard + `.catch` + clear list while refetching (out-of-order responses never repaint old entity's data).
+- Bulk-edit forms: open empty or track touched fields — pre-filled field makes every `values.x ?? o.x` fallback dead code.
+- AntD edit forms: `initialValues` bind only at Form mount — fetch-then-fill needs remount gate (loading spinner) or `form.setFieldsValue`; display-only `defaultValue` in `Form.Item` leaves store empty, submits placeholder garbage (`moment(undefined)` formats as today).
+- Prefill into lazy tab panes (rc-tabs): `forceRender: true` or fill on activation, else first `setFieldsValue` silently dropped.
+- Conditional visibility: check polarity + DEFAULT state of every span/collapse condition before shipping.
+- Lazy routes + Suspense: boundary INSIDE persistent shell, around content slot (`<Outlet />`), never above layout. Top-level `<Suspense>` wrapping whole route tree unmounts navbar/sidebar every navigation → shell disappears, full-height spinner flashes = flicker not load, loses scroll position. Shell-less fallback (login/403/404) + first layout-chunk load at outer boundary; in-section navigation handled by inner one. Size inner fallback to content area (`minHeight: 60vh`), not `100vh` — no shell jump. Check codebase for existing scoped pattern first — sibling layout with `<Suspense fallback={null}>` around local panels = precedent to copy.
 
-## Stack Adaptation (part of the Pattern Audit)
+## Stack Adaptation (part of Pattern Audit)
 
-Before designing, detect the project's UI stack from `package.json` and existing components, and express the design through that stack's idioms — don't impose a foreign style system:
+Detect UI stack from `package.json` + existing components; express design through that stack's idioms — never impose foreign style system:
 
-- **Ant Design (v4 or v5/latest)**: build with AntD primitives — Form, Table, Modal, Card, Space, Typography — themed via tokens (`ConfigProvider`, v5 `theme` algorithm / v4 less variables). Apply the aesthetics below as refinements on top of AntD (spacing, hierarchy, color system), not as a custom replacement.
-- **shadcn/ui + Tailwind**: use the existing component registry, the `cn()` utility, and the project's Tailwind tokens/extensions; add new shadcn-style components rather than a parallel hand-rolled system.
-- **Vanilla / other**: no established idioms — then apply the full aesthetic freedom below.
+- **Ant Design (v4/v5)**: AntD primitives — Form, Table, Modal, Card, Space, Typography — themed via tokens (`ConfigProvider`, v5 `theme` algorithm / v4 less variables). Aesthetics below = refinements on top of AntD (spacing, hierarchy, color), not custom replacement.
+- **shadcn/ui + Tailwind**: existing component registry, `cn()` utility, project Tailwind tokens/extensions; new shadcn-style components, not parallel hand-rolled system.
+- **Vanilla/other**: no established idioms → full aesthetic freedom below.
 
-Match existing pages' patterns before introducing new ones.
+Match existing patterns before introducing new ones.
 
-## Design Thinking (GREENFIELD ONLY — skip if the Pattern Audit found an existing UI)
+## Design Thinking (GREENFIELD ONLY — skip if Pattern Audit found existing UI)
 
-If the Pattern Audit found existing UI, you already have your direction: extend it. Stop here and build to match. The creative exploration below is ONLY for projects with no established aesthetic.
+Existing UI found → direction known: extend it, build to match. Creative exploration ONLY for no-established-aesthetic projects.
 
-Before coding a greenfield UI, understand the context and commit to a BOLD aesthetic direction:
-- Purpose: What problem does this interface solve? Who uses it?
-- Tone: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
-- Constraints: Technical requirements (framework, performance, accessibility).
-- Differentiation: What makes this UNFORGETTABLE? What's the one thing someone will remember?
+Before coding greenfield:
+- Purpose: what problem, who uses it?
+- Tone: pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic, luxury/refined, playful, editorial, brutalist, art deco, soft/pastel, industrial. Inspirations only; design true to one direction.
+- Constraints: framework, performance, accessibility.
+- Differentiation: what makes this UNFORGETTABLE? The one memorable thing?
 
-Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
+Commit to clear conceptual direction, execute with precision. Bold maximalism + refined minimalism both work — key = intentionality, not intensity.
 
-Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
-- Production-grade and functional
-- Visually striking and memorable
-- Cohesive with a clear aesthetic point-of-view
-- Meticulously refined in every detail
+Implementation (HTML/CSS/JS, React, Vue, …): production-grade, functional, visually striking, cohesive point-of-view, meticulous detail.
 
-## Frontend Aesthetics Guidelines
+## Aesthetics Guidelines
 
-Focus on:
-- Typography: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics; unexpected, characterful font choices. Pair a distinctive display font with a refined body font.
-- Color & Theme: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes.
-- Motion: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise.
-- Spatial Composition: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density.
-- Backgrounds & Visual Details: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays.
+- Typography: beautiful, unique, interesting fonts. Avoid Arial/Inter/generics; distinctive characterful choices elevating aesthetics. Pair distinctive display font + refined body font.
+- Color/theme: cohesive aesthetic, CSS variables. Dominant colors + sharp accents > timid even palettes.
+- Motion: animations + micro-interactions; CSS-only for HTML, Motion library for React when available. High-impact moments: one well-orchestrated page load with staggered reveals (`animation-delay`) > scattered micro-interactions. Scroll-triggering, surprising hover states.
+- Spatial composition: unexpected layouts, asymmetry, overlap, diagonal flow, grid-breaking, generous negative space OR controlled density.
+- Backgrounds/details: atmosphere + depth, not default solid colors. Contextual effects/textures matching aesthetic: gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, grain overlays.
 
-NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character.
+NEVER generic AI aesthetics: overused fonts (Inter, Roboto, Arial, system), clichéd schemes (purple gradients on white), predictable layouts, cookie-cutter design lacking context character.
 
-Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices (Space Grotesk, for example) across generations.
+Interpret creatively, unexpected context-designed choices. No two designs same. Vary light/dark themes, fonts, aesthetics. NEVER converge on common choices (Space Grotesk) across generations.
 
-Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
+Match implementation complexity to vision: maximalist = elaborate code, extensive animations/effects; minimalist = restraint, precision, spacing/typography/subtle detail. Elegance = executing vision well.
 
-Remember: don't hold back — show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+Don't hold back — commit fully to distinctive vision.

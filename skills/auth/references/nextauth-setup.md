@@ -92,8 +92,8 @@ export const authOptions: NextAuthOptions = {
         try {
           const accessToken = await loginApi(credentials.mobile, credentials.password);
           const profile = await getProfileApi(accessToken);
-          // Backend is the single source of truth for session lifetime — a
-          // token without a usable exp gets NO session, never a guessed one
+          // Backend = single source of truth for session lifetime — token
+          // without usable exp gets NO session, never a guessed one
           const sessionDuration = extractTokenExpiry(accessToken);
           if (!sessionDuration) throw new Error("Login token has no expiry");
           return mapProfileToAuthUser(profile, accessToken, sessionDuration);
@@ -106,9 +106,9 @@ export const authOptions: NextAuthOptions = {
   ],
   session: { strategy: "jwt" },
   jwt: {
-    // Cookie maxAge always mirrors the backend token's exp — no fallback.
-    // authorize() already rejected tokens without a usable expiry, so
-    // sessionDuration is always set by the time encode runs.
+    // Cookie maxAge always mirrors backend token exp — no fallback.
+    // authorize() already rejected tokens without usable expiry, so
+    // sessionDuration always set by encode time.
     async encode({ secret, token, salt }) {
       const maxAge = token?.sessionDuration as number;
       const { encode } = await import("next-auth/jwt");
@@ -173,6 +173,6 @@ API_URL=<external backend base url>     # server-side only, no NEXT_PUBLIC
 
 ## Pitfalls
 
-- Social providers: add inside `providers[]` and handle `account?.access_token` in the `jwt` callback by exchanging for a backend token first — never store the provider token as the app token.
-- `session.accessToken` exposure is intentional (RTK needs the raw bearer). The cookie holding it is encrypted; still treat it as a credential in logs/analytics.
-- next-auth v4 works on Next 16 via the App Router route handler above; do not mix in v5 (`next-auth@5`/Auth.js beta) imports — different API surface.
+- Social providers: add in `providers[]`, handle `account?.access_token` in `jwt` callback by exchanging for backend token first — never store provider token as app token.
+- `session.accessToken` exposure intentional (RTK needs raw bearer). Cookie holding it encrypted; still treat as credential in logs/analytics.
+- next-auth v4 works on Next 16 via App Router route handler above; don't mix v5 (`next-auth@5`/Auth.js beta) imports — different API surface.

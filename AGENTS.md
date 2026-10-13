@@ -1,54 +1,48 @@
 # Global Pi Instructions
 
-Global rules for the pi coding agent, loaded into every session. Task-scoped rule sets live in `docs/` — follow a link below when the task touches that area.
+Loaded every session. Task rule sets in `docs/` — follow link when task touches area.
 
 ## Always-on rules
 
 ### Clarity
-
-- If anything is unclear or a named target/reference is not found, ask and wait — **never substitute a closest match or proceed on a guess**.
-- Batch every open question into one message.
-- Plan/design requests = plan only.
-- Ambiguous "continue / proceed" → confirm scope first.
+- Unclear or target not found → ask, wait. Never guess, never substitute closest match.
+- Batch all open questions into one message.
+- Plan/design request → plan only.
+- Ambiguous "continue/proceed" → confirm scope first.
 
 ### Scope
-
-- An explicit instruction approves the named action plus reads/searches directly implied by it.
-- Within an approved task, run plan → do → verify autonomously.
-- Only installs, destructive ops, and out-of-scope changes need an ask.
+- Explicit instruction approves named action + directly implied reads/searches.
+- Approved task → plan/do/verify autonomously.
+- Ask only for: installs, destructive ops, out-of-scope changes.
 
 ### GitHub issues
-
-- Any task in a repo with gh-tracked issues: check for a related issue (`gh issue list -S '<keywords>' --state all`), cover its acceptance criteria and suggested fix, and state any deviation.
-- Prevent the known failure classes for the domains you touch — see [docs/issue-classes.md](docs/issue-classes.md).
-- Cite the issue number when committing or closing; operational detail in [docs/agent-hygiene.md](docs/agent-hygiene.md).
+- Repo has gh issues → check related (`gh issue list -S '<keywords>' --state all`), cover acceptance criteria + suggested fix, state deviations.
+- Prevent known failure classes for touched domains — [docs/issue-classes.md](docs/issue-classes.md).
+- Cite issue number in commits/closes; detail in [docs/agent-hygiene.md](docs/agent-hygiene.md).
 
 ### Precedence
-
-- Pi loads global and repo context files together — neither replaces the other.
-- On conflict, the repo's own `AGENTS.md`/`.pi` instructions are more specific and win; this file fills the gaps.
+- Global + repo context load together; neither replaces other.
+- Conflict → repo `AGENTS.md`/`.pi` wins; this file fills gaps.
+- Explicit in-session user instruction outranks global/repo/template rules: apply override, one-line deviation note, never relitigate.
 
 ### Safety
-
-- Mirrored by the `permission-gate` extension — keep both lists in sync.
-- **Ask before installing packages or any destructive command**; see [docs/security.md](docs/security.md) for the full list.
-- A yes in chat or in the invoking message counts as approval.
+- Mirrored by `permission-gate` extension — keep lists in sync.
+- **Ask before installs, packages, destructive commands** — full list: [docs/security.md](docs/security.md).
+- Yes in chat or invoking message = approval.
 
 ### Communication
-
-- Caveman mode — concise, direct, technical; no filler, pleasantries, emojis, or em dashes; fragments okay; keep technical terms exact.
-- Hard cap ~5 lines per reply unless the user asks for detail or a real tradeoff must be spelled out.
+- Caveman: concise, direct, technical. No filler, pleasantries, emoji, em dashes. Fragments OK, exact terms.
+- Cap ~5 lines/reply unless detail requested or tradeoff needs spelling out.
+- Analysis/audit deliverables → dated file under `audit-reports/` + ≤5-line chat summary + path. Never inline long reports.
 
 ### Mechanical checks
-
-- Re-reads, output caps, re-runs, commit format, edit anchors, destructive confirms, toolchain pins, search scope and node_modules reads are enforced by the `permission-gate` extension; block reasons carry the fix.
+- Re-reads, output caps, re-runs, commit format, edit anchors, destructive confirms, toolchain pins, search scope, node_modules reads — enforced by `permission-gate`; block reason carries fix.
 
 ## Scoped rule sets
-
-- [docs/change-discipline.md](docs/change-discipline.md) — surgical scope, ponytail ladder, root-cause bug fixes
+- [docs/change-discipline.md](docs/change-discipline.md) — surgical scope, ponytail ladder, root-cause fixes
 - [docs/agent-hygiene.md](docs/agent-hygiene.md) — toolchain, edit anchors, issue/commit discipline
-- [docs/issue-classes.md](docs/issue-classes.md) — preventive catalog of known failure classes (secrets, auth, HTTP, CI, tests)
+- [docs/issue-classes.md](docs/issue-classes.md) — failure-class catalog (secrets, auth, HTTP, CI, tests)
 - [docs/security.md](docs/security.md) — build-time auth checks, secrets server-side, guard-fix re-checks
-- [docs/portability.md](docs/portability.md) — macOS + Linux shell subset, no absolute user paths
-- [docs/token-economy.md](docs/token-economy.md) — search discipline, batching, verify baselines, session limits
-- [docs/workflow.md](docs/workflow.md) — plan/do/verify cadence, verification rule, skills behavior
+- [docs/portability.md](docs/portability.md) — macOS+Linux shell subset, no absolute user paths
+- [docs/token-economy.md](docs/token-economy.md) — search discipline, batching, baselines, session limits
+- [docs/workflow.md](docs/workflow.md) — TDD, plan/do/verify cadence, session length

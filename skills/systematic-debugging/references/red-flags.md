@@ -1,11 +1,10 @@
-# Red flags, partner signals, and rationalizations
+# Red flags, partner signals, rationalizations
 
-Calibration material for the four-phase process — read when you catch yourself
-or your human partner sees guessing.
+Calibration for four-phase process — read when caught yourself or human partner sees guessing.
 
-## Red Flags - STOP and Follow Process
+## Red Flags — STOP and Follow Process
 
-If you catch yourself thinking:
+Catch yourself thinking:
 - "Quick fix for now, investigate later"
 - "Just try changing X and see if it works"
 - "Add multiple changes, run tests"
@@ -13,25 +12,24 @@ If you catch yourself thinking:
 - "It's probably X, let me fix that"
 - "I don't fully understand but this might work"
 - "Pattern says X but I'll adapt it differently"
-- "Here are the main problems: [lists fixes without investigation]"
+- "Here are the main problems: [fixes without investigation]"
 - Proposing solutions before tracing data flow
-- "One more fix attempt" (when already tried 2+)
+- "One more fix attempt" (already tried 2+)
 - Each fix reveals new problem in different place
 
-**ALL of these mean: STOP. Return to Phase 1.**
+**ALL = STOP. Return to Phase 1.**
 
-**If 3+ fixes failed:** Question the architecture (see SKILL.md Phase 4, step 5)
+**3+ fixes failed:** question architecture (SKILL.md Phase 4, step 5)
 
-## your human partner's Signals You're Doing It Wrong
+## Human partner's signals you're doing it wrong
 
-Watch for these redirections:
-- "Is that not happening?" - You assumed without verifying
-- "Will it show us...?" - You should have added evidence gathering
-- "Stop guessing" - You're proposing fixes without understanding
-- "Ultra-think this" - Question fundamentals, not just symptoms
-- "We're stuck?" (frustrated) - Your approach isn't working
+- "Is that not happening?" — assumed without verifying
+- "Will it show us...?" — should've added evidence gathering
+- "Stop guessing" — proposing fixes without understanding
+- "Ultra-think this" — question fundamentals, not just symptoms
+- "We're stuck?" (frustrated) — approach not working
 
-**When you see these:** STOP. Return to Phase 1.
+**See these → STOP. Phase 1.**
 
 ## Common Rationalizations
 

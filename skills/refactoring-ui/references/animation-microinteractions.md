@@ -1,49 +1,29 @@
 # Animation & Microinteractions
 
-Guidelines for when and how to animate UI elements effectively.
-
-
-## Table of Contents
-1. [The Purpose of Animation](#the-purpose-of-animation)
-2. [Timing & Duration](#timing-duration)
-3. [Easing Functions](#easing-functions)
-4. [Common Animation Patterns](#common-animation-patterns)
-5. [Loading States](#loading-states)
-6. [Microinteractions](#microinteractions)
-7. [Accessibility Considerations](#accessibility-considerations)
-8. [Performance Guidelines](#performance-guidelines)
-9. [Animation Checklist](#animation-checklist)
-
----
+When/how to animate UI effectively.
 
 ## The Purpose of Animation
 
-Animation should serve a function, not just look nice.
+Animation serves function, not looks.
 
-### Valid Reasons to Animate
+### Valid reasons
 
 | Purpose | Example |
 |---------|---------|
 | **Feedback** | Button press confirmation, form submission success |
-| **Orientation** | Showing where something came from or went to |
+| **Orientation** | Showing where something came from / went |
 | **Focus** | Drawing attention to important changes |
 | **Teaching** | Demonstrating how something works |
 | **Continuity** | Maintaining context during state changes |
-| **Delight** | Occasional surprise (use sparingly) |
+| **Delight** | Occasional surprise (sparingly) |
 
-### Invalid Reasons to Animate
+### Invalid reasons
 
-- "It looks cool"
-- "The competition does it"
-- "To show off our skills"
+- "Looks cool" / "competition does it" / "show off skills"
 - Every state change
-- To hide slow performance
-
----
+- Hiding slow performance
 
 ## Timing & Duration
-
-### Duration Guidelines
 
 | Animation Type | Duration | Rationale |
 |----------------|----------|-----------|
@@ -53,17 +33,13 @@ Animation should serve a function, not just look nice.
 | Entrances/Reveals | 200-400ms | Can be slightly longer |
 | Decorative/Emphasis | 300-500ms | Purpose is to be noticed |
 
-### The 200ms Rule
+### The 200ms rule
 
-Most UI animations should be around 200ms:
-- Faster than 100ms → Too fast to perceive
-- Slower than 400ms → Feels sluggish, interrupts flow
+Most UI animations ~200ms. Faster than 100ms → imperceptible. Slower than 400ms → sluggish, interrupts flow. Exception: loading/progress indicators can be slower (represent real waiting).
 
-Exception: Loading and progress indicators can be slower because they represent real waiting.
+### Duration by distance
 
-### Duration by Distance
-
-Longer travel distance = longer duration (but not proportionally).
+Longer travel = longer duration (not proportionally).
 
 ```
 Small movement (8-16px):   100-150ms
@@ -71,13 +47,9 @@ Medium movement (50-100px): 150-250ms
 Large movement (full screen): 250-350ms
 ```
 
----
-
 ## Easing Functions
 
-Easing makes motion feel natural. Linear motion looks robotic.
-
-### Common Easing Curves
+Easing = natural motion. Linear = robotic.
 
 | Easing | Use For | Feel |
 |--------|---------|------|
@@ -86,36 +58,22 @@ Easing makes motion feel natural. Linear motion looks robotic.
 | **ease-in-out** | Elements moving within view | Smooth throughout |
 | **linear** | Progress indicators, opacity changes | Mechanical (intentional) |
 
-### When to Use Each
-
-#### Ease-out (default for entrances):
+### Ease-out (default entrances — modals, notifications, dropdowns, tooltips):
 ```css
 transition: transform 200ms ease-out;
 ```
-- Modals appearing
-- Notifications sliding in
-- Dropdowns opening
-- Tooltips appearing
 
-#### Ease-in (for exits):
+### Ease-in (exits — modals dismissing, fading, notifications leaving):
 ```css
 transition: opacity 150ms ease-in;
 ```
-- Modals dismissing
-- Elements fading out
-- Notifications leaving
 
-#### Ease-in-out (for on-screen movement):
+### Ease-in-out (on-screen movement — tab indicators, carousels, drawers):
 ```css
 transition: transform 250ms ease-in-out;
 ```
-- Tab indicators sliding
-- Carousel transitions
-- Drawer/sidebar toggling
 
-### Custom Cubic Bezier
-
-For more personality, customize curves:
+### Custom cubic bezier (personality):
 
 ```css
 /* Snappy entrance */
@@ -125,31 +83,25 @@ transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
 transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 ```
 
----
-
 ## Common Animation Patterns
 
-### Button States
+### Button states
 
-#### Hover:
 ```css
+/* Hover */
 .btn {
   transition: background-color 100ms ease-out, transform 100ms ease-out;
 }
 .btn:hover {
   background-color: var(--btn-hover);
 }
-```
 
-#### Active/Pressed:
-```css
+/* Active/Pressed */
 .btn:active {
   transform: scale(0.97);
 }
-```
 
-#### Loading state:
-```css
+/* Loading */
 .btn.loading {
   opacity: 0.7;
   pointer-events: none;
@@ -159,10 +111,10 @@ transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 ```
 
-### Modal Entrance/Exit
+### Modal entrance/exit
 
-#### Enter:
 ```css
+/* Enter */
 .modal {
   opacity: 0;
   transform: scale(0.95) translateY(-10px);
@@ -172,10 +124,8 @@ transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
   opacity: 1;
   transform: scale(1) translateY(0);
 }
-```
 
-#### Exit:
-```css
+/* Exit */
 .modal.closing {
   opacity: 0;
   transform: scale(0.95);
@@ -215,7 +165,7 @@ transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 ```
 
-### Skeleton Loading
+### Skeleton loading
 
 ```css
 .skeleton {
@@ -235,11 +185,7 @@ transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 ```
 
----
-
 ## Loading States
-
-### Types of Loading Indicators
 
 | Type | Use When | Example |
 |------|----------|---------|
@@ -248,12 +194,12 @@ transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 | **Skeleton** | Loading content layout | Feed items |
 | **Pulse/Shimmer** | Refreshing existing content | Pull to refresh |
 
-### Spinner Guidelines
+### Spinner guidelines
 
 - Don't show immediately (wait 300-500ms)
-- If wait < 1 second, spinner may not be needed
-- Position in context (where content will appear)
-- Provide cancel option for long operations
+- Wait < 1 second → spinner may be unneeded
+- Position in context (where content appears)
+- Cancel option for long operations
 
 ```jsx
 // Delay spinner to avoid flash for fast operations
@@ -268,29 +214,25 @@ useEffect(() => {
 }, [isLoading]);
 ```
 
-### Progress Bar Guidelines
+### Progress bar guidelines
 
-- Show percentage when meaningful
-- Don't let it jump backwards
-- Consider indeterminate state if progress unknown
+- Percentage when meaningful
+- Never jump backwards
+- Indeterminate state if progress unknown
 - Complete to 100% before hiding
 
-### Skeleton Screen Guidelines
+### Skeleton screen guidelines
 
-- Match layout of actual content
-- Use consistent bone shapes
+- Match actual content layout
+- Consistent bone shapes
 - Animate subtly (shimmer, not bounce)
 - Replace with content immediately when loaded
 
----
-
 ## Microinteractions
 
-Small animations that provide feedback and delight.
+Small animations giving feedback + delight.
 
-### Effective Microinteractions
-
-#### Toggle switches:
+### Toggle switch:
 ```css
 .toggle-thumb {
   transition: transform 150ms ease-out;
@@ -300,7 +242,7 @@ Small animations that provide feedback and delight.
 }
 ```
 
-#### Checkbox check:
+### Checkbox check:
 ```css
 .checkmark {
   stroke-dasharray: 20;
@@ -312,7 +254,7 @@ Small animations that provide feedback and delight.
 }
 ```
 
-#### Like/Heart animation:
+### Like/heart:
 ```css
 .heart {
   transform: scale(1);
@@ -328,7 +270,7 @@ Small animations that provide feedback and delight.
 }
 ```
 
-#### Input focus:
+### Input focus:
 ```css
 .input {
   border-color: #ccc;
@@ -340,24 +282,22 @@ Small animations that provide feedback and delight.
 }
 ```
 
-### When Microinteractions Help
+### When they help
 
 - Confirming user action occurred
 - Showing state change clearly
 - Making interface feel responsive
 - Guiding attention to changes
 
-### When to Skip
+### When to skip
 
 - Repetitive actions (every keystroke)
 - Performance-critical paths
 - Accessibility mode (respect reduce-motion)
 
----
+## Accessibility
 
-## Accessibility Considerations
-
-### Respect User Preferences
+### Respect user preferences
 
 ```css
 @media (prefers-reduced-motion: reduce) {
@@ -371,39 +311,31 @@ Small animations that provide feedback and delight.
 }
 ```
 
-### Provide Alternatives
+### Provide alternatives
 
-- Don't rely on animation alone to convey information
-- Ensure state changes are visible without animation
-- Allow users to disable animations in app settings
+- Never rely on animation alone to convey information
+- State changes visible without animation
+- Allow disabling animations in app settings
 
-### Avoid Problematic Animations
+### Avoid
 
 | Avoid | Reason |
 |-------|--------|
 | Flashing/strobing | Can trigger seizures |
-| Parallax scrolling | Causes motion sickness |
+| Parallax scrolling | Motion sickness |
 | Auto-playing video | Distracting, accessibility |
 | Infinite loops | Drains attention, battery |
 
----
+## Performance
 
-## Performance Guidelines
+### GPU-accelerated properties (smooth 60fps)
 
-### GPU-Accelerated Properties
-
-Animate these for smooth 60fps:
 - `transform` (translate, scale, rotate)
 - `opacity`
 
-Avoid animating (causes reflow/repaint):
-- `width`, `height`
-- `top`, `left`, `right`, `bottom`
-- `margin`, `padding`
-- `border-width`
-- `font-size`
+Avoid animating (reflow/repaint): `width`, `height`, `top/left/right/bottom`, `margin`, `padding`, `border-width`, `font-size`.
 
-### Use will-change Sparingly
+### will-change sparingly
 
 ```css
 /* Only for elements about to animate */
@@ -417,26 +349,20 @@ Avoid animating (causes reflow/repaint):
 }
 ```
 
-### Batch Animations
+### Batch animations
 
-Start animations together, not staggered excessively:
-- 0-50ms stagger: feels cohesive
-- 100ms+ stagger: feels slow, sequential
+Start together, not staggered excessively: 0-50ms stagger = cohesive; 100ms+ = slow, sequential.
 
-### Test on Low-end Devices
+### Test on low-end devices
 
-What's smooth on your MacBook may stutter on a budget Android phone. Test on real devices or throttle CPU in DevTools.
+Smooth on MacBook may stutter on budget Android. Test on real devices or throttle CPU in DevTools.
 
----
+## Checklist
 
-## Animation Checklist
-
-Before shipping an animation:
-
-- [ ] Does it serve a purpose (not just decoration)?
-- [ ] Is duration appropriate for the action?
-- [ ] Does easing feel natural?
-- [ ] Does it work with `prefers-reduced-motion`?
-- [ ] Is it GPU-accelerated (transform/opacity)?
-- [ ] Does it perform well on low-end devices?
-- [ ] Can the interface function without it?
+- [ ] Serves a purpose (not just decoration)?
+- [ ] Duration appropriate for action?
+- [ ] Easing natural?
+- [ ] Works with `prefers-reduced-motion`?
+- [ ] GPU-accelerated (transform/opacity)?
+- [ ] Performs on low-end devices?
+- [ ] Interface functions without it?

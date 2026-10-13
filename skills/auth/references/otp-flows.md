@@ -1,9 +1,6 @@
 # OTP flows (registration + forgot password)
 
-For backends that gate registration or password reset behind one-time passwords.
-All endpoints are plain mutations on the shared API slice — no auth side effects
-in `onQueryStarted`, no token handling. Orchestration lives in the client
-component's step machine.
+Backends gating registration or password reset behind one-time passwords. All endpoints = plain mutations on shared API slice — no auth side effects in `onQueryStarted`, no token handling. Orchestration in client component's step machine.
 
 ## Endpoints (types + API slice)
 
@@ -52,28 +49,24 @@ Step machine state: `"initial" | "password" | "otp" | "registration"`.
    - `http_code === 200` → existing user → step `"password"` (normal credentials login)
    - `http_code === 404` → new user → **not an error**; fall through to send OTP
    - other → `toast.error(result.message)`
-2. Send OTP (new users): `sendOtp({ resend: 0, storeId, mobile, eventType: '<signup otp event>', rtoken })` → step `"otp"`. Attach a CAPTCHA token if the backend requires one; abort silently if the challenge fails.
-3. Verify OTP: `verifyOtp({ mobile, otp, storeId })` → hold the OTP in state → step `"registration"`.
-4. Registration form → `signup({ ...accountFields, mobile, otp })` → then immediately:
-   `signIn("credentials", { mobile, password, redirect: false })` → `hydrateSessionToken()` → redirect chain. No separate "please log in" step.
+2. Send OTP (new users): `sendOtp({ resend: 0, storeId, mobile, eventType: '<signup otp event>', rtoken })` → step `"otp"`. Attach CAPTCHA token if backend requires; abort silently if challenge fails.
+3. Verify OTP: `verifyOtp({ mobile, otp, storeId })` → hold OTP in state → step `"registration"`.
+4. Registration form → `signup({ ...accountFields, mobile, otp })` → immediately: `signIn("credentials", { mobile, password, redirect: false })` → `hydrateSessionToken()` → redirect chain. No separate "please log in" step.
 
-Resend OTP reuses step 2 with `eventType: '<account edit otp event>'` and a visible
-cooldown (typically 60s) so users can't spam the endpoint.
+Resend OTP reuses step 2 with `eventType: '<account edit otp event>'` + visible cooldown (typically 60s) — no endpoint spamming.
 
 ## Flow B — forgot password
 
 Step machine state: `"initial" | "otp-verification" | "reset"`.
 
-1. Identifier input → detect phone vs email client-side (`/^01[0-9]{9}$/`-style and
-   email regex) → `forgotPasswordSendOtp({ mobile } | { email, rtoken })`.
+1. Identifier input → detect phone vs email client-side (`/^01[0-9]{9}$/`-style + email regex) → `forgotPasswordSendOtp({ mobile } | { email, rtoken })`.
 2. OTP arrives → `verifiedOtp` held in state → step `"reset"`.
-3. `resetPassword({ mobile|email, otp: verifiedOtp, newPassword, confirmPassword })` → redirect to `/login` with a success toast.
+3. `resetPassword({ mobile|email, otp: verifiedOtp, newPassword, confirmPassword })` → redirect to `/login` + success toast.
 
-Both flows show the current step's form only; back buttons walk the machine
-backwards; every failure path goes through `extractErrorMessage(error, fallback)`.
+Both flows: show current step's form only; back buttons walk machine backwards; every failure path through `extractErrorMessage(error, fallback)`.
 
 ## Pitfalls
 
-- Existence-check 404 is a routing signal, not an error — don't let the mutation's error branch swallow the new-user path.
-- The OTP value must ride from the verify step into the signup/reset call via component state, not a second backend round-trip.
-- Keep resend cooldown state per identifier; resetting it on step change invites abuse.
+- Existence-check 404 = routing signal, not error — don't let mutation's error branch swallow the new-user path.
+- OTP value rides from verify step into signup/reset call via component state, not second backend round-trip.
+- Resend cooldown state per identifier; resetting on step change invites abuse.

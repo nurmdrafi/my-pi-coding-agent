@@ -2,9 +2,9 @@
 
 Three layers, one token:
 
-- Server — session resolved in layout, passed to `SessionProvider`.
-- React tree — `useSession()` for UI concerns (header, gated widgets).
-- Non-React — module holder read synchronously per API request.
+- Server — session resolved in layout, passed to `SessionProvider`
+- React tree — `useSession()` for UI (header, gated widgets)
+- Non-React — module holder, read synchronously per API request
 
 ## `lib/auth/session.ts`
 
@@ -29,8 +29,8 @@ export function getSessionUser(): Session["user"] | null {
 }
 
 // signIn({redirect:false}) resolves before useSession() cache updates.
-// Fetch the session once so the next API call carries the token and
-// non-React consumers (pusher/notification init) see the user immediately.
+// Fetch session once: next API call carries token, non-React consumers
+// (pusher/notification init) see user immediately.
 export async function hydrateSessionToken(): Promise<void> {
   try {
     const res = await fetch("/api/auth/session", { credentials: "include" });
@@ -38,7 +38,7 @@ export async function hydrateSessionToken(): Promise<void> {
     accessToken = data?.accessToken ?? null;
     sessionUser = (data?.user ?? null) ?? null;
   } catch {
-    accessToken = null; // requests go anonymous; never blocks login UX
+    accessToken = null; // anonymous requests; never blocks login UX
   }
 }
 ```
@@ -122,9 +122,9 @@ const baseQueryWithAuth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQuery
 
   const result = await baseQuery(normalizedArgs, api, extraOptions);
 
-  // No retry: nothing rotates the module-holder token between attempts, so a
-  // retry would be byte-identical. Add a retry only alongside a real refresh
-  // path (token rotation), and re-apply auth from the new token then.
+  // No retry: nothing rotates module-holder token between attempts — retry
+  // byte-identical. Add retry only alongside real refresh path (token
+  // rotation); re-apply auth from new token then.
   if (result?.error?.status === 401) handle401();
 
   return result;
@@ -139,14 +139,12 @@ export const apiSlice = createApi({
 });
 ```
 
-Auth mutations (register, OTP, forgot-password) are plain endpoints on this
-slice — **no auth side effects in `onQueryStarted`**, ever. Orchestration lives
-in components; backend auth lives in `authorize()`.
+Auth mutations (register, OTP, forgot-password) = plain endpoints on this slice — **no auth side effects in `onQueryStarted`**, ever. Orchestration in components; backend auth in `authorize()`.
 
 ## Pitfalls
 
-- Forgetting `hydrateSessionToken()` after signIn → first post-login request fires anonymous → 401 → instant logout loop. This is the #1 regression.
-- Hydrate the user holder too: consumers that read `getSessionUser()` right after login (pusher/notification activation) get `null` until `useSession` updates otherwise.
-- A 401 "retry with re-read token" against a static holder is dead code — the request is identical. Reviewers flag it as misleading; only retry when a refresh path changed the token.
-- Don't read the token from `document.cookie` — the session cookie is httpOnly by design.
-- `refetchOnWindowFocus={false}` avoids pointless session refetch storms; the 401 ladder is the real invalidation path.
+- Missing `hydrateSessionToken()` after signIn → first post-login request anonymous → 401 → instant logout loop. #1 regression.
+- Hydrate user holder too: consumers reading `getSessionUser()` right after login (pusher/notification activation) get `null` until `useSession` updates otherwise.
+- 401 "retry with re-read token" against static holder = dead code — identical request. Reviewers flag as misleading; retry only when refresh path changed token.
+- Don't read token from `document.cookie` — session cookie httpOnly by design.
+- `refetchOnWindowFocus={false}` avoids session refetch storms; 401 ladder = real invalidation path.

@@ -7,6 +7,17 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.3] - 14-10-2026
+
+### Changed
+
+- **Skills telegram-style rewrite (final 3 of 20)** — `skills/systematic-debugging/` (SKILL.md + 5 references), `skills/auth/` (SKILL.md + 7 references), `skills/refactoring-ui/` (SKILL.md + 4 references) rewritten to concise LLM-friendly fragments matching the tone of the 17 skills rewritten in a prior (unlogged) session. Prose only — frontmatter, code blocks, commands, thresholds, dot graphs, tables preserved verbatim; no semantic loss. All 19 files shrank (e.g. debugging SKILL.md 9299 → 6962 B, accessibility-depth 11802 → 10129 B, animation-microinteractions 9523 → 8192 B).
+
+### Removed
+
+- `skills/auth/SKILL.md` — checklist's `docs/issue-classes.md` catalog pointer (owner direction).
+- `skills/refactoring-ui/SKILL.md` — Wathan & Schoger book attribution (owner direction).
+
 ## [1.37.2] - 13-10-2026
 
 ### Changed

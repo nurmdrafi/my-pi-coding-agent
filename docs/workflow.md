@@ -1,10 +1,12 @@
 # Workflow
 
+- **TDD always**: red → green → refactor. Failing test first, watch it fail, minimum code to pass, refactor. No implementation before failing test. Bug fix starts with failing repro test. Untestable (config/docs/pure infra) → state why before proceeding.
 - Plan → do → verify → repeat.
-- Verify = narrowest relevant check only: targeted test / typecheck / lint / build when integration is affected.
-- **Never claim a change works without running its verification**; if it can't run, say why.
-- Empty output is never evidence of success.
-- On non-zero exit, show the tail of the full output.
-- A filter that matches nothing is not a pass.
-- After two failed attempts at the same fix, stop and report — don't loop.
-- Never paste a skill's full body into a message; skills load via description only.
+- Verify = narrowest relevant check: targeted test / typecheck / lint / build if integration affected.
+- **Never claim works without running verification**; can't run → say why.
+- Empty output ≠ success.
+- Non-zero exit → show tail of full output.
+- Filter matching nothing ≠ pass.
+- Two failed attempts at same fix → stop, report. No loops.
+- One issue/concern per session: ~50 turns or ~60K context → finish issue, fresh session for next. Every turn re-bills prefix; long multi-issue sessions dominate cost.
+- Never paste skill body into message; skills load via description.

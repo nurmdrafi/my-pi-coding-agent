@@ -1,23 +1,12 @@
 # Advanced Design Patterns
 
-Extended reference for complex scenarios. Load only when deeper guidance needed.
-
-## Table of Contents
-1. [Empty States](#empty-states)
-2. [Form Design](#form-design)
-3. [Image Treatment](#image-treatment)
-4. [Icon Usage](#icon-usage)
-5. [Interaction States](#interaction-states)
-6. [Color Psychology](#color-psychology)
-7. [Border Radius System](#border-radius-system)
-
----
+Extended reference, complex scenarios. Load only when deeper guidance needed.
 
 ## Empty States
 
-Empty states are opportunities, not afterthoughts.
+Empty states = opportunities, not afterthoughts.
 
-### Good empty states include:
+Good empty states:
 - Illustration or icon (not generic)
 - Clear explanation of what goes here
 - Primary action to remedy emptiness
@@ -29,32 +18,26 @@ Empty states are opportunities, not afterthoughts.
    [+ Create Project]
 ```
 
-Match the tone. A todo app empty state can be playful; an enterprise dashboard should be professional.
-
----
+Match tone: todo app can be playful; enterprise dashboard professional.
 
 ## Form Design
 
-### Input Sizing
+### Input sizing (match expected content)
 
-Match input width to expected content:
-- Email/URL: Full width or ~400px
+- Email/URL: full width or ~400px
 - Phone: ~200px
-- ZIP code: ~100px
-- Street address: Full width
+- ZIP: ~100px
+- Street address: full width
 - City: ~200px
 - State dropdown: ~150px
 
-### Placeholder vs. Label
+### Placeholder vs. label
 
-**Never use placeholder as the only label.** Placeholders disappear on focus. Always have a visible label.
+**Never placeholder as only label** — disappears on focus. Always visible label.
 
-Placeholders work for:
-- Format hints: "MM/DD/YYYY"
-- Examples: "e.g., john@example.com"
-- Optional clarification
+Placeholders for: format hints ("MM/DD/YYYY"), examples ("e.g., john@example.com"), optional clarification.
 
-### Input States
+### Input states
 
 ```
 Default:     border-gray-300
@@ -64,9 +47,9 @@ Disabled:    bg-gray-100 text-gray-400
 Success:     border-green-500 (sparingly)
 ```
 
-### Button Hierarchy
+### Button hierarchy
 
-One primary action per view. Everything else is secondary or tertiary.
+One primary action per view; rest secondary/tertiary.
 
 ```
 Primary:    Solid color, high contrast (bg-blue-600 text-white)
@@ -75,55 +58,47 @@ Tertiary:   Text only (text-blue-600 hover:underline)
 Danger:     Red but not screaming (bg-red-600 for confirm, text-red-600 for trigger)
 ```
 
-### Form Layout
+### Form layout
 
 - One column for simple forms
-- Two columns ONLY when inputs are related (First/Last name, City/State)
+- Two columns ONLY for related inputs (First/Last name, City/State)
 - Labels above inputs on mobile, beside on desktop (optional)
 - Group related fields with subtle boundaries or spacing
 
----
-
 ## Image Treatment
 
-### Background Images
+### Background images — text over images often unreadable. Solutions:
 
-Problem: Text over images is often unreadable.
-
-#### Solutions:
 - Semi-transparent overlay: `bg-black/50`
 - Gradient overlay: `bg-gradient-to-t from-black/80 to-transparent`
 - Text shadow: `text-shadow: 0 2px 4px rgba(0,0,0,0.5)`
 - Solid color box behind text
 - Choose images with natural dark/simple areas for text
 
-### User Avatars
+### User avatars
 
-- Always have a fallback (initials, generic icon)
+- Always fallback (initials, generic icon)
 - Consistent size per context (32px list, 48px card, 96px profile)
-- Round for people, square with border-radius for companies/products
+- Round for people, square + border-radius for companies/products
 - Border adds polish: `ring-2 ring-white` for overlapping avatars
 
-### Hero Images
+### Hero images
 
-- Don't stretch—use `object-cover`
-- Consider `aspect-ratio` for consistency
+- Never stretch — `object-cover`
+- `aspect-ratio` for consistency
 - Compress appropriately (WebP, quality 80%)
-
----
 
 ## Icon Usage
 
-### Sizing
+### Sizing (balanced with adjacent text)
 
-Icons should feel balanced with adjacent text:
 - 12-14px text: 16px icon
-- 16px text: 20px icon  
+- 16px text: 20px icon
 - 18-20px text: 24px icon
 
-### Icon + Text Pairing
+### Icon + text pairing
 
-Always align icon center with text baseline or center. Add consistent gap (8px typical).
+Align icon center with text baseline/center; consistent gap (8px typical).
 
 ```html
 <span class="flex items-center gap-2">
@@ -132,44 +107,27 @@ Always align icon center with text baseline or center. Add consistent gap (8px t
 </span>
 ```
 
-### When to Use Icons
+### Use icons for
 
 - Navigation items
 - Common actions (edit, delete, share)
 - Status indicators
-- Feature lists (with caution—don't overdo)
+- Feature lists (caution — don't overdo)
 
-### When NOT to Use Icons
+### NOT for
 
-- Don't add icons just to fill space
-- Skip icons on buttons with clear text ("Submit", "Continue")
-- Avoid decorative-only icons that add no meaning
-
----
+- Filling space
+- Buttons with clear text ("Submit", "Continue")
+- Decorative-only, no meaning
 
 ## Interaction States
 
 Every interactive element needs visible state changes:
 
-### Hover
-- Subtle background change
-- Slight shadow increase
-- Color shift (darken primary by 10%)
-
-### Active/Pressed
-- Darker than hover
-- Slight scale down (`scale-95`)
-- Reduce shadow
-
-### Focus
-- Obvious ring (critical for accessibility)
-- Don't rely on color alone
-- `focus-visible` for keyboard-only focus
-
-### Loading
-- Disable interaction
-- Show spinner or skeleton
-- Maintain layout size (prevent shift)
+- **Hover**: subtle bg change, slight shadow increase, color shift (darken primary 10%)
+- **Active/Pressed**: darker than hover, slight scale down (`scale-95`), reduced shadow
+- **Focus**: obvious ring (critical for a11y), never color alone, `focus-visible` for keyboard-only
+- **Loading**: disable interaction, spinner/skeleton, maintain layout size (prevent shift)
 
 ```css
 /* Example button states */
@@ -180,11 +138,7 @@ Every interactive element needs visible state changes:
 }
 ```
 
----
-
 ## Color Psychology
-
-Use color purposefully:
 
 | Color | Association | Use for |
 |-------|-------------|---------|
@@ -195,20 +149,17 @@ Use color purposefully:
 | Purple | Premium, creative | Premium features, creative apps |
 | Gray | Neutral, professional | Text, backgrounds, borders |
 
-### Avoid
-
+Avoid:
 - Red for non-destructive primary buttons
 - Green for errors (colorblind users)
 - Low-saturation colors for important actions
 - More than 3 accent colors per interface
 
----
-
 ## Border Radius System
 
 Stay consistent. Pick a system:
 
-### Sharp/Modern:
+Sharp/Modern:
 ```
 none: 0
 sm: 2px
@@ -217,7 +168,7 @@ lg: 6px
 full: 9999px (pills/circles)
 ```
 
-### Soft/Friendly:
+Soft/Friendly:
 ```
 none: 0
 sm: 4px
@@ -227,22 +178,18 @@ xl: 16px
 full: 9999px
 ```
 
-### Rules
-
-- Nested elements: inner radius = outer radius - padding
-- Small elements get smaller radius (badges, tags)
-- Large elements can have larger radius (cards, modals)
-- Images inside cards: match card radius or use `overflow-hidden`
-
----
+Rules:
+- Nested elements: inner radius = outer radius − padding
+- Small elements smaller radius (badges, tags); large elements larger (cards, modals)
+- Images inside cards: match card radius or `overflow-hidden`
 
 ## Text Wrapping & Truncation
 
-### When to Truncate
+### Truncate when
 
 - Navigation items
 - Table cells with fixed widths
-- Card titles (with hover to reveal)
+- Card titles (hover to reveal)
 
 ```css
 .truncate {
@@ -252,14 +199,11 @@ full: 9999px
 }
 ```
 
-### When NOT to Truncate
+### Never truncate
 
-- Body text
-- Important information
-- Search results
-- Error messages
+- Body text, important info, search results, error messages
 
-### Multi-line Truncation
+### Multi-line
 
 ```css
 .line-clamp-2 {
@@ -270,11 +214,9 @@ full: 9999px
 }
 ```
 
----
-
 ## Responsive Breakpoints
 
-Standard breakpoints (Tailwind default):
+Tailwind default:
 
 ```
 sm:  640px  (landscape phones)
@@ -284,19 +226,16 @@ xl:  1280px (desktops)
 2xl: 1536px (large screens)
 ```
 
-### Mobile-First Principles
-
-- Design for mobile first, add complexity for larger screens
+Mobile-first principles:
+- Design mobile first, add complexity for larger screens
 - Stack on mobile, side-by-side on desktop
-- Full-width inputs on mobile, constrained on desktop
-- Larger touch targets on mobile (44px minimum)
-- Hide secondary navigation in hamburger on mobile
-
----
+- Full-width inputs mobile, constrained desktop
+- Larger touch targets mobile (44px minimum)
+- Hide secondary nav in hamburger on mobile
 
 ## Modal and Overlay Patterns
 
-### Modal Sizing
+### Modal sizing
 
 | Content Type | Width | Height |
 |--------------|-------|--------|
@@ -305,7 +244,7 @@ xl:  1280px (desktops)
 | Content modal | 600-800px | 70-80vh max |
 | Full-screen modal | 100vw | 100vh |
 
-### Modal Structure
+### Structure
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -329,7 +268,7 @@ xl:  1280px (desktops)
 }
 ```
 
-### Modal Transitions
+### Transitions
 
 ```css
 /* Fade + Scale */
@@ -344,14 +283,12 @@ xl:  1280px (desktops)
 }
 ```
 
----
-
 ## Dropdown and Menu Design
 
-### Dropdown Positioning
+### Positioning
 
-- Default: Below trigger, left-aligned
-- Flip: Above if no space below
+- Default: below trigger, left-aligned
+- Flip above if no space below
 - Constrain to viewport
 
 ```css
@@ -363,7 +300,7 @@ xl:  1280px (desktops)
 }
 ```
 
-### Menu Styling
+### Styling
 
 ```css
 .menu {
@@ -391,7 +328,7 @@ xl:  1280px (desktops)
 }
 ```
 
-### Menu Item Types
+### Item types
 
 | Type | Visual |
 |------|--------|
@@ -402,11 +339,9 @@ xl:  1280px (desktops)
 | Destructive | Red text |
 | Disabled | Grayed out |
 
----
-
 ## Navigation Patterns
 
-### Top Navigation
+### Top navigation
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -414,11 +349,9 @@ xl:  1280px (desktops)
 └─────────────────────────────────────────────────┘
 ```
 
-- Sticky on scroll (optional)
-- Collapse to hamburger on mobile
-- Clear active state
+Sticky on scroll (optional); hamburger on mobile; clear active state.
 
-### Side Navigation
+### Side navigation
 
 ```
 ┌──────────────┬──────────────────────────────────┐
@@ -434,9 +367,7 @@ xl:  1280px (desktops)
 └──────────────┴──────────────────────────────────┘
 ```
 
-- Collapsible to icons on desktop
-- Full overlay on mobile
-- Group related items
+Collapsible to icons on desktop; full overlay on mobile; group related items.
 
 ### Breadcrumbs
 
@@ -444,9 +375,7 @@ xl:  1280px (desktops)
 Home  >  Category  >  Subcategory  >  Current Page
 ```
 
-- Clickable except current page
-- Truncate middle items if too long
-- Show on detail/nested pages
+Clickable except current; truncate middle if too long; show on detail/nested pages.
 
 ### Tabs
 
@@ -467,6 +396,4 @@ Home  >  Category  >  Subcategory  >  Current Page
 }
 ```
 
-- Underline or pill style
-- Horizontal scroll on mobile if many tabs
-- Consider vertical tabs for settings
+Underline or pill style; horizontal scroll on mobile if many tabs; vertical tabs for settings.

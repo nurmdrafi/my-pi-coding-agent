@@ -1,26 +1,12 @@
-# Proving a finding before you publish it
+# Proving a finding before publishing
 
-Detail behind SKILL.md §4 Output. Moved verbatim from the body.
+Detail behind SKILL.md §4 Output.
 
-Prove a finding before you publish it. A finding is a claim about a bug —
-verify it the same way you would verify a fix, then report it. Reasoning that
-"this looks wrong" is a hypothesis, not a finding. Real false positives from
-this exact failure: a `Form.List` handler `(name, checked)` compared against a
-numeric index looked like a string/number bug, but `field.name` *is* the numeric
-index (the sibling file used it as an array path `['rows', field.name, 'id']`) —
-correct code; a `moment(x, 'YYYY/MM/DD')` parse looked like it would fail on an
-ISO date, but the installed moment parses `'2000-05-15'`, `'2000/05/15'` and an
-ISO timestamp identically. Both were published to the user before being checked.
+Finding = claim about a bug — verify same way you'd verify a fix, then report. "Looks wrong" = hypothesis, not finding. Real false positives from this exact failure: `Form.List` handler `(name, checked)` compared vs numeric index looked like string/number bug, but `field.name` IS the numeric index (sibling file used it as array path `['rows', field.name, 'id']`) — correct code; `moment(x, 'YYYY/MM/DD')` parse looked like it fails on ISO date, but installed moment parses `'2000-05-15'`, `'2000/05/15'` + ISO timestamp identically. Both published before being checked.
 
-Cheap verification, in order of preference:
-- Run it — a node one-liner, a 3-case input table, a unit test. Two seconds
-  of execution beats a paragraph of inference.
-- Read the installed source (`node_modules/<pkg>/...`) for the actual
-  semantics, not the API you remember.
-- Read the call site — what is actually passed at the site (`field.name`,
-  the id source, the payload consumer), not what the parameter name suggests.
+Cheap verification, preference order:
+- Run it — node one-liner, 3-case input table, unit test. Two seconds execution > paragraph inference.
+- Read installed source (`node_modules/<pkg>/...`) for actual semantics, not remembered API.
+- Read call site — what's actually passed (`field.name`, id source, payload consumer), not what parameter name suggests.
 
-If it cannot be verified, label it `[UNVERIFIED]` and say what would prove it.
-Never assign a severity to an unproven claim — severity implies confidence you
-do not have, and a wrong medium+ wastes the user's review time. A finding you
-retract after checking costs far less than one you publish.
+Unverifiable → label `[UNVERIFIED]`, state what would prove it. Never assign severity to unproven claim — severity implies confidence you lack; wrong medium+ wastes review time. Retracted-after-checking finding costs far less than published one.

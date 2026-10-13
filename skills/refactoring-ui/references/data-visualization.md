@@ -1,26 +1,8 @@
 # Data Visualization Design
 
-Practical guide to designing charts, tables, and data displays that communicate clearly.
-
-
-## Table of Contents
-1. [Chart Selection](#chart-selection)
-2. [Bar Charts](#bar-charts)
-3. [Line Charts](#line-charts)
-4. [Pie Charts](#pie-charts)
-5. [Color in Data Visualization](#color-in-data-visualization)
-6. [Tables](#tables)
-7. [Dashboard Layout](#dashboard-layout)
-8. [Chart Annotations](#chart-annotations)
-9. [Accessibility in Data Viz](#accessibility-in-data-viz)
-10. [Common Mistakes](#common-mistakes)
-11. [Quick Reference](#quick-reference)
-
----
+Charts, tables, data displays that communicate clearly.
 
 ## Chart Selection
-
-### Choosing the Right Chart Type
 
 | Data Type | Best Chart | Avoid |
 |-----------|-----------|-------|
@@ -32,135 +14,91 @@ Practical guide to designing charts, tables, and data displays that communicate 
 | Correlation | Scatter plot | Line chart |
 | Composition over time | Stacked area, stacked bar | Multiple pie charts |
 
-### When NOT to Use a Chart
+### When NOT to chart — simple number sometimes better
 
-Sometimes a simple number is better:
-- Single data point → Big number display
-- Two numbers to compare → Side-by-side with % change
-- Very few data points → Table might be clearer
+- Single data point → big number display
+- Two numbers to compare → side-by-side with % change
+- Very few data points → table might be clearer
 
 ```
 ✗ Pie chart with 2 slices (73% vs 27%)
 ✓ "73% of users completed onboarding"
 ```
 
----
-
 ## Bar Charts
 
-### Orientation
+Vertical bars: few categories, short labels.
+Horizontal bars: many categories or long labels.
 
-Vertical bars: Best when comparing few categories with short labels
-Horizontal bars: Best when comparing many categories or labels are long
-
-### Bar Chart Rules
-
-- Always start at zero - Truncated axes mislead
-- Order meaningfully - By value (descending) or logical order (time, alphabet)
-- Space bars correctly - Gap between bars = 50-100% of bar width
-- Label directly - Put values on bars, not in legend
-- Limit categories - 5-7 bars maximum; group others as "Other"
-
-### Bar Styling
+Rules:
+- Always start at zero — truncated axes mislead
+- Order meaningfully — by value (descending) or logical (time, alphabet)
+- Gap between bars = 50-100% of bar width
+- Label directly — values on bars, not legend
+- 5-7 bars max; group rest as "Other"
 
 ```css
-/* Bar appearance */
 .bar {
   fill: var(--primary);
   border-radius: 2px 2px 0 0; /* Slight rounding on top only */
 }
-
-/* Hover state */
 .bar:hover {
   fill: var(--primary-dark);
 }
-
 /* Spacing */
 .bar-gap: 8px;
 .bar-width: 32px;
 ```
 
----
-
 ## Line Charts
 
-### When to Use
+Use for: continuous data over time; trends > individual values; comparing series over same period.
 
-- Continuous data over time
-- Trends matter more than individual values
-- Comparing multiple series over same time period
-
-### Line Chart Rules
-
-- Start Y-axis at zero (usually) - Unless all values are in narrow range
-- Limit to 4-5 lines - More becomes unreadable
-- Use distinct line styles - Different colors, consider dashes for printing
-- Label lines directly - Not just in legend
-- Highlight important points - Mark significant events or thresholds
-
-### Line Styling
+Rules:
+- Y-axis at zero (usually) — unless all values in narrow range
+- 4-5 lines max — more unreadable
+- Distinct line styles — different colors, dashes for printing
+- Label lines directly — not just legend
+- Highlight important points — events, thresholds
 
 ```css
-/* Line appearance */
 .line {
   stroke-width: 2px;
   fill: none;
 }
-
-/* Data points */
 .data-point {
   r: 4px;
   fill: white;
   stroke-width: 2px;
 }
-
-/* Only show points on hover or for few data points */
+/* Points only on hover or few data points */
 .data-point { opacity: 0; }
 .line-group:hover .data-point { opacity: 1; }
 ```
 
----
-
 ## Pie Charts
 
-### When to Use (Rarely)
+Use (rarely): parts of whole, 2-5 slices max, proportions > exact values, values sum to 100%.
 
-- Showing parts of a whole
-- 2-5 slices maximum
-- Exact values less important than proportions
-- Users understand percentages must sum to 100%
+NOT for: comparing values (bar), >5 categories, non-100% sums, change over time.
 
-### When NOT to Use
+Rules:
+- Max 5 slices; small values → "Other"
+- Order by size — largest at 12 o'clock
+- Label directly on/near slices, not legend
+- Show percentages
+- Consider donut — center shows total or key metric
 
-- Comparing values (use bar chart)
-- More than 5 categories
-- Values that don't sum to 100%
-- Showing change over time
-
-### Pie Chart Rules
-
-- Limit slices - Maximum 5; combine small values into "Other"
-- Order by size - Largest slice starting at 12 o'clock
-- Label directly - Put labels on or near slices, not in legend
-- Show percentages - Values help interpretation
-- Consider donut - Center can show total or key metric
-
-### Alternative: Simple Numbers
-
-Often clearer than a pie chart:
+Alternative — simple numbers often clearer:
 ```
 ┌─────────────────────────────────┐
 │ 67% Mobile   23% Desktop   10% Tablet │
 └─────────────────────────────────┘
 ```
 
----
-
 ## Color in Data Visualization
 
-### Categorical Colors
-
-For different categories, use distinct hues:
+### Categorical (distinct hues)
 
 ```
 Blue:    #3b82f6
@@ -170,14 +108,11 @@ Purple:  #8b5cf6
 Yellow:  #eab308
 ```
 
-#### Rules:
-- Maximum 5-7 distinct colors
-- Avoid red/green together (colorblindness)
+- Max 5-7 distinct colors
+- No red/green together (colorblindness)
 - Test with colorblind simulator
 
-### Sequential Colors
-
-For continuous data (low to high), use single hue with varying lightness:
+### Sequential (continuous low→high, single hue, varying lightness)
 
 ```
 Light:   #dbeafe (low values)
@@ -187,9 +122,7 @@ Light:   #dbeafe (low values)
 Dark:    #1d4ed8 (high values)
 ```
 
-### Diverging Colors
-
-For data with meaningful center (positive/negative, above/below average):
+### Diverging (meaningful center: positive/negative, above/below average)
 
 ```
 Negative:  #ef4444 (red)
@@ -197,31 +130,18 @@ Neutral:   #f3f4f6 (gray)
 Positive:  #22c55e (green)
 ```
 
-### Colorblind-Safe Palettes
+### Colorblind-safe
 
-Test your palette with:
-- Coblis Color Blindness Simulator
-- Chrome DevTools rendering settings
-
-#### Safe combinations:
-- Blue + Orange (deuteranopia safe)
-- Blue + Yellow
-- Purple + Green + Orange
-
----
+Test with Coblis simulator or Chrome DevTools rendering settings.
+Safe combos: Blue + Orange (deuteranopia safe), Blue + Yellow, Purple + Green + Orange.
 
 ## Tables
 
-### When Tables Beat Charts
+Tables beat charts when: precise values matter, users look up specific data, multiple attributes per item, data gets exported/copied.
 
-- Precise values matter
-- Users need to look up specific data
-- Multiple attributes per item
-- Data will be exported/copied
+### Design principles
 
-### Table Design Principles
-
-#### 1. Align numbers right
+1. Numbers right-aligned:
 ```
 Revenue
 ────────
@@ -230,54 +150,43 @@ Revenue
 $123,789
 ```
 
-#### 2. Align text left
-```
-Product Name
-────────────
-Widget A
-Premium Widget
-Widget Pro Max
-```
+2. Text left-aligned.
 
-#### 3. Use consistent precision
+3. Consistent precision:
 ```
 ✗  $1234, $567.89, $2.5k
 ✓  $1,234.00, $567.89, $2,500.00
 ```
 
-#### 4. Minimize borders
+4. Minimal borders — light horizontal lines only, no vertical borders or heavy lines:
 ```css
-/* Light horizontal lines only */
 tr {
   border-bottom: 1px solid #e5e7eb;
 }
-/* No vertical borders, no heavy lines */
 ```
 
-#### 5. Generous padding
+5. Generous padding:
 ```css
 td {
   padding: 12px 16px;
 }
 ```
 
-### Table Patterns
-
-#### 6. Zebra striping:
+6. Zebra striping:
 ```css
 tr:nth-child(even) {
   background-color: #f9fafb;
 }
 ```
 
-#### 7. Hover highlighting:
+7. Hover highlighting:
 ```css
 tr:hover {
   background-color: #f3f4f6;
 }
 ```
 
-#### 8. Sortable columns:
+8. Sortable columns:
 ```html
 <th>
   Revenue
@@ -285,7 +194,7 @@ tr:hover {
 </th>
 ```
 
-#### 9. Sticky headers:
+9. Sticky headers:
 ```css
 thead th {
   position: sticky;
@@ -294,11 +203,7 @@ thead th {
 }
 ```
 
----
-
 ## Dashboard Layout
-
-### Visual Hierarchy
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -325,7 +230,7 @@ thead th {
 └──────────────────────────┴───────────────────────────┘
 ```
 
-### Key Metric Cards
+### Key metric cards
 
 ```html
 <div class="metric-card">
@@ -352,34 +257,25 @@ thead th {
 .change.negative { color: #ef4444; }
 ```
 
----
-
 ## Chart Annotations
 
-### When to Annotate
+Annotate to: explain anomalies, mark significant events, highlight thresholds, call out key insights.
 
-- Explain anomalies
-- Mark significant events
-- Highlight thresholds
-- Call out key insights
-
-### Annotation Patterns
-
-#### Event markers:
+Event markers:
 ```
                     ╭─── Product launch
 Revenue ──────────/│\──────────────
                     │
 ```
 
-#### Threshold lines:
+Threshold lines:
 ```
 Revenue ──────────────────────
 - - - - - Target: $50k - - - -
 ──────────────────────────────
 ```
 
-#### Callout boxes:
+Callout boxes:
 ```
 ┌──────────────────────────┐
 │ + Best month ever!      │
@@ -389,19 +285,12 @@ Revenue ──────────────────────
               ▼
 ```
 
----
-
 ## Accessibility in Data Viz
 
-### Color Considerations
+- Never color alone — add patterns, labels, icons
+- Sufficient contrast; colorblind simulator testing
 
-- Don't rely on color alone
-- Add patterns, labels, or icons
-- Ensure sufficient contrast
-- Test with colorblind simulators
-
-### Screen Reader Support
-
+Screen reader support:
 ```html
 <figure role="img" aria-label="Bar chart showing monthly revenue">
   <figcaption class="sr-only">
@@ -411,9 +300,7 @@ Revenue ──────────────────────
 </figure>
 ```
 
-### Data Tables as Alternative
-
-For complex charts, provide data table version:
+Data table alternative for complex charts:
 ```html
 <details>
   <summary>View data as table</summary>
@@ -421,25 +308,21 @@ For complex charts, provide data table version:
 </details>
 ```
 
----
-
 ## Common Mistakes
 
 | Mistake | Problem | Fix |
 |---------|---------|-----|
-| 3D charts | Distorts perception | Use flat 2D |
+| 3D charts | Distorts perception | Flat 2D |
 | Dual Y-axes | Confusing comparisons | Separate charts |
-| Too many colors | Visual noise | Limit to 5-7 |
+| Too many colors | Visual noise | Limit 5-7 |
 | Missing zero | Misleading differences | Start at zero |
 | No labels | Hard to interpret | Label directly |
 | Decorative elements | Chartjunk distracts | Remove non-data ink |
 | Inconsistent scales | Misleading comparison | Match scales |
 
----
-
 ## Quick Reference
 
-### Chart Decision Tree
+### Chart decision tree
 
 ```
 What do you want to show?
@@ -457,7 +340,7 @@ What do you want to show?
 └─ Single value → Big number
 ```
 
-### Minimum Viable Chart Styling
+### Minimum viable chart styling
 
 ```css
 /* Axes */
