@@ -2159,6 +2159,38 @@ const cases = [
     },
   ],
   [
+    "NM1: grep into @earendil-works pi docs allowed (user-approved 2026-10-13)",
+    "pass",
+    async (pi) =>
+      bash(
+        pi,
+        "grep -n 'compaction' node_modules/@earendil-works/pi-coding-agent/docs/compaction.md",
+        approveUi(),
+      ),
+  ],
+  [
+    "NM1: read tool into @earendil-works allowed",
+    "pass",
+    async (pi) =>
+      read(
+        pi,
+        join(tmp, "node_modules", "@earendil-works", "pi-coding-agent", "README.md"),
+        { offset: 1, limit: 5 },
+        { outputLines: 5 },
+        approveUi(),
+      ),
+  ],
+  [
+    "NM1: grep with absolute bare node_modules dir blocked (regression 2026-10-14)",
+    "blocked",
+    async (pi) =>
+      bash(
+        pi,
+        "grep -rn 'lodash' /abs/path/node_modules --include='*.json' | head -5",
+        approveUi(),
+      ),
+  ],
+  [
     "NM1: ls node_modules passes (presence check is legitimate)",
     "pass",
     async (pi) => bash(pi, "ls node_modules", approveUi()),

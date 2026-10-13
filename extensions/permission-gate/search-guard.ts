@@ -16,7 +16,7 @@
  * rg is gitignore-aware and fast, so unscoped rg passes by design.
  */
 const NM1_MSG =
-  "Search (node_modules): dependency internals are not project code — search the project tree, or read the dep's docs/types for its lockfile version; a node_modules crawl wasted a session window.";
+  "Search (node_modules): dependency internals — ask the user before crawling node_modules; pi docs under node_modules/@earendil-works/ are pre-approved.";
 
 /** quote-aware tokenizer: quoted runs stay one token (quotes stripped);
  * shell operators | < > stand alone so tokens past them are another command */
@@ -77,7 +77,12 @@ function tokens(seg: string): string[] {
 const isNodeModulesToken = (t: string) =>
   t === "node_modules" ||
   t.startsWith("node_modules/") ||
-  t.includes("/node_modules/");
+  /(^|\/)node_modules(\/|$)/.test(t);
+
+/** user-approved 2026-10-13: @earendil-works (pi docs/types) reads are not a wasted crawl */
+const isEarendilExempt = (t: string) =>
+  t.startsWith("node_modules/@earendil-works/") ||
+  t.includes("/node_modules/@earendil-works/");
 
 export function searchCheck(seg: string, isDarwin: boolean): string | undefined {
   const toks = tokens(seg);
@@ -85,7 +90,8 @@ export function searchCheck(seg: string, isDarwin: boolean): string | undefined 
   if (toks[i] === "sudo") i++;
   const head = toks[i] ?? "";
   if (head !== "grep" && head !== "egrep" && head !== "fgrep") {
-    if (/^(?:find|rg|cat|head|tail)$/.test(head) && toks.some(isNodeModulesToken))
+    if (/^(?:find|rg|cat|head|tail)$/.test(head) &&
+        toks.some((t) => isNodeModulesToken(t) && !isEarendilExempt(t)))
       return NM1_MSG;
     return undefined;
   }
@@ -118,14 +124,17 @@ export function searchCheck(seg: string, isDarwin: boolean): string | undefined 
     paths.every((p) => p === "." || p === "./" || p === "..");
   if (recursive && unscoped && !includeScoped)
     return "Search (Scope): recursive grep with no path/glob scope crawls node_modules/.git and timed out at 30s — scope it (grep -rn --include='*.ts' PATTERN src/) or use rg PATTERN src/.";
-  if ([...paths, ...opts].some(isNodeModulesToken)) return NM1_MSG;
+  if ([...paths, ...opts].some((t) => isNodeModulesToken(t) && !isEarendilExempt(t)))
+    return NM1_MSG;
   return undefined;
 }
 
 /** NM1 for the read tool: block reads of dependency internals */
 export function nodeModulesPath(display: string): string | undefined {
   const d = display.replace(/\\/g, "/");
-  if (!/(^|\/)node_modules\//.test(d)) return undefined;
+  if (!/(^|\/)node_modules(\/|$)/.test(d)) return undefined;
+  // user-approved 2026-10-13: @earendil-works (pi docs/types) allowed
+  if (/(^|\/)node_modules\/@earendil-works\//.test(d)) return undefined;
   const shown = display.length > 48 ? `…${display.slice(-47)}` : display;
-  return `Search (node_modules): '${shown}' is dependency internals — read the dep's docs/types (lockfile version) instead; ask the user only if its source truly must be read.`;
+  return `Search (node_modules): '${shown}' is dependency internals — ask the user before crawling node_modules; pi docs under node_modules/@earendil-works/ are pre-approved.`;
 }

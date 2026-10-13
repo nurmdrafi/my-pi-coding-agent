@@ -16,7 +16,7 @@
  * | TC2 | Toolchain (Node)              | node-family binary under an exact x.y.z Node pin (.nvmrc/engines) the interpreter misses — nvm use first |
  * | SS1 | Search (Scope)                | recursive grep with no path/glob scope — scope it or use rg |
  * | PB1 | Portability (grep -P)         | grep -P on darwin — rg / grep -E |
- * | NM1 | Search (node_modules)         | read tool + grep/find/rg/cat/head/tail into node_modules — deps' docs/types, not the tree |
+ * | NM1 | Search (node_modules)         | read/search node_modules — ask user first; @earendil-works pre-approved |
  * | R10 | Token Economy (Re-run)         | identical command re-run within 10 min without an edit/write/mutating-bash since is blocked |
  * | RB  | Token Economy (Re-block)      | verbatim re-send of a just-blocked command escalates (never armed for H2) |
  * | VM  | violation memory              | cross-session per-family block counts inject lessons into the next system prompt (threshold: 5 distinct sessions / 30d) |
@@ -364,7 +364,7 @@ export default function (pi: ExtensionAPI) {
       // clamp the path contribution so the reason stays inside the 220c diet cap for any path length or kind
       const shown = display.length > 57 ? `…${display.slice(-56)}` : display;
       // NM1 (2026-10-13 audit): dependency internals — a node_modules/.pnpm
-      // path was read straight through the read tool; never crawl the tree
+      // path was read straight through the read tool; ask user first (@earendil-works exempt)
       const nm = nodeModulesPath(display);
       if (nm) return blockCall(nm);
       const start = Math.max(

@@ -23,7 +23,7 @@ export const FAMILY_LESSONS: Record<string, string> = {
   "Portability (grep -P)":
     "No grep -P on macOS (BSD grep) — use rg or grep -E.",
   "Search (node_modules)":
-    "Never read or search node_modules — use the dep's docs/types (lockfile version), or ask the user.",
+    "Don't crawl node_modules without asking the user — pi docs under node_modules/@earendil-works/ are pre-approved.",
 };
 
 /** the gate's own synthesized block results carry isError + a family-prefixed text */
