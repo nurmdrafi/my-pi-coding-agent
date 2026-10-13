@@ -190,6 +190,21 @@ async function runBash(pi, command, { error = false, ctx } = {}) {
   });
   return { blocked: false };
 }
+/** nested sub-call (codemode/executeTool child): parentToolCallId set, "<parent>/<n>" id */
+async function nestedBash(pi, command, { error = false } = {}) {
+  const toolCallId = `cm0/${++seqId}`;
+  const block = await pi.invoke(
+    "tool_call",
+    { type: "tool_call", toolName: "bash", toolCallId, parentToolCallId: "cm0", input: { command } },
+  );
+  if (block) return { blocked: true, reason: block.reason };
+  await pi.invoke("tool_result", {
+    type: "tool_result", toolName: "bash", toolCallId, parentToolCallId: "cm0",
+    input: { command }, content: textBlocks("out"), isError: error,
+  });
+  return { blocked: false };
+}
+
 const approveUi = () => ({
   hasUI: true,
   mode: "tui",
@@ -497,6 +512,28 @@ const cases = [
     "identical compound with watcher word is exempt",
     "pass",
     async (pi) => bash(pi, "sleep 1; rm -f /tmp/x"),
+  ],
+  // ---- nested (codemode) sub-calls: context-premise rules exempt, safety rules stay ----
+  [
+    "nested identical re-run passes (codemode batch)",
+    "pass",
+    async (pi) => {
+      await runBash(pi, "echo NESTED-AB-PROBE one");
+      return nestedBash(pi, "echo NESTED-AB-PROBE one");
+    },
+  ],
+  [
+    "nested run does not arm R10 for a model-issued re-run",
+    "pass",
+    async (pi) => {
+      await nestedBash(pi, "echo NESTED-ARM-PROBE two");
+      return bash(pi, "echo NESTED-ARM-PROBE two");
+    },
+  ],
+  [
+    "nested git commit still commitlint-blocked (safety stays)",
+    "blocked",
+    async (pi) => nestedBash(pi, 'git commit -m "Fix the thing"'),
   ],
   [
     "re-run of a failed command passes",

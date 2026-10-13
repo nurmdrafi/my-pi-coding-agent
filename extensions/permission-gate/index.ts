@@ -341,6 +341,19 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_call", async (event, ctx) => {
+    // Nested sub-calls (codemode/executeTool children; parentToolCallId set,
+    // toolCallId "<parent>/<n>") never add transcript entries — results reach
+    // only the calling tool, never the model's context. So every rule premised
+    // on "output already in context" (R1 re-read, R10 re-run, Re-block) does
+    // not apply to nested calls, and nested runs must not arm those rules for
+    // later model-issued calls. Content/safety rules (destructive, R9,
+    // self-modify) still apply — they judge the command, not its context cost.
+    // (2026-10-13 codemode A/B audit: dup-gate blocking 3/5 nested calls,
+    // 32% codemode error rate across 200 sessions, all false positives.)
+    const nested = Boolean(
+      (event as { parentToolCallId?: string }).parentToolCallId,
+    );
+
     if (isToolCallEventType("edit", event)) {
       const path = normPath(event.input.path, ctx?.cwd);
       const checked = await validateEditAnchors(event.input, ctx?.cwd);
@@ -417,7 +430,9 @@ export default function (pi: ExtensionAPI) {
         }
         coverage.delete(path); // changed on disk (or no baseline) — the read is legitimate
       }
-      pendingReads.set(event.toolCallId, { path, win });
+      // nested read: result never enters context — neither block on prior
+      // coverage nor certify new coverage from it
+      if (!nested) pendingReads.set(event.toolCallId, { path, win });
     }
 
     if (isToolCallEventType("write", event)) {
@@ -444,6 +459,7 @@ export default function (pi: ExtensionAPI) {
     // Short window: the pattern is an immediate re-send; a different block
     // in between naturally re-arms the original rule.
     if (
+      !nested &&
       lastBlockedBash &&
       lastBlockedBash.cmd === cmd &&
       lastBlockedBash.mut === mutationSeq &&
@@ -549,6 +565,7 @@ export default function (pi: ExtensionAPI) {
       /--watch\b/.test(base);
     const prior = lastBashRun.get(base);
     if (
+      !nested && // nested re-runs cost no context (result stays in the script)
       prior &&
       !prior.failed &&
       !watcher &&
@@ -560,7 +577,7 @@ export default function (pi: ExtensionAPI) {
           `edit/write since — output already in context. Re-run only after a change. Poll: 'sleep N && cmd'.`,
       );
     }
-    pendingBash.set(event.toolCallId, base);
+    if (!nested) pendingBash.set(event.toolCallId, base);
     return;
   });
 
