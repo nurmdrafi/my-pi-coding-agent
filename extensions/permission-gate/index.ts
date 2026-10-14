@@ -41,6 +41,7 @@ import { dirname, join } from "path";
 
 import { toLF, validateEditAnchors } from "./anchor-guard.ts";
 import { capBashOutput } from "./bash-cap.ts";
+import { scrubBashText } from "./output-scrub.ts";
 import {
   APPROVED_WINDOW_MS,
   APPROVAL_RE,
@@ -345,19 +346,6 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_call", async (event, ctx) => {
-    // Nested sub-calls (codemode/executeTool children; parentToolCallId set,
-    // toolCallId "<parent>/<n>") never add transcript entries — results reach
-    // only the calling tool, never the model's context. So every rule premised
-    // on "output already in context" (R1 re-read, R10 re-run, Re-block) does
-    // not apply to nested calls, and nested runs must not arm those rules for
-    // later model-issued calls. Content/safety rules (destructive, R9,
-    // self-modify) still apply — they judge the command, not its context cost.
-    // (2026-10-13 codemode A/B audit: dup-gate blocking 3/5 nested calls,
-    // 32% codemode error rate across 200 sessions, all false positives.)
-    const nested = Boolean(
-      (event as { parentToolCallId?: string }).parentToolCallId,
-    );
-
     if (isToolCallEventType("edit", event)) {
       const path = normPath(event.input.path, ctx?.cwd);
       const checked = await validateEditAnchors(event.input, ctx?.cwd);
@@ -400,8 +388,7 @@ export default function (pi: ExtensionAPI) {
       // BIG_READ_WIN lines pass untouched, small files pass, R1 covers
       // re-reads of what is already certified in context.
       if (
-        !nested && // nested read lands in the script sandbox, not context
-        (win.end === Infinity || win.end - win.start >= BIG_READ_WIN)
+        win.end === Infinity || win.end - win.start >= BIG_READ_WIN
       ) {
         const snap = await snapshot(path);
         if (snap && snap.size > BIG_READ_BYTES) {
@@ -437,9 +424,7 @@ export default function (pi: ExtensionAPI) {
         }
         coverage.delete(path); // changed on disk (or no baseline) — the read is legitimate
       }
-      // nested read: result never enters context — neither block on prior
-      // coverage nor certify new coverage from it
-      if (!nested) pendingReads.set(event.toolCallId, { path, win });
+      pendingReads.set(event.toolCallId, { path, win });
     }
 
     if (isToolCallEventType("write", event)) {
@@ -466,7 +451,6 @@ export default function (pi: ExtensionAPI) {
     // Short window: the pattern is an immediate re-send; a different block
     // in between naturally re-arms the original rule.
     if (
-      !nested &&
       lastBlockedBash &&
       lastBlockedBash.cmd === cmd &&
       lastBlockedBash.mut === mutationSeq &&
@@ -501,7 +485,7 @@ export default function (pi: ExtensionAPI) {
     for (const seg of normSegs) {
       const tc = toolchainCheck(seg, cmd, ctx?.cwd);
       if (tc) return blockCall(tc);
-      const sc = searchCheck(seg, isDarwin, nested);
+      const sc = searchCheck(seg, isDarwin);
       if (sc) return blockCall(sc);
     }
 
@@ -572,7 +556,6 @@ export default function (pi: ExtensionAPI) {
       /--watch\b/.test(base);
     const prior = lastBashRun.get(base);
     if (
-      !nested && // nested re-runs cost no context (result stays in the script)
       prior &&
       !prior.failed &&
       !watcher &&
@@ -584,7 +567,7 @@ export default function (pi: ExtensionAPI) {
           `edit/write since — output already in context. Re-run only after a change. Poll: 'sleep N && cmd'.`,
       );
     }
-    if (!nested) pendingBash.set(event.toolCallId, base);
+    pendingBash.set(event.toolCallId, base);
     return;
   });
 
@@ -603,6 +586,10 @@ export default function (pi: ExtensionAPI) {
     // error outputs and sailed through uncapped). Only the gate's own
     // synthesized block results pass through untouched.
     if (blockFamilyOf(event)) return;
+    // 2026-10-13 output scrub (rtk-optimizer principles): ANSI strip +
+    // test/build aggregation runs first, in place; the H1 cap below then
+    // truncates/elides whatever is left. Failures/errors always survive.
+    scrubBashText(event.content ?? []);
     return capBashOutput(event);
   });
 

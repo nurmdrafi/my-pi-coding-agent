@@ -7,6 +7,16 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.0] - 14-10-2026
+
+### Added
+
+- **Output scrub for bash tool results** — ANSI stripping, test-output aggregation (passing lines collapsed to a counted summary, failures kept verbatim), and build-output filtering (errors/warnings plus head/tail anchors), applied before the existing output cap (`extensions/permission-gate/output-scrub.ts`).
+
+### Removed
+
+- **Codemode nested-call exemptions in permission-gate** — rules (big-read, re-read coverage, re-run, re-block, search scope) apply uniformly again after codemode removal.
+
 ## [1.37.3] - 14-10-2026
 
 ### Changed
