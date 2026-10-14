@@ -1,12 +1,15 @@
 {
+  "$schema": "https://pi.dev/schemas/settings.schema.json",
   "lastChangelogVersion": "1.2.0",
   "theme": "dark",
   "defaultProvider": "zai",
-  "defaultModel": "glm-5.3",
-  "defaultThinkingLevel": "low",
+  "defaultModel": "glm-5.3-flash",
+  "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "compaction": {
-    "enabled": true
+    "enabled": true,
+    "midTurnEnabled": true,
+    "strategy": "shake"
   },
   "packages": [],
   "extensions": [

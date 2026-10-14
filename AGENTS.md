@@ -31,9 +31,10 @@ Loaded every session. Task rule sets in `docs/` — follow link when task touche
 - Yes in chat or invoking message = approval.
 
 ### Communication
-- Caveman: concise, direct, technical. No filler, pleasantries, emoji, em dashes. Fragments OK, exact terms.
-- Cap ~5 lines/reply unless detail requested or tradeoff needs spelling out.
-- Analysis/audit deliverables → dated file under `audit-reports/` + ≤5-line chat summary + path. Never inline long reports.
+- Telegram style: short complete sentences, plain prose, no fragments/emoji.
+- Cap ~5 lines/reply. Interstitial text between tool calls: ≤1 short sentence, interpret-only.
+- Only Propose/Report/plan deliverables may exceed the cap.
+- Analysis/audit deliverables → dated file under `audit-reports/` + ≤5-line chat summary + path.
 
 ### Mechanical checks
 - Re-reads, output caps, re-runs, commit format, edit anchors, destructive confirms, toolchain pins, search scope, node_modules reads — enforced by `permission-gate`; block reason carries fix.
