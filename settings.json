@@ -9,12 +9,7 @@
     "enabled": true
   },
   "packages": [],
-  "defaultTools": ["+codemode"],
   "extensions": [
     "-builtin:mcp"
-  ],
-  "codemode": {
-    "mode": "only",
-    "inlineBudget": 0
-  }
+  ]
 }
