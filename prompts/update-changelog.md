@@ -1,14 +1,18 @@
 ---
-description: Update CHANGELOG.md from session context — existing pattern wins, else Keep a Changelog + SemVer
+description: Update CHANGELOG.md from session context — arg version wins, else Keep a Changelog + SemVer
 argument-hint: "[version]"
 ---
 
-Update changelog from session context, not git. Reads: CHANGELOG.md head only (15 lines, newest section); one `git status --porcelain`.
+Source: session transcript only. Never `git log`/`git diff`, never read codebase for entries. Reads allowed: CHANGELOG.md head (15 lines), `git status --porcelain`.
 
-Existing pattern: mirror newest section exactly — headings, section names, bullets; committed sections untouched. New/empty → Keep a Changelog + SemVer: MAJOR breaking, MINOR features, PATCH fixes; sections Added/Changed/Deprecated/Removed/Fixed/Security; skip empty.
+Raw `${1:-derived}` or frontmatter visible = raw template → take version from invoking message.
 
-Version `${1:-derived}`. If you see the literal text `${1:-derived}` or the frontmatter above, this is the raw template, not an invocation — take the version from the user's invoking message; only if none is given, derive it. An explicit version argument always wins, expanded or raw. Never run `git diff` or `git log`; the session transcript is the only change source.
+Version rules:
+- Explicit version given → use it, always. Exists in changelog → update that section. Not exists → create new section with it. Never bump, never substitute.
+- No version → derive. No uncommitted section → bump once, create. Uncommitted section present → continue it, append. Never bump twice pre-commit.
 
-Topmost committed section = released. No uncommitted section → bump once, create section. Already-bumped uncommitted section → continue that version, append while uncommitted (new this session or dirty); never bump twice pre-commit.
+Format: mirror newest existing section style. New/empty → Keep a Changelog: Added/Changed/Deprecated/Removed/Fixed/Security, MAJOR breaking/MINOR feat/PATCH fix. Skip empty sections.
 
-One bullet per user-visible change, ≤2 lines, what not how; no history, no I/we, no emoji. Final line: `[X.Y.Z] <bump reason> — N entries (sections) → CHANGELOG.md`.
+Bullets: one per user-visible change, ≤2 lines, what not how. No history, no I/we, no emoji.
+
+End: `[X.Y.Z] <reason> — N entries (sections) → CHANGELOG.md`

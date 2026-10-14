@@ -6,34 +6,38 @@ disable-model-invocation: true
 
 # LLM Instruction Formatter
 
-Optimize Markdown carrying LLM rules/instructions: AGENTS.md/CLAUDE.md, system prompts, prompt templates, SKILL.md bodies, agent rule-set docs. Apply to every such file; never prose docs, READMEs, changelogs.
+Target: files carrying LLM rules/instructions — AGENTS.md/CLAUDE.md, system prompts, prompt templates, SKILL.md bodies, agent rule-set docs. Never prose docs, READMEs, changelogs.
 
-Formatting-only: preserve wording/semantics verbatim unless user asks rewrite. Never edit YAML frontmatter.
+Formatting-only. Preserve wording verbatim unless user asks rewrite. Never edit YAML frontmatter.
 
 ## Bold
-- Remove aesthetic bold, label prefixes, paragraph blocks, header stand-ins.
-- Prefer lexical markers (`MUST`, `NEVER`, `IMPORTANT`) over bold for critical constraints. Bold only when single non-overridable rule needs weight after marker present (e.g. `**MUST NEVER** delete production data`).
-- Dense rule lists where every line = constraint: no bold — structure/position carry emphasis; over-bolding dilutes.
+
+- Delete aesthetic bold, label prefixes (`**Note:**`), paragraph bold, header stand-ins.
+- Critical constraint → lexical marker first: `MUST`, `NEVER`, `ALWAYS`, `IMPORTANT`.
+- Bold allowed only: single non-overridable rule needs extra weight and marker already present. Example: `**MUST NEVER** delete production data`.
+- Dense constraint lists: zero bold — every line = rule, structure carries emphasis, over-bolding dilutes.
 - Never bold whole paragraph or heading.
 
 ## Headings
-- Strict nesting: never skip levels (`#`→`##`→`###`, not `#`→`###`).
-- No bold inside headings, no bold-as-heading. Convert bold pseudo-headers → real headings at correct level.
-- Deeper levels only when warranted; small file stays flat under single H1.
+
+- No level skips: `#` → `##` → `###`. Never `#` → `###`.
+- No bold inside headings, no bold-as-heading. Bold pseudo-header → real heading, correct level.
+- Small file: flat, one H1, no deeper levels unless warranted.
 - Blank line before/after every heading.
 
 ## Lists
-- `-` unordered; `1.` strictly sequential steps/workflows.
+
+- Unordered: `-` only. Ordered: `1.`, `2.`, ... — sequential steps/workflows only.
 - One marker style per file.
-- One clause/rule per bullet. Split compound multi-rule bullets.
-- Keep rule + direct exception/rationale together; split only independent rules.
-- Comma-blob enumerations → sub-bullets or standalone list.
+- One rule per bullet. Compound bullet → split. Keep rule + its direct exception/rationale together; split only independent rules.
+- Comma-blob enumeration → sub-bullets or standalone list.
 - Blank line before/after every list.
-- Nested lists: consistent indent (2 spaces relative to parent marker).
+- Nested list: indent 2 spaces past parent marker.
 
 ## Procedure
+
 1. Read target file(s) fully.
-2. Restructure per rules, preserve wording. Frontmatter untouched.
+2. Restructure per rules, wording preserved, frontmatter untouched.
 3. Write file.
-4. Verify: `grep -nE '^#+ |^\*\*|^\- |^[0-9]+\. ' <file>` — no skipped heading levels, no bold-as-headers, bold only on critical constraints, markers consistent, sequential steps numbered.
-5. Report brief bullet summary (de-bolded, heading levels fixed, lists split/re-marked).
+4. Verify: `grep -nE '^#+ |^\*\*|^- |^[0-9]+\. ' <file>` — no skipped levels, no bold-as-headers, bold only on allowed cases, markers consistent, steps sequential.
+5. Report bullet summary: de-bolded, headings fixed, lists split/re-marked.
