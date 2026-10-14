@@ -3,8 +3,8 @@
   "lastChangelogVersion": "1.2.0",
   "theme": "dark",
   "defaultProvider": "zai",
-  "defaultModel": "glm-5.3-flash",
-  "defaultThinkingLevel": "medium",
+  "defaultModel": "glm-5.3",
+  "defaultThinkingLevel": "low",
   "hideThinkingBlock": true,
   "compaction": {
     "enabled": true,
