@@ -62,6 +62,9 @@ import {
   certify,
   countTextLines,
   coversAll,
+  HASH_CAP_BYTES,
+  hashFile,
+  hashText,
   normPath,
   snapshot,
 } from "./read-coverage.ts";
@@ -434,6 +437,11 @@ export default function (pi: ExtensionAPI) {
           spans: [{ start: 1, end: Infinity }],
           kind: "inject",
           stat: snap,
+          // S5 M3: free hash — `disk` was already read for the byte-match
+          hash:
+            Buffer.byteLength(disk) <= HASH_CAP_BYTES
+              ? hashText(disk)
+              : undefined,
         });
     }
   });
@@ -469,7 +477,12 @@ export default function (pi: ExtensionAPI) {
         ctx?.cwd,
         coverage.get(path),
       );
-      if (checked && "block" in checked) return blockCall(checked.reason);
+      if (checked && "block" in checked) {
+        // S5 M3: the hash disproved the certified spans/stat — drop them, or
+        // R1 would block the corrective re-read as a dup-read (deadlock)
+        if (checked.stale) coverage.delete(path);
+        return blockCall(checked.reason);
+      }
       pendingEdits.set(event.toolCallId, {
         path,
         spans: checked?.spans,
@@ -841,6 +854,11 @@ export default function (pi: ExtensionAPI) {
         for (const s of entry.spans)
           certify(coverage, entry.path, s, entry.kind, snap);
       }
+      // S5 M3 (2026-10-16): chain the post-op content hash — the next
+      // edit/write on this path compares it to catch same-stat drift
+      // (spec §5.3). Over-cap files store undefined → chain cleanly off.
+      const cur = coverage.get(entry.path);
+      if (cur) cur.hash = await hashFile(entry.path);
     }
   });
 

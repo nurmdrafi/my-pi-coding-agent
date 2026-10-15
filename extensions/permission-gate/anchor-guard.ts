@@ -4,7 +4,7 @@
  * the post-application line spans R1 certifies, the pre-edit stat (drift
  * check) and whether any anchor matched only fuzzily. */
 import { readFile } from "fs/promises";
-import { normPath, snapshot } from "./read-coverage.ts";
+import { hashText, normPath, snapshot } from "./read-coverage.ts";
 import type { CoverageEntry, LineSpan } from "./read-coverage.ts";
 
 export interface EditEntry {
@@ -91,7 +91,7 @@ export async function validateEditAnchors(
   cwd?: string,
   cov?: CoverageEntry,
 ): Promise<
-  | { block: true; reason: string }
+  | { block: true; reason: string; stale?: boolean }
   | {
       spans?: LineSpan[];
       firstEditedLine?: number;
@@ -133,6 +133,23 @@ export async function validateEditAnchors(
     return {
       block: true,
       reason: `Anchor Guard (Stale): '${shown}' changed on disk since your last read (mtime/size) — re-read the region (offset/limit), then re-send the edit.`,
+    };
+  }
+
+  // S5 M3 (2026-10-16): content-hash chain — closes the same-stat tail M1
+  // cannot see (sub-ms same-size writes, deliberate utimes/touch -r
+  // restores). Both sides hash the same normalized view; entries never
+  // carry a hash above the 1 MiB cap (hashFile), so the compare self-skips
+  // there, and plain reads store no hash (spec §5.3) — the read→same-stat-
+  // drift→edit tail stays stat-only (residual R2). A block carries
+  // stale: true so the caller drops the (now disproven) coverage entry —
+  // otherwise R1 would block the corrective re-read as a dup-read.
+  if (cov?.hash && cov.hash !== hashText(content)) {
+    const shown = display.length > 57 ? `…${display.slice(-56)}` : display;
+    return {
+      block: true,
+      stale: true,
+      reason: `Anchor Guard (Stale): '${shown}' changed without mtime/size change (fast write / restored mtime) — re-read before editing.`,
     };
   }
 

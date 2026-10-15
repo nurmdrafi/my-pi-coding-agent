@@ -35,7 +35,9 @@ export function hashText(text: string): string {
 
 /** hash of file content, undefined when missing/unreadable or above the
  * 1 MiB cap (hashing multi-MB files on a mutation boundary costs more than
- * the same-stat tail it closes — stat-only there, spec §5.3) */
+ * the same-stat tail it closes — stat-only there, spec §5.3). Hashes the
+ * SAME normalized view anchor-guard validates against (toLF mirror + BOM
+ * strip) so a stored hash never false-blocks a CRLF file. */
 export const HASH_CAP_BYTES = 1024 * 1024;
 export async function hashFile(
   key: string,
@@ -43,7 +45,10 @@ export async function hashFile(
   try {
     const s = await stat(key);
     if (s.size > HASH_CAP_BYTES) return undefined;
-    return hashText(await readFile(key, "utf8"));
+    const raw = await readFile(key, "utf8");
+    return hashText(
+      raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/^\uFEFF/, ""),
+    );
   } catch {
     return undefined;
   }

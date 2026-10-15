@@ -24,6 +24,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
@@ -143,6 +144,33 @@ async function edit(pi, path, edits) {
     input,
   });
   if (block) return { blocked: true, reason: block.reason };
+  await pi.invoke("tool_result", {
+    type: "tool_result",
+    toolName: "edit",
+    toolCallId,
+    input,
+    content: textBlocks("ok"),
+    isError: false,
+  });
+  return { blocked: false };
+}
+
+/** own single edit that ACTUALLY applies to disk between call and result
+ * (S5 M3): the real edit tool writes the file before its tool_result fires,
+ * so post-op stat/hash certification sees the applied content. Optional T
+ * pins the post-edit mtime to a round, exactly-restorable value. */
+async function editApplied(pi, path, oldText, newText, T) {
+  const toolCallId = `tc${++seqId}`;
+  const input = { path, edits: [{ oldText, newText }] };
+  const block = await pi.invoke("tool_call", {
+    type: "tool_call",
+    toolName: "edit",
+    toolCallId,
+    input,
+  });
+  if (block) return { blocked: true, reason: block.reason };
+  writeFileSync(path, readFileSync(path, "utf8").replace(oldText, newText));
+  if (T) utimesSync(path, T, T);
   await pi.invoke("tool_result", {
     type: "tool_result",
     toolName: "edit",
@@ -2864,10 +2892,122 @@ const cases = [
       return edit(pi, f, [{ oldText: "beta", newText: "BETA" }]); // post-op stat re-certified by edit 1
     },
   ],
+
+  // Step 3 (family 5): M3 hash chain for edit — spec §5.3. NOTE: the plan's
+  // literal "read → same-stat change → blocked" contradicts spec §7 R2
+  // (read-side hashing rejected); the spec wins — that sequence stays
+  // stat-only and is locked in below as the documented residual.
+  [
+    "S5 M3: plain read stays stat-only — same-stat drift passes (R2)",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-m3-r2.ts");
+      const T = new Date(Math.floor(Date.now() / 1000) * 1000);
+      writeFileSync(f, "a\nb\nc\n");
+      utimesSync(f, T, T); // round stat: exactly restorable
+      await read(pi, f); // certifies stat only — no hash stored on reads
+      writeFileSync(f, "a\nb\nx\n"); // same size, silent change
+      utimesSync(f, T, T); // stat identical → M1 passes; no hash to compare
+      return edit(pi, f, [{ oldText: "a", newText: "z" }]);
+    },
+  ],
+  [
+    "S5 M3: same-stat drift after own edit is blocked by the hash chain",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-m3-chain.ts");
+      const T0 = new Date(Math.floor(Date.now() / 1000) * 1000);
+      writeFileSync(f, "a\nb\nc\n");
+      utimesSync(f, T0, T0);
+      await read(pi, f);
+      const T1 = new Date(T0.getTime() + 60_000);
+      // own edit: applies to disk, result stores the post-op hash (stat pinned to T1)
+      const e1 = await editApplied(pi, f, "a", "z", T1);
+      if (e1.blocked) return e1;
+      writeFileSync(f, "z\nb\nx\n"); // same-size silent change
+      utimesSync(f, T1, T1); // stat identical to the post-edit snapshot
+      const r = await edit(pi, f, [{ oldText: "z", newText: "Z" }]);
+      return r.blocked && r.reason.includes("without mtime/size change")
+        ? r
+        : { blocked: false, reason: `family: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 M3: re-read after a hash block is allowed and clears it",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-m3-recover.ts");
+      const T0 = new Date(Math.floor(Date.now() / 1000) * 1000);
+      writeFileSync(f, "a\nb\nc\n");
+      utimesSync(f, T0, T0);
+      await read(pi, f);
+      const T1 = new Date(T0.getTime() + 60_000);
+      const e1 = await editApplied(pi, f, "a", "z", T1);
+      if (e1.blocked) return e1;
+      writeFileSync(f, "z\nb\nx\n");
+      utimesSync(f, T1, T1);
+      const b2 = await edit(pi, f, [{ oldText: "z", newText: "Z" }]);
+      if (!b2.blocked) return { blocked: false, reason: "precondition: hash block missing" };
+      // the corrective re-read must NOT be R1-blocked as a dup-read (the hash
+      // proved the certified spans wrong — coverage was dropped on block)
+      const rr = await read(pi, f);
+      if (rr.blocked) return rr;
+      return edit(pi, f, [{ oldText: "z", newText: "Z" }]);
+    },
+  ],
+  [
+    "S5 M3: >1 MiB file skips the hash chain (cap lock-in)",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-m3-big.bin");
+      const head = "UNIQUEHEAD\n";
+      writeFileSync(f, head + "x".repeat(1024 * 1024 + 2 - head.length));
+      const T = new Date(Math.floor(Date.now() / 1000) * 1000);
+      utimesSync(f, T, T);
+      await read(pi, f, { offset: 1, limit: 5 }, { outputLines: 5 }); // windowed: R1b-safe
+      const T2 = new Date(T.getTime() + 60_000);
+      // own edit: result-side hashFile is over the cap → entry stays hash-less
+      const e1 = await editApplied(pi, f, "UNIQUEHEAD", "UNIQUEHEAD2", T2);
+      if (e1.blocked) return e1;
+      // same-stat silent change in the unread tail — stat-only: must pass
+      const body = readFileSync(f, "utf8");
+      writeFileSync(f, body.slice(0, -1) + "y");
+      utimesSync(f, T2, T2);
+      return edit(pi, f, [{ oldText: "UNIQUEHEAD2", newText: "UNIQUEHEAD3" }]);
+    },
+  ],
+  [
+    "S5 M3: CRLF files do not false-block (hash normalization lock-in)",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-m3-crlf.ts");
+      writeFileSync(f, "a\r\nb\r\n");
+      await read(pi, f, { offset: 1, limit: 2 }, { outputLines: 2 });
+      // own edit stores hashFile(content) — must hash the SAME normalized view
+      // anchor-guard compares with (toLF + BOM strip), or every later edit
+      // on a CRLF file false-blocks as same-stat drift
+      const e1 = await editApplied(pi, f, "a", "z");
+      if (e1.blocked) return e1;
+      return edit(pi, f, [{ oldText: "b", newText: "y" }]); // no drift: must pass
+    },
+  ],
+  [
+    "S5 M3: resumed-session entry without hash passes M3 (R4)",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-m3-resume.ts");
+      // file + hydration ran in the preamble: entry has stat + spans, no hash
+      writeFileSync(f, "a\nb\nx\n"); // same-size silent change
+      utimesSync(f, HYD_T, HYD_T); // stat identical — content unknowable: fail open (R4)
+      return edit(pi, f, [{ oldText: "a", newText: "z" }]);
+    },
+  ],
 ];
 
 // ---- runner: each case replays its preamble on a fresh gate, then the probe ----
 
+// shared round timestamp for the S5 R4 hydration preamble↔probe pair
+let HYD_T = new Date();
 const preambles = {
   "identical window re-read is blocked": async () => {
     const pi = freshGate();
@@ -3074,6 +3214,29 @@ const preambles = {
   "normPath: relative path resolves against ctx.cwd": async () => {
     const pi = freshGate();
     await read(pi, fileA, { offset: 1, limit: 3 }, { outputLines: 3 });
+    return pi;
+  },
+  "S5 M3: resumed-session entry without hash passes M3 (R4)": async () => {
+    // file written before the replayed read (round, restorable stat) — the
+    // hydrated entry carries spans + stat but NO hash (R4: resumed sessions
+    // replay entries, not content)
+    writeFileSync(join(tmp, "s5-m3-resume.ts"), "a\nb\nc\n");
+    HYD_T = new Date(Math.floor(Date.now() / 1000) * 1000);
+    utimesSync(join(tmp, "s5-m3-resume.ts"), HYD_T, HYD_T);
+    const pi = freshGate();
+    await pi.invoke(
+      "session_start",
+      { type: "session_start", reason: "resume" },
+      {
+        sessionManager: {
+          getBranch: () =>
+            prevBranch([
+              { id: "e1", call: "read", callId: "c1", path: join(tmp, "s5-m3-resume.ts"), ts: Date.now() },
+              { id: "e2", resultFor: "c1", text: "a\nb\nc\n" },
+            ]),
+        },
+      },
+    );
     return pi;
   },
   "item6: external drift between read and edit blocks the edit (M1)": async () => {
