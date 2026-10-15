@@ -1,6 +1,8 @@
 # S8 — Implementation Plan (`piedit`)
 
-Spec: `2026-10-16-s8-piedit-design.md` (**draft — do not start Step 1+ until the spec is approved**).
+> Path note (2026-10-16): `native/` was later renamed to `custom-tools/` (now a Cargo workspace). Read `native/X` below as `custom-tools/X`; the crate now builds workspace-wide via `cargo test -p piedit`.
+
+Spec: `2026-10-16-s8-piedit-design.md` (**implemented — Step 0 gate overridden by explicit user direction**).
 Cadence: TDD per step (red → implement → green). Rust work applies `skills/rust-skills` (priorities: `err-`, `mem-`, `opt-`, `api-`; no `unsafe`; clippy `-D warnings`). Conventional commits, `refs` the spec path. Test entrypoints: `cargo test` (crate), `node tests/piedit-parity.test.mjs`, `node tests/piedit-bench.mjs`, `node tests/permission-gate.test.mjs` (unchanged-green), `npm run doc:check`, `npm run typecheck`.
 
 ## Step 0 — Baseline + hot-path split + abort gate (no Rust yet)
@@ -40,6 +42,8 @@ Tests first (same file, real permission-gate through stubbed events): `piedit` t
 
 Implement `tests/piedit-bench.mjs` (no model): corpus classes × N iterations × arms (builtin `edit` vs `piedit` dispatch); portable wall-clock p50/p95; RSS best-effort; bare `piedit --version` loop for spawn-cost split; large-file class to expose the R6 IPC cost. Writes `benchmark/runs/piedit-microbench-<date>.md`. Sanity-run; assert the table writes and medians are finite. If spawn cost is material, evaluate a `--serve` daemon here (currently a non-goal, D5). Commit: `feat(piedit): micro-bench harness`.
 
+**Done.** Spawn cost was material (p50 ~4.3 ms vs the built-in's sub-millisecond small edits), so the `--serve` daemon was implemented (D5 revised) and became the primary dispatch rung. Arms: oracle (built-in `edit`) · piedit (daemon) · oneshot (per-call spawn). Result: small exact 0.335 vs 0.527 ms, small fuzzy 0.326 vs 0.499 ms, mid multi 0.688 vs 0.793 ms, mid exact/multiline at parity, large 1 MiB 120.3 vs 89.4 ms (R6).
+
 ## Step 7 — S2 pair run + verdict (user-approved timing)
 
 Fill `benchmark/arms.json` candidate arm (baseline config + `PI_NATIVE_EDIT=1`, bootstrap prerequisite note). Run the pair (`node benchmark/bench.mjs`), ≥2 repetitions, medians; extract S1 metrics per run record. Evaluate the decision rule (spec §6): parity, task success, edit p50/`tokens_per_task`, wall-clock, gate `fp_rate`. Write `benchmark/runs/s8-verdict-<date>.md` (five axes, rule outcome, adoption recommendation). Commit: `bench(piedit): S8 candidate pair run and verdict`.
@@ -49,6 +53,8 @@ Fill `benchmark/arms.json` candidate arm (baseline config + `PI_NATIVE_EDIT=1`, 
 1. `cargo test` + clippy; `node tests/piedit-parity.test.mjs`; `node tests/permission-gate.test.mjs`; `node tests/bench-suite.test.mjs`; `npm run doc:check`; `npm run typecheck`.
 2. Sabotage smoke: `mv bin/piedit .` → parity suite fallback section green; restore. Revert one matching fix → parity red; restore → green. Unset env → built-in path asserted by the env-off test.
 3. Update `CHANGELOG.md`; MASTER §3 S8 → done/aborted + §7 outcome line with measured deltas (parity, latency, tokens, verdict).
+
+**Steps 7–8 status.** Step 8 items 1–2 are complete and green (crate 25/25, parity 40/40, permission-gate 246/246, `doc:check` 4/4, sabotage smoke red→green). **Step 7's S2 pair run and the `s8-verdict` file were not produced** — no in-repo `s2-run/1` baseline records exist, so the pair has no comparison target (same gap noted for S5). The latency evidence is the Step 6 micro-bench instead; the adoption verdict is deferred to the next bench cycle. MASTER §3 S8 is marked `done (gate overridden)` with the outcome line pointing at the measured numbers.
 
 ## Contingencies
 

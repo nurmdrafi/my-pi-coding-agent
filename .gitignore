@@ -33,14 +33,17 @@ __pycache__/
 
 # Transient locks
 *.lock
+# ...but the Rust workspace lockfile is a build input (reproducible binaries)
+!custom-tools/Cargo.lock
 tavily/config.json
 tavily/session.json
 # Machine-local gate telemetry (violation-memory counts)
 logs/
 # Autoresearch per-session scratch (workingDir pointer, rewritten each run)
 .auto/
-/tools/pidx/target/
-!tools/pidx/Cargo.lock
+# Rust workspace build output (custom-tools/target); the workspace lockfile at
+# custom-tools/Cargo.lock IS tracked (binaries = reproducible builds).
+custom-tools/target/
 .cache/
 
 # S2 benchmark live workdirs

@@ -1,5 +1,7 @@
 # S1 — Session Metrics Extraction: Design Spec
 
+> Path note (2026-10-16): `native/` was later renamed to `custom-tools/`. Read `native/X` below as `custom-tools/X`.
+
 Status: **spec'd** (awaiting implementation plan)
 Created: 2026-10-15
 Parent: `docs/specs/MASTER.md` §3 (S1). Feedback basis: MASTER §1.2 P0, §1.4C metric table.

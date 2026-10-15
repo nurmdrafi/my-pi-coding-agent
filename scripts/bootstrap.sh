@@ -36,8 +36,8 @@ echo "== pidoc shim: bin/pidoc"
 CARGO=$(command -v cargo || true)
 [ -z "$CARGO" ] && [ -x "$HOME/.cargo/bin/cargo" ] && CARGO="$HOME/.cargo/bin/cargo"
 if [ -n "$CARGO" ]; then
-  (cd native/pidx && "$CARGO" build --release)
-  cp native/pidx/target/release/pidx bin/pidx
+  (cd custom-tools && "$CARGO" build --release -p pidx)
+  cp custom-tools/target/release/pidx bin/pidx
   echo "== pidx: built + installed to bin/pidx"
 else
   echo "== pidx: cargo not found — session-audit uses the Node parser (slower)." \
@@ -47,14 +47,25 @@ fi
 # 4. piread (native read tool, default-on — PI_NATIVE_READ=0 opts out;
 #    the extension falls back to the built-in read without the binary)
 if [ -n "$CARGO" ]; then
-  (cd native/piread && "$CARGO" build --release)
-  cp native/piread/target/release/piread bin/piread
+  (cd custom-tools && "$CARGO" build --release -p piread)
+  cp custom-tools/target/release/piread bin/piread
   echo "== piread: built + installed to bin/piread"
 else
   echo "== piread: cargo not found — the read tool stays on its built-in implementation." \
        "To enable: install Rust (rustup command above) and re-run"
 fi
 
-# 5. health check
+# 5. piedit (native edit tool, default-on — PI_NATIVE_EDIT=0 opts out;
+#    the extension falls back to the built-in edit without the binary)
+if [ -n "$CARGO" ]; then
+  (cd custom-tools && "$CARGO" build --release -p piedit)
+  cp custom-tools/target/release/piedit bin/piedit
+  echo "== piedit: built + installed to bin/piedit"
+else
+  echo "== piedit: cargo not found — the edit tool stays on its built-in implementation." \
+       "To enable: install Rust (rustup command above) and re-run"
+fi
+
+# 6. health check
 node skills/pidoc/scripts/pidoc.mjs || true
 echo "== done. Put $ROOT/bin on PATH for pidoc/pidx."

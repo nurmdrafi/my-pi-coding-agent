@@ -608,7 +608,7 @@ fn discover(sessions_dir: &Path, now_ms: u128) -> (Vec<(PathBuf, String, u128)>,
             found.push((fpath, pname.clone(), mtime));
         }
     }
-    found.sort_by(|a, b| b.2.cmp(&a.2)); // newest first (discover.mjs parity)
+    found.sort_by_key(|e| std::cmp::Reverse(e.2)); // newest first (discover.mjs parity)
     (found, excluded)
 }
 

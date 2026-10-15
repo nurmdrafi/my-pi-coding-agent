@@ -116,7 +116,7 @@ const builtinExecute = createReadTool(process.cwd()).execute as (
   ctx?: unknown,
 ) => Promise<ReadResult>;
 
-/** piread's stdout contract (crate docs, `native/piread`). */
+/** piread's stdout contract (crate docs, `custom-tools/piread`). */
 type PireadEnvelope = {
   ok: boolean;
   content?: string;

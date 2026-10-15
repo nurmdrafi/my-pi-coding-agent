@@ -1,5 +1,7 @@
 # S3 — Doc-Consistency Validator: Design Spec
 
+> Path note (2026-10-16): `native/` was later renamed to `custom-tools/`. `native/` in the text below (including the `tools/` → `native/` migration it describes) is historical; the current crate root is `custom-tools/`.
+
 Status: **spec'd** (implementation plan → `2026-10-15-s3-doc-check-plan.md`)
 Created: 2026-10-15
 Parent: `docs/specs/MASTER.md` §3 (S3). Feedback basis: MASTER §1.4A.

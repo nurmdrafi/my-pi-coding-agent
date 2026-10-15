@@ -7,6 +7,21 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.0] - 16-10-2026
+
+### Changed
+
+- **Rust tools consolidated into a `custom-tools/` workspace** — `native/` renamed to `custom-tools/` and turned into a Cargo workspace (`custom-tools/Cargo.toml`, members `pidx`/`piread`/`piedit`): one build/test/lint entry point, one shared tracked `custom-tools/Cargo.lock` (reproducible binaries), one `custom-tools/target/` instead of three. `bootstrap.sh`/`after-pull.sh` build per crate with `-p <name>` (a change to one crate no longer rebuilds the other two); `pidoc --fix` does the same for `pidx`. Removed the three per-crate `.gitignore`/`Cargo.lock` files (superseded) and the dead `/tools/pidx/*` ignore rules. `pidx/Feedback.md` (a repo-wide design review, misfiled) moved to `docs/reviews/harness-review.md`. Each crate has a `README.md` documenting its build history.
+
+### Added
+### Added
+
+- **Native edit tool `piedit` (Rust, default-on)** — registers a first-class tool labeled **`piedit`** alongside the built-in `edit`, following the `piread`/`pidx` individual-registration pattern. New crate `custom-tools/piedit/` (Rust 2024; serde, serde_json, unicode-normalization; no `unsafe`, clippy `-D warnings`) owns read → LF/BOM normalize → exact/fuzzy match → uniqueness/overlap/no-change validation → apply → write, returning `{baseContent, newContent}`; the extension keeps diff/patch rendering on the exported TypeScript `generateDiffString`/`generateUnifiedPatch` helpers, so `details` is byte-identical to the built-in by construction. `extensions/piedit/` spreads `createEditToolDefinition` verbatim (schema, `prepareArguments`, `constrainedSampling`, `renderShell`, renderers) and overrides only name/label/description/promptGuidelines/execute/renderCall. Dispatch is a fail-open ladder — persistent `--serve` daemon (lazy-started, id-matched NDJSON over stdio, restarts on death) → one-shot `bin/piedit` spawn → built-in executor — all native rungs inside the exported `withFileMutationQueue`; terminal failure emits one `piedit: fallback (<reason>)` stderr line and a `Piedit (fallback)` entry in `logs/violation-memory.ndjson`. Six `edit-diff.js` error strings are byte-identical (pinned by the oracle). `permission-gate` treats `piedit` as edit-kind (Anchor Guard, protected-path confirm, M1/M2/M3 chain, read→edit coverage binding) and includes it in the file-path scrape. Opt out with `PI_NATIVE_EDIT=0`. `scripts/bootstrap.sh` / `after-pull.sh` build + install `bin/piedit` (cargo-missing degrades to the built-in). Tests: `tests/piedit-parity.test.mjs` (40 cases — corpus, error paths, unicode/CRLF/BOM, daemon client, gate lock-ins) and `tests/piedit-bench.mjs`; crate unit tests 25/25. Measured (`benchmark/runs/piedit-microbench-2026-10-15.md`, two runs within noise): the daemon closes the ~4.3 ms spawn floor, putting small exact/fuzzy edits **below** the built-in (0.335 vs 0.527 ms; 0.326 vs 0.499 ms) and mid/multiline at parity; the one-shot rung (3.2–4.2 ms) shows why the daemon was needed. The >1 MiB class regresses (+30.9 ms) — `baseContent` + `newContent` cross IPC as JSON and TS diff/patch rendering stays on the shared path (spec D2/R6); size-based routing to the built-in for very large files is the documented follow-up. The S8 spec marked this an abort at the Step 0 gate; it was built anyway per explicit user direction, and the parity-correct tool is latency-neutral-to-positive on the hot path.
+
+### Fixed
+
+- **`piedit` fallback no longer deadlocks** — the extension's own `withFileMutationQueue` released the path before the fallback ran; calling the built-in executor (which takes the same queue) inside the native wrap re-entered the same-path queue and hung. Fallback now runs after the native wrap returns.
+
 ## [1.40.0] - 16-10-2026
 
 ### Added

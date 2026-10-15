@@ -40,7 +40,8 @@ row(cargo ? 'PASS' : 'WARN', 'cargo', cargo ?? 'not found — pidx cannot rebuil
 
 // 3. pidx binary + freshness vs crate sources
 const pidxBin = join(AGENT, 'bin', 'pidx');
-const crateDir = join(AGENT, 'native', 'pidx');
+const crateDir = join(AGENT, 'custom-tools', 'pidx');
+const workspaceDir = join(AGENT, 'custom-tools');
 if (!existsSync(pidxBin)) {
   row('FAIL', 'pidx', `missing ${pidxBin}${cargo ? ' — fixable with --fix' : ' — needs cargo (see cargo row)'}`);
   if (FIX && cargo) rebuildPidx(row);
@@ -142,8 +143,8 @@ for (const d of ['sessions', join('.cache', '')]) {
 
 function rebuildPidx(row) {
   try {
-    execFileSync(cargo, ['build', '--release'], { cwd: crateDir, stdio: 'pipe' });
-    const built = join(crateDir, 'target', 'release', 'pidx');
+    execFileSync(cargo, ['build', '--release', '-p', 'pidx'], { cwd: workspaceDir, stdio: 'pipe' });
+    const built = join(workspaceDir, 'target', 'release', 'pidx');
     cpSync(built, pidxBin);
     const v = spawnSync(pidxBin, ['--help'], { encoding: 'utf8' });
     row(v.status === 0 ? 'PASS' : 'FAIL', 'pidx', v.status === 0 ? 'rebuilt + installed' : 'rebuilt but --help failed');

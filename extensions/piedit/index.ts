@@ -1,0 +1,478 @@
+/**
+ * piedit — native edit pipeline registered as its own tool (S8).
+ *
+ * Registers a distinct tool named `piedit` alongside the built-in `edit`
+ * (individual-registration pattern, same as `piread`). Parameters, schema,
+ * `prepareArguments`, `constrainedSampling`, `renderShell`, and the renderers
+ * are copied verbatim from `createEditToolDefinition` so input normalization
+ * and TUI behavior are unchanged; only name/label/description/
+ * promptGuidelines/execute/renderCall are piedit-specific.
+ *
+ * Default on: the load guard registers unless `PI_NATIVE_EDIT=0` (explicit
+ * opt-out). permission-gate treats `piedit` calls as edit-kind (Anchor Guard,
+ * protected-path confirm, M1/M2/M3 chain, coverage binding), so gate
+ * protection survives the individual name.
+ *
+ * Dispatch: a persistent `bin/piedit --serve` daemon (lazy-started, id-matched
+ * NDJSON over stdio; restarts on death) removes the per-call process-spawn
+ * floor, then a one-shot `bin/piedit` spawn, then the built-in executor — the
+ * fail-open ladder. Every native rung runs inside the exported
+ * `withFileMutationQueue` so same-path serialization matches the built-in. The
+ * Rust side owns read → normalize → match → apply → write and returns
+ * `{baseContent, newContent}` (LF, BOM-stripped); the extension builds
+ * `details` with the exported `generateDiffString`/`generateUnifiedPatch` so
+ * the diff/patch output is byte-identical by construction. Any transport or
+ * envelope failure falls back to the built-in executor plus one stderr line —
+ * fail-open to correctness. Validation failures (`ok:false`) throw the exact
+ * built-in message so the model sees identical text and retry semantics.
+ */
+import { spawn, type ChildProcess } from "node:child_process";
+import { appendFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  createEditTool,
+  createEditToolDefinition,
+  generateDiffString,
+  generateUnifiedPatch,
+  withFileMutationQueue,
+  type ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
+
+const extDir = dirname(fileURLToPath(import.meta.url));
+
+/** Violations (fallback-to-builtin) append to the existing gate log
+ * logs/violation-memory.ndjson, reusing its {family, sid, ts} schema — no
+ * new log file. Path derived from the extension dir (portability). */
+const PGATE_NDJSON = resolve(extDir, "../../logs/violation-memory.ndjson");
+const SESSION_ID = randomUUID();
+
+function logViolation(reason: string, path: string): void {
+  try {
+    appendFileSync(
+      PGATE_NDJSON,
+      `${JSON.stringify({ family: "Piedit (fallback)", sid: SESSION_ID, ts: Date.now(), reason, path })}\n`,
+    );
+  } catch {
+    // Logging must never break an edit.
+  }
+}
+
+/** Machine-local build output (scripts/bootstrap.sh), no absolute user paths. */
+const PIEDIT_BIN = resolve(extDir, "../../bin/piedit");
+
+/** Edit-tool params (schema from the built-in definition). */
+type EditParams = { path: string; edits: { oldText: string; newText: string }[] };
+
+/** Structural shape of the built-in edit result — the only contract rebuilt. */
+type EditResult = {
+  content: { type: "text"; text: string }[];
+  details?: { diff?: string; patch?: string; firstChangedLine?: number } | undefined;
+};
+
+/** Schema/contract source: the built-in edit definition. Copied verbatim;
+ * the registration below overrides name/label/description/promptGuidelines. */
+const definition = createEditToolDefinition(process.cwd());
+
+/** Private built-in executor: fallback path. Cast to a structural type — the
+ * wrapped AgentTool types ctx loosely, and its precise d.ts types live in a
+ * second pi-agent-core module identity that does not unify under skipLibCheck. */
+const builtinExecute = createEditTool(process.cwd()).execute as (
+  toolCallId: string,
+  params: EditParams,
+  signal?: AbortSignal,
+  onUpdate?: unknown,
+  ctx?: unknown,
+) => Promise<EditResult>;
+
+/** piedit's stdout contract (crate docs, `custom-tools/piedit`). */
+type PieditEnvelope = {
+  ok: boolean;
+  baseContent?: string;
+  newContent?: string;
+  error?: { kind: string; message: string };
+};
+
+/** One-shot rung failure — carries the terminal fallback-line reason. */
+class OneshotError extends Error {
+  readonly reason: string;
+  constructor(reason: string) {
+    super(`piedit one-shot failed: ${reason}`);
+    this.name = "OneshotError";
+    this.reason = reason;
+  }
+}
+
+/** Transport-level daemon failure — the call moves to the one-shot rung. */
+class DaemonUnavailableError extends Error {
+  constructor(reason: string) {
+    super(`daemon unavailable (${reason})`);
+    this.name = "DaemonUnavailableError";
+  }
+}
+
+const isAbort = (err: unknown, signal: AbortSignal | undefined): boolean =>
+  signal?.aborted === true || (err instanceof Error && err.name === "AbortError");
+
+// ---- daemon client (`piedit --serve`, NDJSON over stdio) ----
+
+/** Child stdio pipes expose libuv handle refcounting (`ref`/`unref`) at
+ * runtime; @types/node models them as plain Writable/Readable — structural
+ * bridge (same pattern as the d.ts identity casts above). */
+interface Refable {
+  ref(): void;
+  unref(): void;
+}
+type PipeStdin = NonNullable<ChildProcess["stdin"]> & Refable;
+type PipeStdout = NonNullable<ChildProcess["stdout"]> & Refable;
+
+type DaemonPending = {
+  resolve: (envelope: PieditEnvelope) => void;
+  reject: (err: Error) => void;
+};
+
+type DaemonState = {
+  proc: ChildProcess;
+  stdin: PipeStdin;
+  stdout: PipeStdout;
+  pending: Map<number, DaemonPending>;
+  nextId: number;
+  buffer: string;
+};
+
+/** Module-lifetime daemon; null when not started or after death (lazy restart). */
+let daemon: DaemonState | null = null;
+
+function killDaemon(state: DaemonState, reason: string): void {
+  if (daemon === state) daemon = null; // next dispatch lazily restarts
+  for (const p of state.pending.values()) p.reject(new DaemonUnavailableError(reason));
+  state.pending.clear();
+  maybeUnrefStreams(state);
+  state.proc.kill();
+}
+
+let exitHooked = false;
+
+function startDaemon(): DaemonState | null {
+  let proc: ChildProcess;
+  try {
+    proc = spawn(PIEDIT_BIN, ["--serve"], { stdio: ["pipe", "pipe", "inherit"] });
+  } catch {
+    return null; // sync spawn failure (rare); async ones arrive via 'error'
+  }
+  const { stdin, stdout } = proc as ChildProcess & { stdin: PipeStdin | null; stdout: PipeStdout | null };
+  if (!stdin || !stdout) {
+    proc.kill();
+    return null;
+  }
+  // Prompt daemon teardown on process exit (belt-and-braces with the
+  // daemon's own stdin-EOF exit); registered once, only when the native
+  // path is actually used.
+  if (!exitHooked) {
+    exitHooked = true;
+    process.on("exit", () => {
+      if (daemon) daemon.proc.kill();
+    });
+  }
+  const state: DaemonState = { proc, stdin, stdout, pending: new Map(), nextId: 1, buffer: "" };
+  // Any death (crash, spawn ENOENT, garbage protocol) fails pending requests
+  // into the one-shot rung and clears the slot for a lazy restart.
+  proc.on("error", () => killDaemon(state, "spawn error"));
+  proc.on("exit", () => killDaemon(state, "exited"));
+  stdin.on("error", () => killDaemon(state, "stdin error")); // incl. EPIPE
+  stdout.setEncoding("utf8");
+  stdout.on("data", (chunk: string) => {
+    state.buffer += chunk;
+    for (let nl = state.buffer.indexOf("\n"); nl >= 0; nl = state.buffer.indexOf("\n")) {
+      const line = state.buffer.slice(0, nl);
+      state.buffer = state.buffer.slice(nl + 1);
+      handleDaemonLine(state, line);
+    }
+  });
+  // Refcount hygiene: the daemon never keeps the host's event loop alive
+  // while idle (streams unref'd), but a request in flight DOES hold the
+  // loop until its response arrives — see daemonRequest/maybeUnrefStreams.
+  // The daemon exits on stdin EOF when the parent goes away regardless.
+  proc.unref();
+  stdin.unref();
+  stdout.unref();
+  return state;
+}
+
+/** Streams may unref only when nothing is in flight — a ref'd stdout while
+ * a response is pending is what keeps the loop (and the awaited call)
+ * alive; an idle daemon must not hold the host process open. */
+function maybeUnrefStreams(state: DaemonState): void {
+  if (state.pending.size === 0) {
+    state.stdin.unref();
+    state.stdout.unref();
+  }
+}
+
+function handleDaemonLine(state: DaemonState, line: string): void {
+  if (!line) return;
+  let envelope: (PieditEnvelope & { id?: unknown }) | null = null;
+  try {
+    envelope = JSON.parse(line) as PieditEnvelope & { id?: unknown };
+  } catch {
+    killDaemon(state, "unparseable daemon line");
+    return;
+  }
+  const pending = state.pending.get(Number(envelope.id));
+  if (pending) {
+    state.pending.delete(Number(envelope.id));
+    maybeUnrefStreams(state);
+    pending.resolve(envelope);
+  }
+  // Unknown ids (late responses to aborted calls) are dropped silently.
+}
+
+function daemonRequest(
+  absPath: string,
+  displayPath: string,
+  edits: EditParams["edits"],
+  signal: AbortSignal | undefined,
+): Promise<PieditEnvelope> {
+  return new Promise((resolveCall, rejectCall) => {
+    if (signal?.aborted) {
+      rejectCall(abortError());
+      return;
+    }
+    if (!daemon) daemon = startDaemon();
+    const state = daemon;
+    if (!state) {
+      rejectCall(new DaemonUnavailableError("start failed"));
+      return;
+    }
+    const id = state.nextId++;
+    const onAbort = () => {
+      if (state.pending.delete(id)) {
+        maybeUnrefStreams(state);
+        rejectCall(abortError());
+      }
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const settle = {
+      resolve: (envelope: PieditEnvelope) => {
+        signal?.removeEventListener("abort", onAbort);
+        resolveCall(envelope);
+      },
+      reject: (err: Error) => {
+        signal?.removeEventListener("abort", onAbort);
+        rejectCall(err);
+      },
+    };
+    state.pending.set(id, settle);
+    state.stdin.ref(); // hold the loop until this response settles
+    state.stdout.ref();
+    const request = JSON.stringify({ id, path: displayPath, resolved: absPath, edits });
+    state.stdin.write(`${request}\n`, (err) => {
+      if (err && state.pending.delete(id)) {
+        maybeUnrefStreams(state);
+        settle.reject(new DaemonUnavailableError("write failed"));
+      }
+    });
+  });
+}
+
+/** One-shot dispatch: spawn `piedit --path <P>`, write the request JSON to
+ * stdin, and parse the single-line JSON envelope from stdout. Edit payloads
+ * are multi-line/arbitrary-bytes, so the request goes over stdin — never
+ * argv. `execFile` has no `input` option (that is `execFileSync`), hence a
+ * raw spawn with an explicit stdin write. */
+async function oneshotDispatch(
+  absPath: string,
+  displayPath: string,
+  edits: EditParams["edits"],
+  spawnCwd: string,
+  signal: AbortSignal | undefined,
+): Promise<PieditEnvelope> {
+  // `--path` is the resolved path I/O acts on; the request JSON carries the
+  // tool-level path so error messages match the built-in verbatim.
+  const request = JSON.stringify({ path: displayPath, edits });
+  return new Promise<PieditEnvelope>((resolveCall, rejectCall) => {
+    if (signal?.aborted) {
+      rejectCall(abortError());
+      return;
+    }
+    let child;
+    try {
+      child = spawn(PIEDIT_BIN, ["--path", absPath], { cwd: spawnCwd, stdio: ["pipe", "pipe", "inherit"] });
+    } catch (err) {
+      rejectCall(new OneshotError(`spawn ${String(err)}`));
+      return;
+    }
+    let stdout = "";
+    let settled = false;
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      rejectCall(abortError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener("abort", onAbort);
+      fn();
+    };
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.on("error", (err) => finish(() => rejectCall(new OneshotError(`spawn ${String(err)}`))));
+    child.on("close", (code) => {
+      finish(() => {
+        // piedit exits 3 with a JSON envelope on stdout for tool-level failures
+        // (missing file, validation error); that is a *result*, not a transport
+        // failure — parse it so the caller can throw the exact message.
+        if (stdout.trim()) {
+          try {
+            resolveCall(JSON.parse(stdout) as PieditEnvelope);
+            return;
+          } catch {
+            // fall through to a transport failure
+          }
+        }
+        rejectCall(new OneshotError(typeof code === "number" ? `exit ${code}` : "killed"));
+      });
+    });
+    child.stdin?.on("error", () => {
+      // EPIPE: the child exited before reading the request; the close handler
+      // reports the terminal reason (its stdout, if any, still parses above).
+    });
+    child.stdin?.end(request);
+  });
+}
+
+function abortError(): Error {
+  const err = new Error("Operation aborted");
+  err.name = "AbortError";
+  return err;
+}
+
+export default function pieditExtension(pi: ExtensionAPI): void {
+  // Load guard: default on; PI_NATIVE_EDIT=0 opts out.
+  if (process.env.PI_NATIVE_EDIT === "0") return;
+
+  const fallbackToBuiltin = (
+    toolCallId: string,
+    params: EditParams,
+    signal: AbortSignal | undefined,
+    onUpdate: unknown,
+    ctx: unknown,
+    reason: string,
+  ) => {
+    // Observability: one line per fallback (spec §5.2) + violation log.
+    process.stderr.write(`piedit: fallback (${reason}) path=${params.path}\n`);
+    logViolation(reason, params.path);
+    // Called OUTSIDE this extension's `withFileMutationQueue`: the built-in
+    // executor takes the same queue itself, and re-entering it on the same
+    // path would deadlock.
+    return builtinExecute(toolCallId, params, signal, onUpdate, ctx);
+  };
+
+  const execute = async (
+    toolCallId: string,
+    input: EditParams,
+    signal: AbortSignal | undefined,
+    onUpdate: unknown,
+    ctx: unknown,
+  ): Promise<EditResult> => {
+    const { path, edits } = input;
+    const spawnCwd = (ctx as { cwd?: string } | undefined)?.cwd || process.cwd();
+    const absPath = resolve(spawnCwd, path);
+
+    // Native dispatch runs under the exported queue so same-path writes
+    // serialize exactly as the built-in does. A fallback is deferred to AFTER
+    // the queue releases (it takes the queue itself).
+    const native = await withFileMutationQueue(absPath, async (): Promise<EditResult | { fallback: string }> => {
+      // Do not reject from an abort listener here (same reason as the built-in):
+      // the queue must stay locked until the in-flight operation settles.
+      if (signal?.aborted) throw new Error("Operation aborted");
+
+      // Dispatch ladder: daemon (persistent) → one-shot spawn → built-in.
+      // A daemon TRANSPORT failure moves to the one-shot rung; only the
+      // terminal failure emits the fallback line — exactly one per call.
+      let envelope: PieditEnvelope;
+      try {
+        envelope = await daemonRequest(absPath, path, edits, signal);
+      } catch (err) {
+        if (isAbort(err, signal)) throw abortError();
+        try {
+          envelope = await oneshotDispatch(absPath, path, edits, spawnCwd, signal);
+        } catch (err2) {
+          if (isAbort(err2, signal)) throw abortError();
+          const reason = err2 instanceof OneshotError ? err2.reason : `spawn ${String(err2)}`;
+          return { fallback: reason };
+        }
+      }
+      if (signal?.aborted) throw new Error("Operation aborted");
+
+      if (envelope.ok !== true) {
+        // Tool-level failure: the built-in throws the identical message, so
+        // throw it here rather than paying for a re-dispatch.
+        const message = envelope.error?.message;
+        if (typeof message === "string") throw new Error(message);
+        return { fallback: "malformed envelope" };
+      }
+      if (typeof envelope.baseContent !== "string" || typeof envelope.newContent !== "string") {
+        return { fallback: "incomplete envelope" };
+      }
+
+      // Diff/patch rendering stays on the exported TS helpers (D2) — this is
+      // what makes `details` byte-identical to the built-in by construction.
+      const diffResult = generateDiffString(envelope.baseContent, envelope.newContent);
+      const patch = generateUnifiedPatch(path, envelope.baseContent, envelope.newContent);
+      return {
+        content: [{ type: "text", text: `Successfully replaced ${edits.length} block(s) in ${path}.` }],
+        details: {
+          diff: diffResult.diff,
+          patch,
+          firstChangedLine: diffResult.firstChangedLine,
+        },
+      };
+    });
+
+    if ("fallback" in native) {
+      return fallbackToBuiltin(toolCallId, input, signal, onUpdate, ctx, native.fallback);
+    }
+    return native;
+  };
+
+  // Individual registration: name/label identify piedit on its own;
+  // description/promptGuidelines steer edits to piedit. Params/schema and
+  // renderers stay verbatim so behavior and TUI output match the built-in.
+  // renderCall mirrors the built-in's edit display (path + edit count).
+  pi.registerTool({
+    ...definition,
+    name: "piedit",
+    label: "piedit",
+    description:
+      "Edit a single file using exact text replacement via the native piedit pipeline — prefer this over the edit tool. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes. Any pipeline failure falls back to the built-in editor automatically.",
+    promptGuidelines: [
+      "Use piedit to make precise changes (edits[].oldText must match exactly).",
+      "When changing multiple separate locations in one file, use one piedit call with multiple entries in edits[] instead of multiple calls.",
+      "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
+      "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+    ],
+    execute: execute as typeof definition.execute,
+    renderCall(args, theme, _context) {
+      const count = Array.isArray(args.edits) ? args.edits.length : 1;
+      let text = theme.fg("toolTitle", theme.bold("piedit "));
+      text += theme.fg("accent", args.path);
+      text += theme.fg("dim", ` (${count} edit${count === 1 ? "" : "s"})`);
+      return new Text(text, 0, 0);
+    },
+  });
+}
+
+/** Test affordance: kill the persistent daemon so suites can exercise the
+ * cold-start paths (missing binary, one-shot rung) mid-process. Not used by
+ * the harness at runtime. */
+export function __resetDaemonForTest(): void {
+  if (daemon) killDaemon(daemon, "test reset");
+}

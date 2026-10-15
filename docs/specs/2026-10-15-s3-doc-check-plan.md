@@ -1,5 +1,7 @@
 # S3 — Implementation Plan
 
+> Path note (2026-10-16): `native/` was later renamed to `custom-tools/`. The `native/` references below are historical.
+
 Spec: `2026-10-15-s3-doc-check-design.md`. Cadence: TDD per step (tests red → implement → green); `node --test tests/doc-check.test.mjs` after each step; full-suite + smoke at the end only.
 
 ## Step 0 — Promote mdcmdcheck (move, no behavior change)

@@ -1,5 +1,7 @@
 # S6 — Rust Native Tool Prototype (`piread`): Design Spec
 
+> Path note (2026-10-16): `native/` was later renamed to `custom-tools/` (now a Cargo workspace). Read `native/X` below as `custom-tools/X`.
+
 Status: **spec'd** (plan → `2026-10-16-s6-piread-plan.md`)
 Created: 2026-10-16
 Parent: `docs/specs/MASTER.md` §3 (S6). Feedback basis: MASTER §1.2 P1 (improve tool execution), §1.3 (`read`: optimize first — bounded reads, line ranges, binary/image detection, concise output), §1.5 phase 3 (prototype Rust selectively), §1.6.3, §1.7 (Rust is a strategy, not the objective).

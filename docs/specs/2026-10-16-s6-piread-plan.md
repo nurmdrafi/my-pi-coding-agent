@@ -1,5 +1,7 @@
 # S6 — Implementation Plan (`piread`)
 
+> Path note (2026-10-16): `native/` was later renamed to `custom-tools/` (now a Cargo workspace). Read `native/X` below as `custom-tools/X`; the crate now builds workspace-wide via `cargo test -p piread`.
+
 Spec: `2026-10-16-s6-piread-design.md`. Cadence: TDD per step (red → implement → green). Rust work applies `skills/rust-skills` (priorities: `err-`, `mem-`, `opt-`, `api-`; no `unsafe`; clippy `-D warnings`). Conventional commits, `refs` the spec path. Test entrypoints: `cargo test` (crate), `node tests/piread-parity.test.mjs`, `node tests/permission-gate.test.mjs` (unchanged-green), `npm run doc:check`, `npm run typecheck`.
 
 ## Step 0 — Baseline

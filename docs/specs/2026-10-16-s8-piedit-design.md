@@ -1,6 +1,8 @@
 # S8 — Rust Native Edit Tool (`piedit`): Design Spec
 
-Status: **draft — for user review** (plan → `2026-10-16-s8-piedit-plan.md`, provisional until this spec is approved)
+> Path note (2026-10-16): `native/` was later renamed to `custom-tools/` (now a Cargo workspace). Read `native/X` below as `custom-tools/X`.
+
+Status: **implemented — gate overridden by explicit user direction** (plan → `2026-10-16-s8-piedit-plan.md`)
 Created: 2026-10-16
 Parent: `docs/specs/MASTER.md` §3. Feedback basis: MASTER §1.2 P1 (improve tool execution), §1.3 (`edit`: optimize correctness first — exact matching, ambiguity rejection, stale-file checks matter more than raw speed), §1.5 phase 3 (prototype Rust selectively), §1.7 (Rust is a strategy, not the objective; measure before optimizing).
 Predecessors: S6 `piread` (`2026-10-16-s6-piread-design.md`) — the extension pattern, dispatch ladder, parity-oracle method, and gate-compat lock-ins are reused wholesale.
@@ -12,9 +14,11 @@ Decisions (rationale in §4–§6; to be approved in-session before implementati
 - **D2 Rust boundary = read → normalize → match → apply → write.** Diff/patch **rendering stays in TypeScript** via the SDK's exported `generateDiffString`/`generateUnifiedPatch`. A full jsdiff port to Rust is **rejected** (§4) — it moves the byte-parity risk onto the largest, least-valuable surface.
 - **D3 integration = individual registration** named `piedit` (label `piedit`), following the 2026-10-18 piread redesign — **not** name-shadowing `edit` (§4).
 - **D4 gate compatibility = permission-gate treats `piedit` as edit-kind**: Anchor Guard pre-validation, S5 M1 stat-bind / M2 region-read / M3 content-hash chain, and read→edit coverage binding all apply to `piedit` exactly as to `edit`.
-- **D5 dispatch = one-shot `bin/piedit` spawn**, fail-open to the built-in `edit`. Edit is far less frequent than read (2,147 vs 1,815 calls is close, but per-call file I/O dominates and there is no daemon-worthy per-call spawn floor story for a write path); a `--serve` daemon is an explicit non-goal unless Step 6 shows spawn cost is material.
+- **D5 dispatch = fail-open ladder: `--serve` daemon → one-shot `bin/piedit` spawn → built-in `edit`.** Originally a one-shot spawn only (edit is far less frequent than read, and per-call file I/O dominates); Step 6's bench measured a ~4.3 ms per-call spawn floor that put every small/mid edit 4–7× behind the in-process built-in, so the daemon was revisited (plan §Step 6 / §Contingencies) and implemented: it brings small/mid edits to parity or slightly below the built-in. The one-shot spawn remains the fallback rung for daemon transport loss.
 - **D6 default-on**, opt out with `PI_NATIVE_EDIT=0` (registers nothing).
 - **D7 decision gate = Step 0 measures the edit hot path before any Rust is written.** If matching cannot beat the diff+write cost, S8 is aborted and effort redirects to S7 (gate steering) — MASTER §1.7: "a negative verdict is a successful [sub-project]." Every number is recorded either way.
+
+**Implementation outcome (2026-10-16).** Step 0 returned the negative the gate anticipated (match+apply 20.2%, diff+patch 58.6%, write 13.5%; `benchmark/runs/s8-hotpath-2026-10-16.md`), and the plan's own contingency said stop. The user directed building `piedit` regardless, so the sub-project was completed with the spec's boundary intact (D1–D4, D6, D7) and **D5 revised**: the Step 6 bench showed the one-shot spawn floor (~4.3 ms) was the dominant cost, so a persistent `--serve` daemon became the primary rung. Shipped: crate `native/piedit/` (25 unit tests, clippy clean), extension `extensions/piedit/` (fail-open daemon → one-shot → built-in), permission-gate edit-kind additions, build wiring, README/CHANGELOG. Verification: parity **40/40** (`tests/piedit-parity.test.mjs`), permission-gate **246/246** unchanged, `doc:check` **4/4**. Measured vs the built-in (`benchmark/runs/piedit-microbench-2026-10-15.md`): small exact **0.335 vs 0.527 ms**, small fuzzy **0.326 vs 0.499 ms**, mid multi 0.688 vs 0.793 ms, mid exact/multiline at parity, large 1 MiB **120.3 vs 89.4 ms** (R6 IPC regression — size-based routing is the follow-up). The honest read: the win is real but small and bounded to common small/mid edits; the >1 MiB class should route to the built-in.
 
 ## 1. Problem
 
@@ -31,7 +35,7 @@ The reason to test it at all: the built-in `edit` pipeline is the only remaining
 - Any other tool (`read`/`write`/`bash` unchanged; search stays `rg`/`fd`).
 - Changing `edit` semantics, error strings, or result shape — S8 swaps the executor, not the contract.
 - `withFileMutationQueue` reimplementation — the extension reuses the exported queue (D2/§5.2).
-- A persistent `--serve` daemon for edit (D5; revisit only if Step 6 justifies it).
+- ~~A persistent `--serve` daemon for edit~~ — **implemented** (D5 revised): Step 6 showed the spawn cost was material, so the daemon is now the primary rung with one-shot and built-in as fallbacks.
 - Making `PI_NATIVE_EDIT` default-off; adoption follows the Step 7 verdict, but the D6 default is on (mirrors the piread adoption flip), reversible with `PI_NATIVE_EDIT=0`.
 
 ## 3. Current state (verified 2026-10-16, do not re-explore)
@@ -101,7 +105,7 @@ Exit codes: 0 ok · 2 usage (stderr, no JSON) · 3 I/O or validation error (JSON
 - Add `isToolCallEventType("piedit", event)` to the edit-kind branch (L460) — Anchor Guard, protected-path confirm, `pendingEdits.set({kind:"edit"})` all apply.
 - Add `call.name === "piedit"` to the file-path scrape (L1035–1058) so read→edit binding and post-edit coverage/certification fire.
 - `tool_result` handler (L885) stays kind-driven; no change if it keys on `pendingEdits` kind rather than tool name (verify during implementation).
-- Mirror the piread `[piread native]` marker decision: piedit has no equivalent marker (the result line is already short and unambiguous); if `read-coverage` line-count logic needed a marker strip for read, verify it is a no-op for edit results.
+- Mirror the piread `[piread native]` marker decision: piedit has no equivalent marker (the result line is already short and unambiguous) — implemented as such; no marker is appended, and the read-coverage line-count logic is a no-op for edit results.
 
 ### 5.4 Parity oracle
 
@@ -130,11 +134,11 @@ The built-in `edit` tool (`createEditTool(cwd)`) is the oracle. Deterministic fi
 | Suite | Verifies | Run |
 | --- | --- | --- |
 | crate unit tests | normalization, matching, overlap/uniqueness, error strings | `cargo test` (in `native/piedit/`) |
-| `tests/piedit-parity.test.mjs` | oracle parity (§5.4), fallback on missing/broken binary, env-off = no registration, individual-name lock-in, gate edit-kind lock-ins | `node tests/piedit-parity.test.mjs` |
+| `tests/piedit-parity.test.mjs` | oracle parity (§5.4) — 40 cases; fallback on missing/broken binary; env-off = no registration; individual-name lock-in; daemon client (concurrent id matching, lazy restart, pre-abort); gate edit-kind lock-ins | `node tests/piedit-parity.test.mjs` |
 | gate lock-ins (same file) | Anchor Guard/M1/M2/M3 identical for `piedit`; protected-path blocks before execution; read→`piedit` coverage binding | same run |
 | micro-bench | latency/RSS table, spawn-cost split | `node tests/piedit-bench.mjs` (on demand) |
 | S2 pair | end-to-end verdict inputs | `node benchmark/bench.mjs` |
-| sabotage smoke | delete `bin/piedit` → fallback green; unset env → built-in path; revert a matching fix → parity red, restore → green | manual, once |
+| sabotage smoke | delete `bin/piedit` → fail-open green; unset env → built-in path; revert a matching fix → parity red, restore → green | manual, once |
 | full gates | `cargo clippy -D warnings`, `npm run typecheck`, `npm run doc:check`, `node tests/permission-gate.test.mjs` unchanged-green | task end |
 
 ## 9. Cross-cutting separation (MASTER §1.4B)

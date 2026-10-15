@@ -457,7 +457,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   on("tool_call", async (event, ctx) => {
-    if (isToolCallEventType("edit", event)) {
+    if (isToolCallEventType("edit", event) || isToolCallEventType("piedit", event)) {
       // S4 fix 3: malformed edit input — explicit block, never an analyzer throw
       if (typeof event.input.path !== "string" || !event.input.path.trim())
         return blockCall(
@@ -1038,7 +1038,8 @@ export default function (pi: ExtensionAPI) {
             (call.name === "piread" ||
               call.name === "read" ||
               call.name === "write" ||
-              call.name === "edit") &&
+              call.name === "edit" ||
+              call.name === "piedit") &&
             typeof call.arguments?.path === "string"
           ) {
             const path = normPath(call.arguments.path);
@@ -1055,7 +1056,7 @@ export default function (pi: ExtensionAPI) {
             // H6/B7 (2026-10-08): a replayed edit's anchors can't be re-validated
             // here — clear coverage for the path instead of certifying stale
             // spans (errs allow; the pre-edit content is not what's on disk)
-            if (call.name === "edit") {
+            if (call.name === "edit" || call.name === "piedit") {
               pending.set(call.id, {
                 path,
                 win: { start: 1, end: Infinity },

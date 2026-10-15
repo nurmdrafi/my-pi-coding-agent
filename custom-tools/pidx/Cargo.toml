@@ -8,9 +8,3 @@ description = "Incremental index/extract for pi session logs — feeds session-a
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 sha1 = "0.10"
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
