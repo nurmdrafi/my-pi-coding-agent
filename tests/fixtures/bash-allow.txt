@@ -16,7 +16,9 @@ git commit -m "fix(auth): cap git log" 2>&1 | tail -20
 git push --no-verify
 sleep 30 && gh run list
 npm test 2>&1 | rg "FAIL" | head -40
-# B13: acronym subjects must pass commitlint (fixed 2026-10-08)
+# S4 (2026-10-15): transparent-prefix guard — flag forms stay lookups (fix 4)
+command -v rm
+nohup npm test > /dev/null 2>&1 &
 git commit -m "fix: API timeout" 2>&1 | tail -20
 git commit -m "fix: JSON parse" 2>&1 | tail -20
 # B21: \n in message is a newline, header = first line (fixed 2026-10-08)

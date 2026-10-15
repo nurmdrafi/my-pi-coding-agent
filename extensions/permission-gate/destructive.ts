@@ -128,14 +128,37 @@ export function splitSegments(cmd: string): string[] {
 const stripEnvPrefix = (seg: string) =>
   seg.replace(/^(?:[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|[^\s"']+)\s+)+/, "");
 
+/** S4 fix 4 (2026-10-15, spec §6.4): transparent wrappers — `env rm x`,
+ * `command rm x`, `exec`, `nohup`, `timeout 5 rm x`, `nice [-n 5] rm x` —
+ * relocate the real command off the ^-anchored match positions. Stripped in
+ * a loop with the env-assignment prefix because they stack
+ * (`nohup env FOO=1 rm x`). Flag forms of the bare words are NOT stripped:
+ * `command -v rm` stays a builtin lookup, never a wrapped destructive. */
+const TRANSPARENT_PREFIX = new RegExp(
+  String.raw`^(?:env|command|exec|nohup)\b[ \t]+` +
+    String.raw`|^timeout\s+(?:-{1,2}\S+\s+)*\d+(?:\.\d+)?[smh]?\s+` +
+    String.raw`|^nice\s+(?:-n\s+)?[+-]?\d+(?:\.\d+)?\s+` +
+    String.raw`|^nice\b[ \t]+`,
+);
+
 /** item 1 (2026-10-11): strip env prefixes AND git global flags (-C dir,
  * --no-pager, -c k=v) once per segment — destructive and R9 both
- * judge the normalized segment, so `git -C . push` confirms like `git push`. */
-export const normalizeSegment = (seg: string) =>
-  stripEnvPrefix(seg).replace(
-    /^git\s+((-[A-Za-z]\s+\S+|--[a-z-]+(?:=\S+)?|-[A-Za-z]+)(\s+|$))*/,
-    "git ",
-  );
+ * judge the normalized segment, so `git -C . push` confirms like `git push`.
+ * S4 fix 4: loops to a fixpoint so transparent wrappers and env assignments
+ * strip in any stacking order. */
+export const normalizeSegment = (seg: string) => {
+  let s = seg;
+  for (;;) {
+    const next = stripEnvPrefix(s)
+      .replace(TRANSPARENT_PREFIX, "")
+      .replace(
+        /^git\s+((-[A-Za-z]\s+\S+|--[a-z-]+(?:=\S+)?|-[A-Za-z]+)(\s+|$))*/,
+        "git ",
+      );
+    if (next === s) return s;
+    s = next;
+  }
+};
 
 /** what counts as chat approval of destructive work (AGENTS.md Safety:
  * approval in the invoking message counts — incl. /ship, /issue, /update-changelog) */

@@ -82,10 +82,13 @@ for (const { knownBug, cols } of loadFixtures('bash-block.txt')) {
   const [cmd, family] = cols;
   const pi = freshGate();
   const steps = cmd.split(' ## ');
+  // S4 (2026-10-15): destructive-family fixtures assert the H2 BLOCK — the
+  // default stub ctx auto-approves the confirm dialog, so run those headless
+  const ctx = family === 'Permission Gate (Destructive)' ? { hasUI: false } : undefined;
   let failed = false, note = '';
   for (let i = 0; i < steps.length; i++) {
     const last = i === steps.length - 1;
-    const r = await runBash(pi, steps[i]);
+    const r = await runBash(pi, steps[i], { ctx });
     if (!last) {
       if (r.blocked) { failed = true; note = `→ early block on step ${i + 1} by ${familyOfReason(r.reason)}`; break; }
     } else if (!r.blocked) { failed = true; note = '→ not blocked'; break; }

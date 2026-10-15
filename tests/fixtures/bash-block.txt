@@ -8,3 +8,14 @@ git commit -am "Bad msg"	Commitlint	# B12: -m\s+ regex missed -am — fixed
 git commit -m "a > b"	Commitlint	# B10 now: R8 gone, commitlint correctly rejects
 git commit -m"x"	Commitlint	# B12: -m"x" attached form — fixed
 git commit --message=y	Commitlint	# B12: --message=y form — fixed
+# S4 (2026-10-15): transparent prefixes relocate the command word off the
+# ^-anchored positions — the wrapped core must still classify (spec §5.1, fix 4)
+env rm canary	Permission Gate (Destructive)
+command rm canary	Permission Gate (Destructive)
+exec rm canary	Permission Gate (Destructive)
+nohup rm canary	Permission Gate (Destructive)
+timeout 5 rm canary	Permission Gate (Destructive)
+nice rm canary	Permission Gate (Destructive)
+# S4: env-assignment + git global-flag lock-ins (existing stripEnvPrefix)
+TARGET=canary rm -f $TARGET	Permission Gate (Destructive)
+GIT_TERMINAL_PROMPT=0 git reset --hard	Permission Gate (Destructive)
