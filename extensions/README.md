@@ -22,6 +22,7 @@ Edits take effect on the next session start (or via `/reload-runtime` if adopted
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `permission-gate/` | Blocks rule-violating tool calls before execution, with corrective rule text (modules: `index` wiring, `anchor-guard`, `read-coverage`, `bash-cap`, `destructive`, `commitlint`, `violation-memory`) | `tool_call`, `tool_result`, `before_agent_start`, `session_start`, `session_compact` |
 | `subagents/`       | Interactive tmux subagents (vendored upstream at `c3e8b53`, patches folded in; spawning tools gated by default)                                                                                      | tools, commands, renderers                                                           |
+| `handoff.ts`       | `/handoff <goal>` — drafts a compaction-aware context-transfer prompt from the session, opens it in the editor, then opens a new session seeded with the draft; writes nothing to disk               | command                                                                              |
 
 ## `permission-gate/` — rule catalog
 

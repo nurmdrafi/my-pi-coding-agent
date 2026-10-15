@@ -8,14 +8,15 @@
 [![node](https://img.shields.io/badge/node_%E2%A5%BC_22.19_%C2%B7_.nvmrc_24-339933?logo=nodedotjs&logoColor=5FA04E&labelColor=24292f&style=flat-square)](#requirements)
 [![macOS](https://img.shields.io/badge/macOS-6e7681?logo=apple&logoColor=A2AAAD&labelColor=24292f&style=flat-square)](#portability)[![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=FCC624&labelColor=24292f&style=flat-square)](#portability)
 [![language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white&labelColor=24292f&style=flat-square)](#extensions)
+[![rust](https://img.shields.io/badge/rust-optional-DEA584?logo=rust&logoColor=white&labelColor=24292f&style=flat-square)](#requirements)
 [![tmux](https://img.shields.io/badge/tmux-optional-6e7681?logo=tmux&logoColor=1BB91F&labelColor=24292f&style=flat-square)](#subagents)
-[![skills](https://img.shields.io/badge/skills-20-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
+[![skills](https://img.shields.io/badge/skills-22-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
 [![extensions](https://img.shields.io/badge/extensions-2-2563eb?labelColor=24292f&style=flat-square)](#extensions)
 [![token floor](https://img.shields.io/badge/token_floor-%E2%89%88_0.5K-2ea44f?labelColor=24292f&style=flat-square)](#always-on-token-budget)
 
 A portable, git-synced configuration for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent) — one `~/.pi/agent/` directory that turns any macOS or Linux machine into a fully configured coding-agent workstation in minutes.
 
-**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 20 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~0.5K tokens permanent floor) so every session starts cheap.
+**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 22 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~0.5K tokens permanent floor) so every session starts cheap.
 
 - **One directory, one repo** — `git clone` is the entire install; git is the only sync mechanism.
 - **Zero environment variables, zero absolute paths** — everything works from the default `~/.pi/agent` location.
@@ -59,6 +60,8 @@ scp <your-other-machine>:~/.pi/agent/auth.json ~/.pi/agent/      # secrets — o
 # 4. Bootstrap — npm deps, pidoc shim, pidx build (skips politely if no cargo)
 sh ~/.pi/agent/scripts/bootstrap.sh
 ```
+
+After bootstrap, later `git pull`s re-check the setup automatically — husky `post-merge`/`post-rewrite` run `scripts/after-pull.sh`: refresh npm deps when the lockfile moved, recreate the `pidoc` shim, rebuild `pidx` when stale, then run a full `pidoc --fix` health check. Safe non-privileged fixes apply automatically; missing toolchains are reported, never installed.
 
 Then verify and start pi:
 
@@ -115,7 +118,7 @@ That's it — no env vars to export, no paths to fix.
 
 ## Skills
 
-All 20 skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
+All 22 skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
 
 | Skill                     | Purpose                                                                                                 | Invocation                          |
 | ------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------- |
@@ -134,8 +137,10 @@ All 20 skills are **manual** — invoke with `/skill:<name>`; none auto-load on 
 | harness-engineer          | Meta: audit/improve this harness (budgets, evidence, skill audits, anti-pattern sweep)                  | `/skill:harness-engineer`           |
 | map-integration           | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw; Barikoi stack                                    | `/skill:map-integration`            |
 | llm-instruction-formatter | LLM-rule markdown formatting (AGENTS.md, system prompts, SKILL.md bodies): bold/heading/list discipline | `/skill:llm-instruction-formatter`  |
+| pi-doctor                 | Harness setup health check — node pin, cargo/pidx, helper CLIs, gate, settings, hooks, dirs, audit; `--fix` rebuilds pidx | `/skill:pi-doctor`                  |
 | playwright-tester         | e2e specs, stress/update-flow runs, bug-hunt iterations, untested-critical-path coverage                | `/skill:playwright-tester`          |
 | refactoring-ui            | Audit/fix existing UI: hierarchy, spacing, color, depth, small UI defects                               | `/skill:refactoring-ui`             |
+| rust-skills               | Rust coding guidelines (265 rules, 26 categories): ownership, errors, async, unsafe, API, serde, testing | `/skill:rust-skills`                |
 | sdk-development           | Installable packages (Go/npm/CLI): OpenAPI codegen, test, publish                                       | `/skill:sdk-development`            |
 | session-audit             | Token/cost waste audit of `~/.pi/agent/sessions`                                                        | `/skill:session-audit`              |
 | skill-manager             | Create/modify SKILL.md + mandatory validator gate                                                       | `/skill:skill-manager`              |
@@ -191,7 +196,7 @@ Always-on TypeScript modules in `extensions/` — loaded by pi, never in the mod
 - identical re-run guard (R10)
 - commitlint conventional-commit validation on `git commit -m` headers (R9)
 
-**`handoff.ts`** adds `/handoff <goal>` — drafts a context-transfer prompt from the session (compaction-aware), saves it as a human-readable doc under `~/.pi/agent/handoff/<date>-<slug>.md`, then opens the new session with the draft.
+**`handoff.ts`** adds `/handoff <goal>` — drafts a context-transfer prompt from the session (compaction-aware), opens it in the editor, then opens the new session with the draft; nothing is written to disk — the new session's first message is the artifact.
 
 Raw events (tool errors, guard blocks) land in pi's native `sessions/**/*.jsonl` — the audit toolkit derives every signal from there. Full docs: [`extensions/README.md`](extensions/README.md).
 
