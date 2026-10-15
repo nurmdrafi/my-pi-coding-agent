@@ -527,3 +527,23 @@ test('list: zero runs → counts render 0, exit 0', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.ok(/bugfix\/task-syn\s*×\s*baseline:\s*0/.test(r.stdout));
 });
+
+// ---------------------------------------------------------------- check-tasks (Step 10)
+
+test('check-tasks: task-syn pristine fails + patched passes → exit 0 (spec §5.4)', () => {
+  const r = runCli('check-tasks', '--tasks-dir', synTasksRoot());
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /OK bugfix\/task-syn/);
+  assert.ok(!/FAIL/.test(r.stdout));
+});
+
+test('check-tasks: already-solved fixture → per-task FAIL line + exit 1 (spec §5.4, §10)', () => {
+  const tasksRoot = synTasksRoot();
+  // invert: pre-fix the shipped fixture so pristine validation already passes
+  const f = join(tasksRoot, 'bugfix', 'task-syn', 'fixture', 'failing.js');
+  writeFileSync(f, readFileSync(f, 'utf8').replace('return n * 2 + 1;', 'return n * 2;'));
+  const r = runCli('check-tasks', '--tasks-dir', tasksRoot);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /FAIL bugfix\/task-syn/);
+  rmSync(tasksRoot, { recursive: true, force: true });
+});

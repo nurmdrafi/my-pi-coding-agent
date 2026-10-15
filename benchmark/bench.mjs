@@ -4,7 +4,9 @@
  * Commands: start | finish | report | list | check-tasks.
  * Zero-dependency; errors exit 1 with {error} JSON on stderr (spec §10).
  */
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -159,6 +161,41 @@ function cmdList(opts) {
   for (const t of tasks) for (const a of arms) console.log(`  ${t.id} × ${a.name}: ${count(t.id, a.name)}`);
 }
 
+// ---------------------------------------------------------------- check-tasks (spec §5.4)
+
+/** QA one task on a scratch copy: pristine must FAIL, patched must PASS. */
+function checkTask(task) {
+  const scratch = mkdtempSync(join(tmpdir(), 's2-check-'));
+  try {
+    const { workDir } = prepareWorkdir(task.dir, scratch); // copy + git init, never touches source
+    const pristine = runValidator(task.dir, workDir);
+    if (pristine.pass) return { ok: false, why: 'pristine fixture already passes (task is solved or ungradeable)' };
+    const applied = spawnSync('git', ['-C', workDir, 'apply', join(task.dir, 'solution.patch')]);
+    if (applied.status !== 0) {
+      return { ok: false, why: `solution.patch does not apply: ${applied.stderr.trim().slice(0, 200)}` };
+    }
+    const patched = runValidator(task.dir, workDir);
+    if (!patched.pass) {
+      return { ok: false, why: `patched fixture still fails: ${patched.checks.filter((c) => !c.pass).map((c) => c.name).join(', ')}` };
+    }
+    return { ok: true, checks: patched.checks.length, pristineFails: pristine.checks.filter((c) => !c.pass).length };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+function cmdCheckTasks(opts) {
+  const tasks = discoverTasks(opts.tasksDir);
+  if (!tasks.length) die(`no tasks found under ${opts.tasksDir}`);
+  let failed = 0;
+  for (const task of tasks) {
+    const r = checkTask(task);
+    if (r.ok) console.log(`OK ${task.id} (pristine fails on ${r.pristineFails} check(s); patched passes ${r.checks} checks)`);
+    else { failed++; console.log(`FAIL ${task.id} — ${r.why}`); }
+  }
+  if (failed) process.exit(1);
+}
+
 // ---------------------------------------------------------------- dispatch
 
 const [, , cmd, ...rest] = process.argv;
@@ -169,4 +206,5 @@ else if (cmd === 'start') { try { cmdStart(optsWithDefaults); } catch (e) { die(
 else if (cmd === 'finish') { try { cmdFinish(optsWithDefaults); } catch (e) { die(e.message); } }
 else if (cmd === 'report') { try { cmdReport(optsWithDefaults); } catch (e) { die(e.message); } }
 else if (cmd === 'list') { try { cmdList(optsWithDefaults); } catch (e) { die(e.message); } }
+else if (cmd === 'check-tasks') { try { cmdCheckTasks(optsWithDefaults); } catch (e) { die(e.message); } }
 else die(`unknown command: ${cmd}\n${HELP}`);
