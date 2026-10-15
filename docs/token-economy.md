@@ -9,7 +9,7 @@
 - Re-block: never re-send blocked call verbatim — apply block-reason fix.
 
 ## Calls and output
-- Batch: all independent calls one turn; every turn re-bills prefix.
+- Batch: all independent calls one turn; every turn re-bills prefix. Self-check before each turn: “could this call have run in the previous turn?” If yes and it wasn't blocked by a dependency, it was a wasted turn.
 - Pipe raw payloads through `jq` to `/tmp`, never into context; bash caps 100 lines/4 KB (oversize → pgate-spill; read spills offset/limit).
 
 ## Tests
@@ -21,6 +21,11 @@
 - Timebox verification: >3 tool calls on one acceptance criterion without conclusion → stop, report interim, ask to continue.
 - Land: near cap → patch first, summary second. Exhausted budgets cut prose, not code.
 - Reply: terse; never restate file contents/output/diffs in prose — cite path:line.
+
+## Native tooling
+- `pidx` (Rust, `tools/pidx/`, binary at `bin/pidx`): incremental session-log indexer feeding session-audit's L0 fast path — O(changes) via (size, mtime_ns) state cache, OS-agnostic std-only, parity-gated 370/370 against the Node parser. Node fallback automatic if binary missing. Benchmark: full digest 1.96s → 0.88s warm.
+- Future native tools follow the pidx bar: measured bottleneck, benchmark numbers in hand, user approves, parity gate against the JS path it replaces.
+- Never port simple file operations — built-in tools cover them; don't rebuild CLIs the system already has (`rg`, `fd`, `jq`).
 
 ## Extensions and sessions
 - Load extensions per project, never globally (re-bills prompt every turn); exception: permission-gate, enforcement layer itself.

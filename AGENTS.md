@@ -47,5 +47,5 @@ Loaded every session. Task rule sets in `docs/` — follow link when task touche
 - [docs/issue-classes.md](docs/issue-classes.md) — failure-class catalog (secrets, auth, HTTP, CI, tests)
 - [docs/security.md](docs/security.md) — build-time auth checks, secrets server-side, guard-fix re-checks
 - [docs/portability.md](docs/portability.md) — macOS+Linux shell subset, no absolute user paths
-- [docs/token-economy.md](docs/token-economy.md) — search discipline, batching, baselines, session limits
+- [docs/token-economy.md](docs/token-economy.md) — search discipline, batching, baselines, native-tooling policy, session limits
 - [docs/workflow.md](docs/workflow.md) — TDD, plan/do/verify cadence, session length
