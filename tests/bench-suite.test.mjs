@@ -403,3 +403,101 @@ test('aggregate: metricValues maps a record to the report metric list', () => {
     ['durationMs', 'tokensInput', 'tokensOutput', 'tokensPeak', 'costUsd', 'cacheHitRatio',
       'apiTurns', 'worstToolP95', 'editFailureRate', 'readRepeatRate'].map((k) => [k, null])));
 });
+
+// ---------------------------------------------------------------- report (Step 8)
+
+const reportSetup = (records) => {
+  const resultsDir = tmp();
+  for (const r of records) {
+    writeFileSync(join(resultsDir, `${r.runId}.json`), JSON.stringify({ ...mkRec(), ...r }));
+  }
+  return { resultsDir, reportsDir: tmp() };
+};
+const REC_T1A = mkRec({ runId: 'a1', task: 'bugfix/t1', arm: 'baseline' });
+const REC_T1B = mkRec({ runId: 'a2', task: 'bugfix/t1', arm: 'baseline', grade: 'FAIL' });
+const REC_T2C = mkRec({ runId: 'a3', task: 'feature/t1', arm: 'candidate',
+  metrics: mkMetrics({ durationMs: 5000, partial: true }) });
+
+test('report: renders md + json sibling with per-(task,arm) cells (spec §9)', () => {
+  const { resultsDir, reportsDir } = reportSetup([REC_T1A, REC_T1B, REC_T2C]);
+  const r = runCli('report', '--results-dir', resultsDir, '--reports-dir', reportsDir);
+  assert.equal(r.status, 0, r.stderr);
+  const mdFile = readdirSync(reportsDir).find((f) => f.endsWith('.md'));
+  assert.match(mdFile, /^report-\d{4}-\d{2}-\d{2}\.md$/);
+  const md = readFileSync(join(reportsDir, mdFile), 'utf8');
+  assert.ok(md.includes('# S2 benchmark report'));
+  assert.ok(md.includes('bugfix/t1'));
+  assert.ok(md.includes('feature/t1'));
+  assert.ok(md.includes('baseline'));
+  assert.ok(md.includes('candidate'));
+  assert.ok(/\| baseline\*? .*\| 2 \| 1\/2 .*\| 1000 /.test(md), 'n, success, durationMs columns');
+  assert.ok(md.includes('≥3'), 'protocol note');
+  const jsonFile = mdFile.replace(/\.md$/, '.json');
+  const payload = JSON.parse(readFileSync(join(reportsDir, jsonFile), 'utf8'));
+  assert.equal(payload.schema, 's2-report/1');
+  assert.equal(payload.date, mdFile.match(/^report-(\d{4}-\d{2}-\d{2})\.md$/)[1]);
+  assert.deepEqual(payload.arms, ['baseline', 'candidate']);
+  assert.deepEqual(payload.tasks, ['bugfix/t1', 'feature/t1']);
+  assert.equal(payload.cells.length, 2);
+  const t1 = payload.cells.find((c) => c.task === 'bugfix/t1');
+  assert.equal(t1.arm, 'baseline');
+  assert.equal(t1.n, 2);
+  assert.equal(t1.successRate, 0.5);
+  assert.deepEqual(t1.medians.durationMs, { value: 1000, n: 2 });
+  assert.equal(t1.partialExcluded, 0);
+  assert.equal(t1.metricsIncomplete, false);
+  // partial excluded by default, counted
+  const t2 = payload.cells.find((c) => c.task === 'feature/t1');
+  assert.equal(t2.n, 0);
+  assert.equal(t2.partialExcluded, 1);
+  rmSync(resultsDir, { recursive: true, force: true });
+  rmSync(reportsDir, { recursive: true, force: true });
+});
+
+test('report: --include-partial folds partial runs into cells', () => {
+  const { resultsDir, reportsDir } = reportSetup([REC_T1A, REC_T2C]);
+  const r = runCli('report', '--include-partial', '--results-dir', resultsDir, '--reports-dir', reportsDir);
+  assert.equal(r.status, 0, r.stderr);
+  const payload = JSON.parse(readFileSync(join(reportsDir, readdirSync(reportsDir).find((f) => f.endsWith('.json'))), 'utf8'));
+  const t2 = payload.cells.find((c) => c.task === 'feature/t1');
+  assert.equal(t2.n, 1);
+  assert.equal(t2.partialExcluded, 0);
+  rmSync(resultsDir, { recursive: true, force: true });
+  rmSync(reportsDir, { recursive: true, force: true });
+});
+
+test('report: same-day rerun suffixed -2 (md + json, never overwriting)', () => {
+  const { resultsDir, reportsDir } = reportSetup([REC_T1A]);
+  for (let i = 0; i < 2; i++) {
+    assert.equal(runCli('report', '--results-dir', resultsDir, '--reports-dir', reportsDir).status, 0);
+  }
+  const files = readdirSync(reportsDir).sort();
+  assert.equal(files.length, 4);
+  assert.ok(files.some((f) => /^report-\d{4}-\d{2}-\d{2}\.md$/.test(f)), 'plain base exists');
+  assert.ok(files.some((f) => /^report-\d{4}-\d{2}-\d{2}-2\.md$/.test(f)), '-2 md exists');
+  assert.ok(files.some((f) => /^report-\d{4}-\d{2}-\d{2}-2\.json$/.test(f)), '-2 json exists');
+  rmSync(resultsDir, { recursive: true, force: true });
+  rmSync(reportsDir, { recursive: true, force: true });
+});
+
+test('report: --task/--arm filters restrict cells', () => {
+  const { resultsDir, reportsDir } = reportSetup([REC_T1A, REC_T2C]);
+  const r = runCli('report', '--task', 'feature/t1', '--arm', 'candidate',
+    '--results-dir', resultsDir, '--reports-dir', reportsDir);
+  assert.equal(r.status, 0, r.stderr);
+  const payload = JSON.parse(readFileSync(join(reportsDir, readdirSync(reportsDir).find((f) => f.endsWith('.json'))), 'utf8'));
+  assert.deepEqual(payload.tasks, ['feature/t1']);
+  assert.deepEqual(payload.arms, ['candidate']);
+  assert.equal(payload.cells.length, 1);
+  rmSync(resultsDir, { recursive: true, force: true });
+  rmSync(reportsDir, { recursive: true, force: true });
+});
+
+test('report: zero completed runs → message, exit 0, no file (spec §10)', () => {
+  const reportsDir = tmp();
+  const r = runCli('report', '--results-dir', tmp(), '--reports-dir', reportsDir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /no completed runs/i);
+  assert.deepEqual(readdirSync(reportsDir), []);
+  rmSync(reportsDir, { recursive: true, force: true });
+});
