@@ -495,8 +495,14 @@ export default function (pi: ExtensionAPI) {
     }
 
     // R1: block a read whose requested window is fully covered by this
-    // session's in-context spans (2026-10-05 coverage model)
-    if (isToolCallEventType("read", event)) {
+    // session's in-context spans (2026-10-05 coverage model).
+    // `piread` (native read pipeline, 2026-10-18) shares the read schema —
+    // both names get the same read handling so gate protection survives
+    // the individual registration.
+    if (
+      isToolCallEventType("read", event) ||
+      isToolCallEventType("piread", event)
+    ) {
       // S4 fix 3: malformed read input — explicit block, never an analyzer throw
       if (typeof event.input.path !== "string" || !event.input.path.trim())
         return blockCall(
@@ -1029,7 +1035,8 @@ export default function (pi: ExtensionAPI) {
           };
           if (call?.type !== "toolCall" || !call.id) continue;
           if (
-            (call.name === "read" ||
+            (call.name === "piread" ||
+              call.name === "read" ||
               call.name === "write" ||
               call.name === "edit") &&
             typeof call.arguments?.path === "string"

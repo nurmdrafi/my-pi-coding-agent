@@ -1,12 +1,15 @@
 /**
- * piread — native read pipeline behind the built-in `read` interface (S6).
+ * piread — native read pipeline registered as its own tool (S6).
  *
- * Registers a tool named `read` that shadows the built-in (the session's
- * tool registry is built-in-first; extension `registerTool` overwrites the
- * entry, and `tool_call`/`tool_result` events stay name-based so
- * permission-gate is unaffected). Name/label/description/parameters are
- * copied verbatim from `createReadToolDefinition` so the system prompt —
- * and therefore the prompt-cache prefix — is byte-identical between arms.
+ * Registers a distinct tool named `piread` alongside the built-in `read`
+ * (2026-10-18 redesign: it previously shadowed `read` under the same name,
+ * which made both tools display as one label and collided with any other
+ * read-registration). Parameters are copied verbatim from
+ * `createReadToolDefinition` so behavior matches, while name/label/
+ * description/promptGuidelines are piread-specific and steer the model:
+ * text files → piread, images → read. permission-gate treats `piread`
+ * calls as read-kind (coverage/R1/anchor), so gate protection is retained
+ * under the individual name.
  *
  * Dispatch (spec §5.2, daemon amendment 2026-10-17):
  *   1. image extension on `path`  → built-in instance (image processing
@@ -24,6 +27,8 @@
  * the built-in path when the native binary is missing).
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { appendFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -32,8 +37,12 @@ import {
   createReadToolDefinition,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 
 const execFileAsync = promisify(execFile);
+
+/** TUI/model-visible marker appended to native-served content. */
+const NATIVE_MARKER = "\n[piread native]";
 
 /** Transport-level daemon failure — the call moves to the one-shot rung. */
 class DaemonUnavailableError extends Error {
@@ -57,6 +66,24 @@ class OneshotError extends Error {
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
 
 const extDir = dirname(fileURLToPath(import.meta.url));
+
+/** Violations (fallback-to-builtin) append to the existing gate log
+ * logs/violation-memory.ndjson, reusing its {family, sid, ts} schema — no
+ * new log file. Path derived from the extension dir (portability). */
+const PGATE_NDJSON = resolve(extDir, "../../logs/violation-memory.ndjson");
+const SESSION_ID = randomUUID();
+
+function logViolation(reason: string, path: string): void {
+  try {
+    appendFileSync(
+      PGATE_NDJSON,
+      `${JSON.stringify({ family: "Piread (fallback)", sid: SESSION_ID, ts: Date.now(), reason, path })}\n`,
+    );
+  } catch {
+    // Logging must never break a read.
+  }
+}
+
 /** Machine-local build output (scripts/bootstrap.sh), no absolute user paths. */
 const PIREAD_BIN = resolve(extDir, "../../bin/piread");
 
@@ -73,7 +100,8 @@ type ReadResult = {
   structuredContent?: unknown;
 };
 
-/** Definition copied verbatim into the registered shadow tool. */
+/** Schema/contract source: the built-in read definition. Copied verbatim;
+ * the registration below overrides name/label/description/promptGuidelines. */
 const definition = createReadToolDefinition(process.cwd());
 
 /** Private built-in executor: fallback + image path. Cast to a structural type —
@@ -321,8 +349,9 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     ctx: unknown,
     reason: string,
   ) => {
-    // Observability: one line per fallback (spec §5.2).
+    // Observability: one line per fallback (spec §5.2) + violation log.
     process.stderr.write(`piread: fallback (${reason}) path=${params.path}\n`);
+    logViolation(reason, params.path);
     return builtinExecute(toolCallId, params, signal, onUpdate, ctx);
   };
 
@@ -381,7 +410,7 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     }
 
     return {
-      content: [{ type: "text", text: envelope.content }],
+      content: [{ type: "text", text: envelope.content + NATIVE_MARKER }],
       details: envelope.truncation ? { truncation: envelope.truncation } : undefined,
       structuredContent: envelope.content,
     };
@@ -392,7 +421,28 @@ export default function pireadExtension(pi: ExtensionAPI): void {
   // the parity suite); the cast bridges the loose structural type to the
   // definition's precise one (its d.ts lives in the nested pi-agent-core
   // identity, which does not unify under skipLibCheck).
-  pi.registerTool({ ...definition, execute: execute as typeof definition.execute });
+  // renderCall (lineage: retired read-label.ts): displays the piread label
+  // with the requested path:offset[-end] window. Display layer only.
+  // Individual registration (2026-10-18): name/label identify piread on its
+  // own; description/promptGuidelines steer text reads to piread and images
+  // to read. Params/schema stay verbatim so behavior matches the built-in.
+  pi.registerTool({
+    ...definition,
+    name: "piread",
+    label: "piread",
+    description:
+      "Read the contents of a text file via the native piread pipeline — prefer this over the read tool for text files. Output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files; continue with offset until complete. Images (jpg, png, gif, webp, bmp) are not supported here — use the read tool for those. Any pipeline failure falls back to the built-in reader automatically.",
+    promptGuidelines: ["Use piread to examine text files instead of cat or sed; use read for images."],
+    execute: execute as typeof definition.execute,
+    renderCall(args, theme, _context) {
+      const start = args.offset ?? 1;
+      let range = `:${start}`;
+      if (args.limit) range = `:${start}-${start + args.limit - 1}`;
+      let text = theme.fg("toolTitle", theme.bold("piread "));
+      text += theme.fg("accent", `${args.path}${range}`);
+      return new Text(text, 0, 0);
+    },
+  });
 }
 
 /** Test affordance: kill the persistent daemon so suites can exercise the

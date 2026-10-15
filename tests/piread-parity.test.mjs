@@ -3,14 +3,15 @@
  * Parity oracle suite for the piread extension (S6 Step 3, spec §5.3).
  *
  * The built-in read tool (createReadTool) is the oracle: for a deterministic
- * fixture corpus and an offset/limit matrix, the piread-shadowed `read` tool
+ * fixture corpus and an offset/limit matrix, the registered `piread` tool
  * and the oracle must produce identical results — content arrays, details,
  * structuredContent — or identical rejection messages.
  *
- * Also locks in: env-off = zero registration; env-on = exactly one `read`
- * tool whose schema/description is byte-equal to createReadToolDefinition's
- * (prompt-cache + name-shadow stability); fail-open fallback (missing binary,
- * error envelope, garbage stdout) equals the oracle plus one stderr line.
+ * Also locks in: env-off = zero registration; env-on = exactly one `piread`
+ * tool with an individual name/label and a schema byte-equal to
+ * createReadToolDefinition's (distinct registration, 2026-10-18); fail-open
+ * fallback (missing binary, error envelope, garbage stdout) equals the
+ * oracle plus one stderr line.
  *
  * Preflight: symlink the global pi package into the gitignored root
  * node_modules (same trick as tests/permission-gate.test.mjs).
@@ -72,11 +73,11 @@ function loadExtension(envValue) {
 const oracle = createReadTool(process.cwd());
 const sdkDefinition = createReadToolDefinition(process.cwd());
 const activePi = loadExtension("1");
-if (activePi.tools.size !== 1 || !activePi.tools.has("read")) {
-  console.error("FATAL  env-on extension must register exactly one tool named 'read'");
+if (activePi.tools.size !== 1 || !activePi.tools.has("piread")) {
+  console.error("FATAL  env-on extension must register exactly one tool named 'piread'");
   process.exit(1);
 }
-const wrapped = activePi.tools.get("read");
+const wrapped = activePi.tools.get("piread");
 
 // ---- deterministic corpus (spec §5.3) ----
 
@@ -127,6 +128,12 @@ async function armResult(tool, params, ctx) {
 async function parityCase(params, ctx) {
   const a = await armResult(wrapped, params, ctx);
   const b = await armResult(oracle, params, ctx);
+  // piread appends a "[piread native]" marker line to TUI-visible text
+  // (observability by design); strip it before the byte-parity compare.
+  const MARKER = "\n[piread native]";
+  if (!a.rejected && a.value?.content?.[0]?.text?.endsWith(MARKER)) {
+    a.value.content[0].text = a.value.content[0].text.slice(0, -MARKER.length);
+  }
   try {
     assert.deepStrictEqual(a, b);
     return { ok: true };
@@ -151,25 +158,25 @@ function captureStderr(fn) {
 const cases = [];
 const add = (name, fn) => cases.push([name, fn]);
 
-// env gating + shadow lock-in (R2)
-add("env gate: default-on registers the shadow unless PI_NATIVE_READ=0", () => {
+// env gating + registration lock-in (R2)
+add("env gate: default-on registers piread unless PI_NATIVE_READ=0", () => {
   // Default-on (D5 flip): unset registers; explicit 0 opts out.
   const unsetPi = loadExtension(undefined);
   assert.equal(unsetPi.tools.size, 1);
-  assert.ok(unsetPi.tools.has("read"), "unset must register 'read' (default on)");
+  assert.ok(unsetPi.tools.has("piread"), "unset must register 'piread' (default on)");
   assert.equal(loadExtension("0").tools.size, 0);
 });
-add("env gate: PI_NATIVE_READ=1 registers exactly one shadowing 'read'", () => {
+add("env gate: PI_NATIVE_READ=1 registers exactly one 'piread' tool", () => {
   const pi = loadExtension("1");
   assert.equal(pi.tools.size, 1);
-  assert.ok(pi.tools.has("read"), "registered tool must be named 'read'");
+  assert.ok(pi.tools.has("piread"), "registered tool must be named 'piread'");
 });
-add("shadow lock-in: definition fields byte-equal to createReadToolDefinition", () => {
-  assert.equal(wrapped.name, sdkDefinition.name);
-  assert.equal(wrapped.label, sdkDefinition.label);
-  assert.equal(wrapped.description, sdkDefinition.description);
+add("registration: individual name/label, schema byte-equal to createReadToolDefinition", () => {
+  assert.equal(wrapped.name, "piread");
+  assert.equal(wrapped.label, "piread");
+  assert.notEqual(wrapped.description, sdkDefinition.description);
+  assert.match(wrapped.description, /piread/);
   assert.equal(wrapped.promptSnippet, sdkDefinition.promptSnippet);
-  assert.deepStrictEqual(wrapped.promptGuidelines, sdkDefinition.promptGuidelines);
   assert.deepStrictEqual(wrapped.parameters, sdkDefinition.parameters);
   assert.deepStrictEqual(wrapped.outputSchema, sdkDefinition.outputSchema);
   assert.deepStrictEqual(wrapped.constrainedSampling, sdkDefinition.constrainedSampling);
@@ -264,7 +271,13 @@ add("daemon: concurrent dispatches keep responses matched", async () => {
       limit: i === 3 ? 2 : undefined,
     });
     try {
-      assert.deepStrictEqual(wrappedResults[i], b);
+      // Strip the "[piread native]" marker (observability) before compare.
+      const MARKER = "\n[piread native]";
+      const a = wrappedResults[i];
+      if (!a.rejected && a.value?.content?.[0]?.text?.endsWith(MARKER)) {
+        a.value.content[0].text = a.value.content[0].text.slice(0, -MARKER.length);
+      }
+      assert.deepStrictEqual(a, b);
     } catch (e) {
       return { ok: false, diff: `concurrent dispatch ${paths[i]}: ${e.message}` };
     }
@@ -361,12 +374,12 @@ add("gate: protected-path read (node_modules) blocks at tool_call before executi
   const nmPath = join(nmDir, "index.js");
   writeFileSync(nmPath, "module.exports = 42;\n");
   const pi = freshGate();
-  const shadowPi = loadExtension("1");
-  const tool = shadowPi.tools.get("read");
+  const pireadPi = loadExtension("1");
+  const tool = pireadPi.tools.get("piread");
   let executions = 0;
   const orig = tool.execute;
   tool.execute = (...a) => { executions++; return orig(...a); };
-  const block = await pi.invoke("tool_call", { type: "tool_call", toolName: "read", toolCallId: "g-nm", input: { path: nmPath } }, GATE_CTX);
+  const block = await pi.invoke("tool_call", { type: "tool_call", toolName: "piread", toolCallId: "g-nm", input: { path: nmPath } }, GATE_CTX);
   assert.ok(block, "node_modules read must block at tool_call");
   assert.match(block.reason, /^Search \(node_modules\)/, `reason was: ${block.reason}`);
   assert.equal(executions, 0, "blocked read must never reach execute");

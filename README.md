@@ -8,11 +8,10 @@
 [![node](https://img.shields.io/badge/node_%E2%A5%BC_22.19_%C2%B7_.nvmrc_24-339933?logo=nodedotjs&logoColor=5FA04E&labelColor=24292f&style=flat-square)](#requirements)
 [![macOS](https://img.shields.io/badge/macOS-6e7681?logo=apple&logoColor=A2AAAD&labelColor=24292f&style=flat-square)](#portability)[![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=FCC624&labelColor=24292f&style=flat-square)](#portability)
 [![language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white&labelColor=24292f&style=flat-square)](#extensions)
-[![rust](https://img.shields.io/badge/rust-optional-DEA584?logo=rust&logoColor=white&labelColor=24292f&style=flat-square)](#requirements)
+[![rust](https://img.shields.io/badge/rust-default-DEA584?logo=rust&logoColor=white&labelColor=24292f&style=flat-square)](#requirements)
 [![tmux](https://img.shields.io/badge/tmux-optional-6e7681?logo=tmux&logoColor=1BB91F&labelColor=24292f&style=flat-square)](#subagents)
 [![skills](https://img.shields.io/badge/skills-manual-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
 [![extensions](https://img.shields.io/badge/extensions-ts-2563eb?labelColor=24292f&style=flat-square)](#extensions)
-[![token floor](https://img.shields.io/badge/token_floor-%E2%89%88_0.5K-2ea44f?labelColor=24292f&style=flat-square)](#always-on-token-budget)
 
 A portable, git-synced configuration for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent) — one `~/.pi/agent/` directory that turns any macOS or Linux machine into a fully configured coding-agent workstation in minutes.
 
@@ -57,7 +56,7 @@ git clone https://github.com/nurmdrafi/my-pi-coding-agent.git ~/.pi/agent
 scp <your-other-machine>:~/.agents/skills/* ~/.pi/agent/skills/  # private skills, not in the repo
 scp <your-other-machine>:~/.pi/agent/auth.json ~/.pi/agent/      # secrets — or /login per provider inside pi
 
-# 4. Bootstrap — npm deps, pidoc shim, pidx + piread builds (skip politely if no cargo)
+# 4. Bootstrap — npm deps, pidoc shim, pidx + piread builds (Rust tools are default; cargo missing is reported, never auto-installed)
 sh ~/.pi/agent/scripts/bootstrap.sh
 ```
 
@@ -101,7 +100,7 @@ macOS and Linux resolve identically:
 | Node.js     | ≥ 22.19 (`.nvmrc` pins 24, the current LTS)           |
 | OS          | macOS or Linux                                        |
 | tmux        | Only if using subagents — see [Subagents](#subagents) |
-| Rust (cargo) | Optional — builds `pidx` (session-audit fast path) and `piread` (native read tool, [Extensions](#extensions)); without them session-audit uses its Node parser and `read` stays built-in. Bootstrap prints the rustup command if missing |
+| Rust (cargo) | Default requirement — builds the first-class native tools `piread` (text-file reader) and `pidx` (session-log indexer), registered under their own TUI labels; see [Extensions](#extensions). Opt out per tool with `PI_NATIVE_READ=0` / `PI_NATIVE_PIDX=0` (fails open to the built-in reader / Node parser). Bootstrap prints the rustup command if cargo is missing |
 | Git         | For sync; `~/.pi/agent` is itself a repo              |
 
 ## What's inside
@@ -220,7 +219,37 @@ Always-on TypeScript modules in `extensions/` — loaded by pi, never in the mod
 
 Raw events (tool errors, guard blocks) land in pi's native `sessions/**/*.jsonl` — the audit toolkit derives every signal from there. Full docs: [`extensions/README.md`](extensions/README.md).
 
-**`piread/`** is not an extension in the behavioral sense — it is the native `read` *tool*: by default (opt out with `PI_NATIVE_READ=0`) the built-in `read` tool's execution dispatches to a Rust binary (`native/piread`, built by bootstrap) behind a byte-identical interface — same schema, description, and result shapes, gate-neutral (name-based events). Dispatch goes through a persistent `--serve` daemon (lazy-started, id-matched line protocol over stdio) so reads don't pay a process spawn per call; the one-shot CLI remains the fallback rung. Any dispatch problem fails open to the built-in implementation; with `PI_NATIVE_READ=0` it registers nothing at all.
+**`piread/`** registers the Rust text-file reader as its own first-class tool labeled **`piread`** in the TUI (2026-10-18 redesign: it previously shadowed the built-in `read` under the same name). Parameters match the built-in reader verbatim; text files route to the native pipeline, images stay on `read`. Dispatch goes through a persistent `--serve` daemon (lazy-started, id-matched line protocol over stdio) so reads don't pay a process spawn per call; a one-shot CLI spawn and then the built-in implementation remain as fallback rungs. Default on; opt out with `PI_NATIVE_READ=0`, which registers nothing.
+
+**`pidx/`** registers the Rust session-log indexer as its own first-class tool labeled **`pidx`** — parses session transcripts into compact per-session extracts (turns, tool calls with param hashes, tool results, compactions, skill loads), incremental via a (size, mtime) cache so warm runs are O(changes). Session-audit's fast path and session-history analysis call it directly; failures throw and fall back to the Node parser. Default on; opt out with `PI_NATIVE_PIDX=0`.
+
+### Native tool performance
+
+Every number below is measured, not guessed — methodology and raw runs live in `benchmark/runs/piread-microbench-*.md` and `CHANGELOG.md`.
+
+**`pidx` — session-log indexing** (Rust vs the prior Node parser; this repo's archive, 474 sessions / 85 MB of transcripts, verified 2026-10-18):
+
+| Run | Node parser | Rust `pidx` | Speedup |
+| --- | ---: | ---: | ---: |
+| Warm (cache hit, 474/474 reused) | ~0.28 s | ~0.01 s (14 ms measured) | **~28×** |
+| Cold (full re-parse, 474 sessions) | ~0.45 s | ~0.22 s (0.80 s measured on a slower host; 0.22 s on the original) | **~2×** |
+| Warm peak RSS | ~290 MB | ~17 MB | **~17× less memory** |
+
+Warm runs are O(changes), not O(archive): the state store replays unchanged sessions from cached byte ranges without re-parsing or re-serializing.
+
+**`piread` — text-file reads** (daemon dispatch vs the built-in reader; linux x64, node v24, N=200/arm, p50 ms, confirmation run B from `benchmark/runs/piread-microbench-2026-10-15-daemon-opt.md`):
+
+| Corpus class | Built-in reader | Rust `piread` (daemon) | Speedup |
+| --- | ---: | ---: | ---: |
+| One-line file | 0.304 | 0.114 | **2.7×** |
+| CRLF file | 0.292 | 0.072 | **4.1×** |
+| Unicode text | 0.277 | 0.060 | **4.6×** |
+| Long lines | 0.263 | 0.089 | **3.0×** |
+| 2500 lines | 1.393 | 0.505 | **2.8×** |
+| 60 KB single blob | 0.629 | 0.703 | ~1× (parity) |
+| 60 KB head slice | 0.416 | 0.238 | **1.7×** |
+
+The 60 KB single-blob class sits at parity (residual Δ ≤ +0.07 ms ≈ noise floor; the earlier regression is closed). The persistent daemon removes the **3.4–3.6 ms per-call spawn floor** the one-shot CLI arm pays (3.1–5.7 ms); daemon RSS is 2 MB. Structural floor: ~0.083 ms round-trip scheduling + ~0.10 ms Node-side `JSON.parse` of large envelopes — pinned by result parity with the built-in.
 
 ## Context layers
 

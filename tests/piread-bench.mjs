@@ -49,7 +49,7 @@ const { createReadTool } = await import(
 );
 const piread = (await import("../extensions/piread/index.ts")).default;
 
-/** Stubbed ExtensionAPI capturing the registered shadow tool. */
+/** Stubbed ExtensionAPI capturing the registered piread tool. */
 function loadWrappedTool() {
   const tools = new Map();
   const pi = { registerTool: (def) => tools.set(def.name, def), on: () => () => {} };
@@ -59,8 +59,8 @@ function loadWrappedTool() {
   } finally {
     delete process.env.PI_NATIVE_READ;
   }
-  const tool = tools.get("read");
-  assert.ok(tool, "PI_NATIVE_READ=1 must register the shadow 'read' tool");
+  const tool = tools.get("piread");
+  assert.ok(tool, "PI_NATIVE_READ=1 must register the 'piread' tool");
   return tool;
 }
 
