@@ -15,8 +15,13 @@ if (!workdir) {
 const checks = [];
 const add = (name, pass, detail) => checks.push({ name, pass, detail });
 
-// ---- tests-green: run the fixture's node:test suite (cwd = workdir)
-const t = spawnSync(process.execPath, ['--test'], { cwd: workdir, encoding: 'utf8' });
+// ---- tests-green: run the fixture's node:test suite (cwd = workdir;
+// NODE_TEST_CONTEXT must be stripped or a validator spawned from inside a test
+// runner makes the child exit 0 silently)
+const env = { ...process.env };
+delete env.NODE_TEST_CONTEXT;
+delete env.NODE_TEST_WORKER_ID;
+const t = spawnSync(process.execPath, ['--test'], { cwd: workdir, encoding: 'utf8', env });
 const pass = /[ℹ#] pass (\d+)$/m.exec(t.stdout);
 add('tests-green', t.status === 0, t.status === 0
   ? `${pass ? pass[1] : '?'} tests passed`
