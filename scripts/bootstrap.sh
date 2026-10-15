@@ -3,8 +3,8 @@
 #
 # Usage: sh scripts/bootstrap.sh          (from repo root or anywhere)
 #
-# Does:  npm deps + pi package links, pidoc shim into bin/, pidx build when
-#        cargo exists. Never installs anything itself — prints the exact
+# Does:  npm deps + pi package links, pidoc shim into bin/, pidx + piread
+#        builds when cargo exists. Never installs anything itself — prints the exact
 #        commands and exits when a toolchain is missing (ask-first rule).
 # After this, `git pull` re-syncs via .husky/post-merge → scripts/after-pull.sh.
 set -eu
@@ -44,6 +44,17 @@ else
        "To enable: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && re-run"
 fi
 
-# 4. health check
+# 4. piread (optional — native read tool behind PI_NATIVE_READ=1; the
+#    extension falls back to the built-in read without it)
+if [ -n "$CARGO" ]; then
+  (cd native/piread && "$CARGO" build --release)
+  cp native/piread/target/release/piread bin/piread
+  echo "== piread: built + installed to bin/piread"
+else
+  echo "== piread: cargo not found — the read tool stays on its built-in implementation." \
+       "To enable: install Rust (rustup command above) and re-run"
+fi
+
+# 5. health check
 node skills/pidoc/scripts/pidoc.mjs || true
 echo "== done. Put $ROOT/bin on PATH for pidoc/pidx."

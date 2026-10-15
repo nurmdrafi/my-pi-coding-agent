@@ -57,11 +57,11 @@ git clone https://github.com/nurmdrafi/my-pi-coding-agent.git ~/.pi/agent
 scp <your-other-machine>:~/.agents/skills/* ~/.pi/agent/skills/  # private skills, not in the repo
 scp <your-other-machine>:~/.pi/agent/auth.json ~/.pi/agent/      # secrets — or /login per provider inside pi
 
-# 4. Bootstrap — npm deps, pidoc shim, pidx build (skips politely if no cargo)
+# 4. Bootstrap — npm deps, pidoc shim, pidx + piread builds (skip politely if no cargo)
 sh ~/.pi/agent/scripts/bootstrap.sh
 ```
 
-After bootstrap, later `git pull`s re-check the setup automatically — husky `post-merge`/`post-rewrite` run `scripts/after-pull.sh`: refresh npm deps when the lockfile moved, recreate the `pidoc` shim, rebuild `pidx` when stale, then run a full `pidoc --fix` health check. Safe non-privileged fixes apply automatically; missing toolchains are reported, never installed.
+After bootstrap, later `git pull`s re-check the setup automatically — husky `post-merge`/`post-rewrite` run `scripts/after-pull.sh`: refresh npm deps when the lockfile moved, recreate the `pidoc` shim, rebuild `pidx`/`piread` when stale, then run a full `pidoc --fix` health check. Safe non-privileged fixes apply automatically; missing toolchains are reported, never installed.
 
 Then verify and start pi:
 
@@ -84,7 +84,7 @@ That's it — no env vars to export, no paths to fix.
 | Node.js     | ≥ 22.19 (`.nvmrc` pins 24, the current LTS)           |
 | OS          | macOS or Linux                                        |
 | tmux        | Only if using subagents — see [Subagents](#subagents) |
-| Rust (cargo) | Optional — builds `pidx` (session-audit fast path); without it session-audit uses its Node parser. Bootstrap prints the rustup command if missing |
+| Rust (cargo) | Optional — builds `pidx` (session-audit fast path) and `piread` (native read tool, [Extensions](#extensions)); without them session-audit uses its Node parser and `read` stays built-in. Bootstrap prints the rustup command if missing |
 | Git         | For sync; `~/.pi/agent` is itself a repo              |
 
 ## What's inside
@@ -101,7 +101,7 @@ That's it — no env vars to export, no paths to fix.
 ├── skills/                   # one dir per skill: SKILL.md + scripts/ references/ assets/
 ├── extensions/               # Always-on TS extensions (permission-gate, subagents, handoff)
 ├── agents/                   # Subagent definitions (scout/researcher/worker/reviewer)
-├── native/                   # Native helper crates (pidx — session-log indexer)
+├── native/                   # Native helper crates (pidx — session-log indexer; piread — native read tool)
 ├── benchmark/                # Model-graded benchmark tasks + validators
 ├── codemode/                 # Codemode scripts (non-LLM helpers)
 ├── scripts/                  # Repo tooling (doc-check, agents-lint, gate-eval)

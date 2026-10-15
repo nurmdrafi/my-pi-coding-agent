@@ -39,7 +39,35 @@ exec node "$ROOT/skills/pidoc/scripts/pidoc.mjs" "\$@"
 EOF
 chmod +x bin/pidoc
 
-# 3. Full health check; --fix rebuilds pidx when missing/stale and applies
+# 3. piread (optional — native read tool behind PI_NATIVE_READ=1; the
+#    extension falls back to the built-in read without it). Rebuild when
+#    missing or older than crate sources; pidx staleness is handled by the
+#    pidoc --fix step below.
+PIREAD_CRATE=native/piread
+if [ -d "$PIREAD_CRATE/src" ] && [ -f "$PIREAD_CRATE/Cargo.toml" ]; then
+  CARGO=$(command -v cargo || true)
+  [ -z "$CARGO" ] && [ -x "$HOME/.cargo/bin/cargo" ] && CARGO="$HOME/.cargo/bin/cargo"
+  stale=0
+  if [ ! -x bin/piread ]; then
+    stale=1
+  elif [ -n "$(find "$PIREAD_CRATE/src" -name '*.rs' -newer bin/piread -print 2>/dev/null | head -n 1)" ] \
+    || [ -n "$(find "$PIREAD_CRATE/Cargo.toml" -newer bin/piread -print 2>/dev/null)" ]; then
+    stale=1
+  fi
+  if [ "$stale" = 1 ]; then
+    if [ -n "$CARGO" ]; then
+      if (cd "$PIREAD_CRATE" && "$CARGO" build --release) && cp "$PIREAD_CRATE/target/release/piread" bin/piread; then
+        echo "== piread: rebuilt + installed to bin/piread"
+      else
+        echo "!! piread rebuild failed — extension falls back to the built-in read" >&2
+      fi
+    else
+      echo "== piread: stale/missing and cargo not found — extension falls back to the built-in read"
+    fi
+  fi
+fi
+
+# 4. Full health check; --fix rebuilds pidx when missing/stale and applies
 #    any other safe fix. FAIL/WARN rows print their own fix hints.
 if command -v node >/dev/null 2>&1; then
   node skills/pidoc/scripts/pidoc.mjs --fix || true
