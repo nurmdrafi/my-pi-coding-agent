@@ -4,8 +4,8 @@
   "theme": "dark",
   "defaultProvider": "zai",
   "defaultModel": "glm-5.3",
-  "defaultThinkingLevel": "low",
-  "hideThinkingBlock": "high",
+  "defaultThinkingLevel": "high",
+  "hideThinkingBlock": true,
   "compaction": {
     "enabled": true,
     "midTurnEnabled": true,

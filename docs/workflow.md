@@ -2,7 +2,7 @@
 
 - **TDD always**: red → green → refactor. Failing test first, watch it fail, minimum code to pass, refactor. No implementation before failing test. Bug fix starts with failing repro test. Untestable (config/docs/pure infra) → state why before proceeding.
 - Plan → do → verify → repeat.
-- Verify = narrowest relevant check: targeted test / typecheck / lint / build if integration affected.
+- Verify = scoped tests + lint + tsc always; build only if integration affected.
 - **Never claim works without running verification**; can't run → say why.
 - Empty output ≠ success.
 - Non-zero exit → show tail of full output.
