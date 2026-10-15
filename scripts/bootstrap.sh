@@ -36,8 +36,8 @@ echo "== pidoc shim: bin/pidoc"
 CARGO=$(command -v cargo || true)
 [ -z "$CARGO" ] && [ -x "$HOME/.cargo/bin/cargo" ] && CARGO="$HOME/.cargo/bin/cargo"
 if [ -n "$CARGO" ]; then
-  (cd tools/pidx && "$CARGO" build --release)
-  cp tools/pidx/target/release/pidx bin/pidx
+  (cd native/pidx && "$CARGO" build --release)
+  cp native/pidx/target/release/pidx bin/pidx
   echo "== pidx: built + installed to bin/pidx"
 else
   echo "== pidx: cargo not found — session-audit uses the Node parser (slower)." \

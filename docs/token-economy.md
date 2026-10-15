@@ -23,7 +23,7 @@
 - Reply: terse; never restate file contents/output/diffs in prose — cite path:line.
 
 ## Native tooling
-- `pidx` (Rust, `tools/pidx/`, binary at `bin/pidx`): incremental session-log indexer feeding session-audit's L0 fast path — O(changes) via (size, mtime_ns) keys and a raw-byte-range store, OS-agnostic std-only, parity-gated 370/370 against the Node parser. Node fallback automatic if binary missing. Benchmark 2026-10-15 (375 sessions / 97MB, arm64): Node parse-only ~0.37s; pidx cold full digest ~0.20s; pidx warm incremental ~0.01s (unchanged extracts replayed as bytes — no re-parse or re-serialize). Value is the warm O(changes) path and process offload.
+- `pidx` (Rust, `native/pidx/`, binary at `bin/pidx`): incremental session-log indexer feeding session-audit's L0 fast path — O(changes) via (size, mtime_ns) keys and a raw-byte-range store, OS-agnostic std-only, parity-gated 370/370 against the Node parser. Node fallback automatic if binary missing. Benchmark 2026-10-15 (375 sessions / 97MB, arm64): Node parse-only ~0.37s; pidx cold full digest ~0.20s; pidx warm incremental ~0.01s (unchanged extracts replayed as bytes — no re-parse or re-serialize). Value is the warm O(changes) path and process offload.
 - Future native tools follow the pidx bar: measured bottleneck, benchmark numbers in hand, user approves, parity gate against the JS path it replaces.
 - Never port simple file operations — built-in tools cover them; don't rebuild CLIs the system already has (`rg`, `fd`, `jq`).
 
