@@ -3,8 +3,10 @@
 //! Parses `<sessions-dir>/<project>/<ISO-ts>_<uuid>.jsonl` transcripts into
 //! compact per-session extracts (turns, tool calls with param hashes, tool
 //! results, compactions, skill loads). Files are keyed by (size, mtime_ns);
-//! unchanged files reuse the cached extract from the state file, so runs are
-//! O(changes), not O(archive). OS-agnostic: std only + mtime, no watchers.
+//! unchanged files reuse the cached extract from the store, so runs are
+//! O(changes), not O(archive). The store keeps a small header of byte ranges
+//! plus the raw extract bytes, so a warm run replays unchanged sessions
+//! without re-parsing or re-serializing them. OS-agnostic: std only + mtime, no watchers.
 //!
 //! Output: one JSON line per session (newest first) to --out (default
 //! stdout); a summary JSON line to stderr. Exit 0 on success even with
@@ -16,7 +18,8 @@
 //!    calls:[{id,name,ts,rid,ph,path,cmd}], results:[{id,ts,err,bytes}],
 //!    compactions, skills:{name:uses}}
 
-use serde_json::{json, Map, Value};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::env;
@@ -489,6 +492,87 @@ fn stat_id(p: &Path) -> Option<FileId> {
     Some(FileId { size: md.len(), mtime_ns: ns })
 }
 
+/// One cached session: (size, mtime_ns) freshness key plus the byte range of
+/// its pre-serialized extract inside the store's data section. Warm runs copy
+/// the range straight to output — no JSON parse or re-serialize of unchanged
+/// sessions.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+struct Entry {
+    size: u64,
+    mtime_ns: i64,
+    off: u64,
+    len: u64,
+}
+
+// State store: `MAGIC | version u32 | header_len u32 | header JSON | data`.
+// Header = {key: Entry}; data = concatenated compact extract JSON. A single
+// file keeps the header and its offsets atomic under one rename.
+const STORE_MAGIC: [u8; 8] = *b"PIDXST02";
+const STORE_VERSION: u32 = 2;
+const STORE_PREFIX: usize = 16;
+
+struct Store {
+    bytes: Vec<u8>,
+    data_off: usize,
+    files: HashMap<String, Entry>,
+}
+
+impl Store {
+    fn empty() -> Self {
+        Store { bytes: Vec::new(), data_off: 0, files: HashMap::new() }
+    }
+
+    fn data_len(&self) -> usize {
+        self.bytes.len().saturating_sub(self.data_off)
+    }
+
+    fn extract<'a>(&'a self, e: &Entry) -> &'a [u8] {
+        let start = self.data_off + e.off as usize;
+        let end = self.data_off + (e.off + e.len) as usize;
+        &self.bytes[start..end]
+    }
+}
+
+fn load_store(path: &Path) -> Store {
+    let bytes = match fs::read(path) {
+        Ok(b) => b,
+        Err(_) => return Store::empty(),
+    };
+    if bytes.len() < STORE_PREFIX || bytes[..8] != STORE_MAGIC {
+        return Store::empty(); // absent or pre-v2 JSON state → full reparse
+    }
+    let version = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+    let header_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+    let data_off = STORE_PREFIX + header_len;
+    if version != STORE_VERSION || bytes.len() < data_off {
+        return Store::empty();
+    }
+    let files = match serde_json::from_slice(&bytes[STORE_PREFIX..data_off]) {
+        Ok(f) => f,
+        Err(_) => return Store::empty(),
+    };
+    Store { bytes, data_off, files }
+}
+
+fn save_store(path: &Path, files: &HashMap<String, Entry>, data: &[u8]) -> Result<(), Box<dyn Error>> {
+    let header = serde_json::to_vec(files)?;
+    let mut buf = Vec::with_capacity(STORE_PREFIX + header.len() + data.len());
+    buf.extend_from_slice(&STORE_MAGIC);
+    buf.extend_from_slice(&STORE_VERSION.to_le_bytes());
+    buf.extend_from_slice(&(header.len() as u32).to_le_bytes());
+    buf.extend_from_slice(&header);
+    buf.extend_from_slice(data);
+    let dir = path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+    fs::create_dir_all(&dir)?;
+    let tmp = dir.join(format!(
+        ".{}.tmp",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("pidx-state")
+    ));
+    fs::write(&tmp, &buf)?;
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------- walk
 
 fn discover(sessions_dir: &Path, now_ms: u128) -> (Vec<(PathBuf, String, u128)>, Vec<String>) {
@@ -560,41 +644,36 @@ fn main() -> Result<(), Box<dyn Error>> {
         .unwrap_or(0);
     let t0 = std::time::Instant::now();
 
-    let mut state: Map<String, Value> = fs::read_to_string(&state_path)
-        .ok()
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-        .and_then(|v| v.get("files").and_then(Value::as_object).cloned())
-        .unwrap_or_default();
+    let store = load_store(&state_path);
 
     let (found, excluded) = discover(&sessions_dir, now_ms);
     let found: Vec<(PathBuf, String, u128)> = found.into_iter().take(max).collect();
-    let selected: std::collections::HashSet<String> =
-        found.iter().map(|(p, _, _)| p.to_string_lossy().to_string()).collect();
 
-    // classify: reuse vs parse
-    let mut to_parse: Vec<(PathBuf, String)> = Vec::new();
+    // classify: reuse (fresh cache range) vs parse
+    let mut to_parse: Vec<(String, PathBuf, String, FileId)> = Vec::new();
     let mut reused = 0usize;
     for (path, proj, _) in &found {
         let key = path.to_string_lossy().to_string();
         let id = stat_id(path);
-        let cached = if force { None } else { state.get(&key) };
-        let fresh = id
-            .zip(cached)
-            .filter(|(fid, c)| {
-                c.get("size") == Some(&json!(fid.size)) && c.get("mtime_ns") == Some(&json!(fid.mtime_ns))
-            })
-            .map(|(_, c)| c);
+        let cached = if force { None } else { store.files.get(&key).copied() };
+        let fresh = id.zip(cached).filter(|(fid, e)| {
+            e.size == fid.size
+                && e.mtime_ns == fid.mtime_ns
+                && (e.off + e.len) as usize <= store.data_len()
+        });
         match fresh {
-            Some(c) => {
-                reused += 1;
-                state.insert(key, c.clone());
-            }
-            None => to_parse.push((path.clone(), proj.clone())),
+            Some(_) => reused += 1,
+            None => to_parse.push((
+                key.clone(),
+                path.clone(),
+                proj.clone(),
+                id.unwrap_or(FileId { size: 0, mtime_ns: 0 }),
+            )),
         }
     }
 
     // parse changed files on N threads
-    let chunks: Vec<Vec<(PathBuf, String)>> = split_chunks(to_parse, std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4));
+    let chunks = split_chunks(to_parse, std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4));
     let mut parsed: Vec<(String, FileId, Value)> = Vec::new();
     std::thread::scope(|scope| {
         let handles: Vec<_> = chunks
@@ -603,12 +682,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 scope.spawn(move || {
                     chunk
                         .into_iter()
-                        .filter_map(|(path, proj)| {
-                            let key = path.to_string_lossy().to_string();
-                            let id = stat_id(&path)?;
-                            let extract = extract_file(&path, &proj);
-                            Some((key, id, extract))
-                        })
+                        .map(|(key, path, proj, id)| (key, id, extract_file(&path, &proj)))
                         .collect::<Vec<_>>()
                 })
             })
@@ -617,48 +691,55 @@ fn main() -> Result<(), Box<dyn Error>> {
             parsed.extend(h.join().unwrap_or_default());
         }
     });
-    parsed.sort_by(|a, b| found.iter().position(|(p, _, _)| p.to_string_lossy() == a.0).unwrap_or(usize::MAX)
-        .cmp(&found.iter().position(|(p, _, _)| p.to_string_lossy() == b.0).unwrap_or(usize::MAX)));
+    let parsed_map: HashMap<String, (FileId, Value)> =
+        parsed.into_iter().map(|(k, i, v)| (k, (i, v))).collect();
 
-    // emit + update state in newest-first order
+    // When every found session is fresh and the store holds no extra keys, the
+    // stored data is already exactly what we emit — skip rebuilding and rewriting.
+    let needs_write = !parsed_map.is_empty() || reused != found.len() || store.files.len() != found.len();
+
     let mut out_writer: Box<dyn Write> = match &out_path {
         Some(p) => Box::new(io::BufWriter::new(fs::File::create(p)?)),
         None => Box::new(io::BufWriter::new(io::stdout().lock())),
     };
-    let parsed_map: HashMap<String, (FileId, Value)> = parsed
-        .into_iter()
-        .map(|(k, i, v)| (k, (i, v)))
-        .collect();
+    // data section for the rewritten store; left empty on a no-op warm run
+    let mut new_data: Vec<u8> = if needs_write {
+        Vec::with_capacity(store.data_len())
+    } else {
+        Vec::new()
+    };
+    let mut new_files: HashMap<String, Entry> = HashMap::with_capacity(found.len());
     let mut emitted = 0usize;
     for (path, _, _) in &found {
         let key = path.to_string_lossy().to_string();
-        if let Some((id, extract)) = parsed_map.get(&key) {
-            state.insert(
-                key.clone(),
-                json!({"size": id.size, "mtime_ns": id.mtime_ns, "session": extract}),
-            );
-        }
-        let line = state
-            .get(&key)
-            .and_then(|c| c.get("session").cloned());
-        if let Some(ex) = line {
-            serde_json::to_writer(&mut out_writer, &ex)?;
+        if let Some((fid, extract)) = parsed_map.get(&key) {
+            // serialize once; same bytes go to output and to the store
+            let off = new_data.len() as u64;
+            serde_json::to_writer(&mut new_data, extract)?;
+            let len = new_data.len() as u64 - off;
+            out_writer.write_all(&new_data[off as usize..])?;
             out_writer.write_all(b"\n")?;
+            new_files.insert(key, Entry { size: fid.size, mtime_ns: fid.mtime_ns, off, len });
+            emitted += 1;
+        } else if let Some(e) = store.files.get(&key).copied() {
+            let bytes = store.extract(&e);
+            out_writer.write_all(bytes)?;
+            out_writer.write_all(b"\n")?;
+            if needs_write {
+                let off = new_data.len() as u64;
+                new_data.extend_from_slice(bytes);
+                let len = new_data.len() as u64 - off;
+                new_files.insert(key, Entry { size: e.size, mtime_ns: e.mtime_ns, off, len });
+            }
             emitted += 1;
         }
     }
     out_writer.flush()?;
 
-    // prune deleted/unsampled paths, persist state atomically
-    state.retain(|k, _| selected.contains(k));
-    let state_dir = state_path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
-    fs::create_dir_all(&state_dir)?;
-    let tmp = state_dir.join(format!(
-        ".{}.tmp",
-        state_path.file_name().and_then(|n| n.to_str()).unwrap_or("pidx-state")
-    ));
-    fs::write(&tmp, serde_json::to_string(&json!({"version": 1, "files": state}))?)?;
-    fs::rename(&tmp, &state_path)?;
+    // persist store atomically (single file → header offsets stay consistent)
+    if needs_write {
+        save_store(&state_path, &new_files, &new_data)?;
+    }
 
     let summary = json!({
         "sessions": emitted,
