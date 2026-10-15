@@ -1,6 +1,6 @@
 # S5 — Edit-Validation Hardening: Design Spec
 
-Status: **spec'd** (implementation plan → `2026-10-16-s5-edit-hardening-plan.md`)
+Status: **done** (implementation 2026-10-16; plan → `2026-10-16-s5-edit-hardening-plan.md`; outcome in `MASTER.md` §7)
 Created: 2026-10-16
 Parent: `docs/specs/MASTER.md` §3 (S5). Feedback basis: MASTER §1.2 P1 (edit validation resistant to stale/ambiguous context), §1.3 (`edit`: optimize correctness first — exact matching, ambiguity rejection, stale-file checks matter more than raw speed), §1.4B (policy/correctness separation), roadmap phase 2.
 Decisions (documented rationale in §5–§7; flagged for user review at the review gate):
