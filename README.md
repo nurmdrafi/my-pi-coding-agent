@@ -267,9 +267,9 @@ Both keys are identical across machines and live only in `auth.json`. pi also ac
 | `models.json`                           | Custom model definitions                                                                                |
 | `agents/`                               | Subagent definitions (scout/researcher/worker/reviewer)                                                 |
 | `prompts/`                              | Prompt templates (`/issue`: in-context validate→propose→fix; `/ship`: commit+push; `/update-changelog`) |
-| `skills/`                             | All 20 skills (manual, `/skill:name`)                                                                 |
+| `skills/`                             | All 22 skills (manual, `/skill:name`)                                                                 |
 | `extensions/`                           | Always-on extensions (`permission-gate`)                                                                |
-| `tests/`                                | Node test runner suite (`node --test tests/`)                                                           |
+| `tests/`                                | permission-gate unit suite + gate-eval audits (`npm run gate:eval`)                                                           |
 | `.github/workflows/`                    | Release CI/CD (version from CHANGELOG, on push to main)                                                 |
 | `package.json` / `commitlint.config.js` | husky + commitlint: conventional-commit enforcement                                                     |
 | `README.md` / `CHANGELOG.md`            | This file + change log                                                                                  |
@@ -318,7 +318,7 @@ Both keys are identical across machines and live only in `auth.json`. pi also ac
 
 Quality gates in this repo:
 
-- **Tests:** `node --test tests/` (currently covers `permission-gate`)
+- **Tests:** `node --test "tests/**/*.test.mjs"` (permission-gate, 176 cases); `npm run gate:eval` aggregates the fixture suite with the block-recovery and replay audits and prints a final JSON metrics line. Subagent tests: see [Subagents](#subagents).
 - **Conventional commits:** enforced by husky + commitlint on every commit
 - **CI:** [Release workflow](https://github.com/nurmdrafi/my-pi-coding-agent/actions/workflows/release.yml) extracts the version from `CHANGELOG.md` on push to `main`
 

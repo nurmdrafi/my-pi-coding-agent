@@ -7,6 +7,19 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.1] - 15-10-2026
+
+### Changed
+
+- **`skills/llm-instruction-formatter` → `skills/llm-format-checker`** — name now reads as a check/fix tool; invocation `/skill:llm-format-checker`; README roster row and the `skill-manager` auto-apply reference updated. Behavior unchanged.
+- **`skills/rust-skills` layout conformance** — nonstandard `rules/` renamed `references/` per the harness layout contract, and the 265-rule Quick Reference moved out of `SKILL.md` into `references/quick-reference.md`; `SKILL.md` 500 → 160 lines; one mislabeled `bash` fence (DHAT Rust sample) corrected. `validate-skill.mjs` now passes.
+
+### Fixed
+
+- **`mdcmdcheck.mjs` false positives** — optional toolchains the harness documents but does not require (Rust/profile: `cargo`, `rustc`, `perf`, `valgrind`, …) and reference-doc build/example artifacts (`./target/…`) are now info-only; env-assignment parsing is quote/paren aware (`RUSTFLAGS="-C target-cpu=native" cargo …`, `PGO_DIR=…$(date +%s)`); `~`-relative shim paths expand; `audit-reports/` is treated as history; an inline `a|b|c` alternation is no longer read as a pipeline; three reviewed flags are waived. The gate now exits 0.
+- **README test command** — `node --test tests/` (which errors) → `node --test "tests/**/*.test.mjs"`, with `npm run gate:eval` documented as the aggregate; stale "All 20 skills" → 22; mdcmdcheck's info-only behavior noted.
+- **permission-gate tests** — four nested/codemode expectations updated to `blocked` after codemode removal, so the suite reflects uniform enforcement (176/176 pass).
+
 ## [1.39.0] - 15-10-2026
 
 ### Added
