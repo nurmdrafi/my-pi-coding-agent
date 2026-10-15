@@ -116,7 +116,7 @@ S1 gap analysis vs. existing L0/L1: tool latency percentiles (timestamps exist i
 | S1  | Session metrics extraction    | Extend pidx/session-audit with per-task metrics: tool p50/p95 latency, edit-failure rate, repeated-read rate, model calls per task | —        | done | [2026-10-15-s1-metrics-design.md](2026-10-15-s1-metrics-design.md) |
 | S2  | Benchmark task suite          | Versioned, repo-owned task sets + repeatable runs; consumes S1 metrics for comparisons       | S1       | done | [2026-10-15-s2-benchmark-design.md](2026-10-15-s2-benchmark-design.md) |
 | S3  | Doc-consistency validator     | Automated check: skill counts, extension inventory, env-var claims vs. reality              | —        | done | [2026-10-15-s3-doc-check-design.md](2026-10-15-s3-doc-check-design.md) |
-| S4  | Fail-closed security tests    | Adversarial suite for permission-gate: shell chaining, redirects, env expansion, symlinks, TOCTOU, missing handlers | —        | planned | —    |
+| S4  | Fail-closed security tests    | Adversarial suite for permission-gate: shell chaining, redirects, env expansion, symlinks, TOCTOU, missing handlers | —        | spec'd | [2026-10-15-s4-failclosed-design.md](2026-10-15-s4-failclosed-design.md) |
 | S5  | Edit-validation hardening     | Execution-time content checks, stale-read rejection, ambiguous multi-match rejection         | — (S1 metrics prove impact) | planned | —    |
 | S6  | Rust native tool prototype    | One tool (likely `read`) behind the existing interface, benchmarked vs. current              | S1, S2   | planned | —    |
 | S7  | Orchestration tuning          | Evaluate skill routing, tool batching, subagent delegation against baseline                  | S1, S2   | planned | —    |
