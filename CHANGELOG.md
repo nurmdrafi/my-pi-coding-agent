@@ -7,6 +7,22 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.0] - 16-10-2026
+
+### Added
+
+- **Fail-closed security hardening for permission-gate (S4)** — adversarial test families per `docs/specs/2026-10-15-s4-failclosed-design.md`: failure-path (every `pi.on` handler body wrapped — tool_call exceptions now block with a generic internal reason instead of failing open, tool_result exceptions pass through with `console.error`), `ui.confirm === true` strictness (a truthy non-boolean never approves), malformed-input guards (missing/non-string bash command, write/edit/read without a path → explicit block reason, never an analyzer throw). Live-shell canary suite in `tests/permission-gate.test.mjs`: mkdtemp sandbox + fake HOME with byte-compared canaries (`~/.ssh/authorized_keys`, `~/.bashrc`, work file), gate-approved commands execute headless, a runner-side hard net (unit-asserted) refuses system paths/sudo/network/push without executing — sabotage smoke (pipe-to-shell fix reverted) goes red and destroys only the sandbox canary. TOCTOU/symlink/spill lock-ins: decision-time re-stat, verbatim approve-window keying, `ln -s canary && rm link`, hostile toolCallId spill sanitization.
+- **Destructive-classification evasion lanes closed (fixtures 54 → 92, `new_fail: 0`)** — transparent prefixes (`env|command|exec|nohup|timeout N|nice [-n N] rm …`) stripped in `normalizeSegment` to a fixpoint; `$VAR`/`${VAR}` command words confirm (position-anchored, so `$arg` expansions stay allowed); pipe-to-interpreter (`… | sh|bash|zsh|dash|ksh`) blocks; persistence redirects and tee targets (`> ~/.bashrc`, `>> ~/.ssh/authorized_keys`, `tee -a ~/.profile`) block against a new exported `PROTECTED_PREFIX_RE` (rc files, `~/.ssh/`, `~/.gnupg/`, `~/.config/systemd/`, `/etc`, `/usr`, `/var`, `/boot`, `/root` — rebuilt when `os.homedir()` changes); write/edit into symlink-resolved protected paths runs the same H2 approval ladder (chat approval → dialog → fail closed). Interpreter escapes (`perl -e`/`node -e`/`python3 -c`/awk `system()`), homoglyphs, `eval` of base64 payloads, and alias indirection are encoded as `?` known-bug fixtures — the documented tripwire boundary (`known_bug_fail: 7`).
+
+### Fixed
+
+- **permission-gate destructive block reason diet-cap overflow** — commands ≥ 35c produced a 220c+ reason; the command slice is now clamped so the reason always fits the 220c budget (surfaced by the new `ln -s canary && rm link` lock-in).
+- **`tests/gate.eval.mjs` destructive-family fixtures** now run headless (`{hasUI:false}`) — the auto-approving stub ctx previously masked H2 block assertions in the fixture runner.
+
+### Unchanged
+
+- Replay metrics flat vs. pre-S4 baseline: `tokens_per_task` 297 → 297, `fp_rate` 0.0339 → 0.0335, blocked 294 → 294 (no collateral blocks); `tests/permission-gate.test.mjs` 176 → 204 cases, all green.
+
 ## [1.39.1] - 15-10-2026
 
 ### Added

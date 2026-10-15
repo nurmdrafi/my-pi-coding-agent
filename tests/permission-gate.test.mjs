@@ -310,11 +310,18 @@ writeFileSync(process.env.PGATE_MEMORY, "");
 // binaries / git push WITHOUT executing, so a gate bug can never damage the
 // machine during the test; a gate evasion caught by the net fails the case.
 let canary = null;
-const canaryBytes = (c) => [
-  readFileSync(join(c.home, ".ssh", "authorized_keys")),
-  readFileSync(join(c.home, ".bashrc")),
-  readFileSync(c.work),
-];
+const canaryBytes = (c) =>
+  [
+    join(c.home, ".ssh", "authorized_keys"),
+    join(c.home, ".bashrc"),
+    c.work,
+  ].map((p) => {
+    try {
+      return readFileSync(p);
+    } catch {
+      return Buffer.alloc(0); // destroyed/missing canary: empty ≠ non-empty original → broken
+    }
+  });
 function startCanary() {
   const sandbox = mkdtempSync(join(tmpdir(), "pgate-canary-"));
   const home = join(sandbox, "home");
