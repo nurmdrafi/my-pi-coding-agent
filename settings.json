@@ -5,6 +5,10 @@
   "defaultProvider": "zai",
   "defaultModel": "glm-5.3",
   "defaultThinkingLevel": "high",
+  "modelThinkingLevels": {
+    "deepseek/deepseek-flash": "off",
+    "deepseek/deepseek-v4-pro": "off"
+  },
   "hideThinkingBlock": true,
   "compaction": {
     "enabled": true,
