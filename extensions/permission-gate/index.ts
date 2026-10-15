@@ -33,11 +33,12 @@ import {
   appendFileSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   writeFileSync,
 } from "fs";
 import { readFile } from "fs/promises";
-import { dirname, join } from "path";
+import { basename, dirname, join } from "path";
 
 import { toLF, validateEditAnchors } from "./anchor-guard.ts";
 import { capBashOutput } from "./bash-cap.ts";
@@ -45,6 +46,7 @@ import { scrubBashText } from "./output-scrub.ts";
 import {
   APPROVED_WINDOW_MS,
   APPROVAL_RE,
+  PROTECTED_PREFIX_RE,
   isMutatingCommand,
   normalizeSegment,
   segmentDestructive,
@@ -318,6 +320,78 @@ export default function (pi: ExtensionAPI) {
   // /handoff, replaces the session in-process) — injection stays suppressed for
   // the replacement session; accepted for now, name documents the scope
   let memoryInjectedThisProcess = false;
+
+  // ---- S4 (2026-10-15, spec §6.8): write/edit protected-path confirm ----
+  /** realpath the write/edit target (missing leaf → realpath the parent and
+   * rejoin the basename — the common create-through-symlink case); returns
+   * the H2 confirm subject when it lands in a protected tree, else undefined */
+  const protectedPathReason = (
+    tool: string,
+    abs: string,
+  ): string | undefined => {
+    if (!abs) return undefined;
+    let real = abs;
+    try {
+      real = realpathSync(abs);
+    } catch {
+      try {
+        real = join(realpathSync(dirname(abs)), basename(abs));
+      } catch {
+        return undefined; // unresolvable — the tool's own error handles it
+      }
+    }
+    return PROTECTED_PREFIX_RE.test(real)
+      ? `${tool} '${abs.slice(0, 28)}' → protected (symlink-resolved) and`
+      : undefined;
+  };
+  /** H2 approval ladder, shared by destructive bash segments and the S4
+   * fix 8 write/edit protected-path confirm: chat approval (promptApproves)
+   * → remembered verbatim approval (2 min) → UI dialog with timeout (S-3) →
+   * fail closed. Returns undefined = allowed; otherwise the block reason. */
+  const confirmDestructive = async (
+    key: string,
+    subject: string,
+    ctx:
+      | {
+          hasUI?: boolean;
+          ui?: { confirm(t: string, m: string): Promise<boolean> };
+        }
+      | undefined,
+  ): Promise<string | undefined> => {
+    if (promptApproves) return undefined;
+    if (
+      lastApprovedDestructive &&
+      lastApprovedDestructive.cmd === key &&
+      Date.now() - lastApprovedDestructive.ts < APPROVED_WINDOW_MS
+    )
+      return undefined;
+    let approved = false;
+    if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
+      const t = Number(process.env.PGATE_CONFIRM_TIMEOUT_MS);
+      const ms = Number.isFinite(t) && t > 0 ? t : 120_000;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        approved =
+          (await Promise.race([
+            ctx.ui.confirm("Allow destructive command?", key),
+            new Promise<boolean>((r) => {
+              timer = setTimeout(() => r(false), ms);
+            }),
+          ])) === true; // S4 fix 2: strict boolean — truthy non-booleans never approve
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+    if (approved) {
+      lastApprovedDestructive = { cmd: key, ts: Date.now() };
+      return undefined;
+    }
+    return (
+      `Permission Gate (Destructive): ${subject} needs the user's approval ` +
+      `first — ${ctx?.hasUI ? "the user declined" : "no chat approval, no confirm dialog"}; ask in chat and wait. Never run it unprompted.`
+    );
+  };
+
   on("before_agent_start", (event) => {
     if (memoryInjectedThisProcess) return; // once per process — per-run re-entry must not stack copies
     memoryInjectedThisProcess = true;
@@ -389,6 +463,14 @@ export default function (pi: ExtensionAPI) {
           "Permission Gate (Malformed): edit call has no path string — re-send the tool call with input.path.",
         );
       const path = normPath(event.input.path, ctx?.cwd);
+      // S4 fix 8: symlink-resolved protected targets confirm through the
+      // same H2 ladder as destructive bash — a write into <fake-home>/.ssh
+      // via an in-cwd link must never land silently
+      const prot = protectedPathReason("edit", path);
+      if (prot) {
+        const r = await confirmDestructive(`edit:${path}`, prot, ctx);
+        if (r) return blockCall(r);
+      }
       const checked = await validateEditAnchors(event.input, ctx?.cwd);
       if (checked && "block" in checked) return blockCall(checked.reason);
       pendingEdits.set(event.toolCallId, {
@@ -480,6 +562,12 @@ export default function (pi: ExtensionAPI) {
           "Permission Gate (Malformed): write call has no path string — re-send the tool call with input.path.",
         );
       const path = normPath(event.input.path, ctx?.cwd);
+      // S4 fix 8: same symlink-resolved protected-path confirm as edit
+      const prot = protectedPathReason("write", path);
+      if (prot) {
+        const r = await confirmDestructive(`write:${path}`, prot, ctx);
+        if (r) return blockCall(r);
+      }
       // whole file content is in context after a write — every window overlaps it
       pendingEdits.set(event.toolCallId, {
         path,
@@ -553,45 +641,20 @@ export default function (pi: ExtensionAPI) {
     // approval was previously unwired: the dialog double-asked in UI mode and
     // headless was unwinnable), else the UI confirm dialog, else fail CLOSED,
     // teaching the model to ask in chat and wait (suite t08/t09: 6/6 without).
-    if (
-      normSegs.some(segmentDestructive) &&
-      !promptApproves &&
-      !(
-        lastApprovedDestructive &&
-        lastApprovedDestructive.cmd === cmd &&
-        Date.now() - lastApprovedDestructive.ts < APPROVED_WINDOW_MS
-      )
-    ) {
-      let approved = false;
-      if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
-        // S-3 (2026-10-09, /ship-flow autoresearch): a dialog that never
-        // surfaces (lost focus, dropped RPC client) must not freeze the
-        // agent — decline after PGATE_CONFIRM_TIMEOUT_MS (default 120 s);
-        // the block reason then tells the model to ask in chat and wait.
-        const t = Number(process.env.PGATE_CONFIRM_TIMEOUT_MS);
-        const ms = Number.isFinite(t) && t > 0 ? t : 120_000;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        try {
-          approved =
-            (await Promise.race([
-              ctx.ui.confirm("Allow destructive command?", cmd),
-              new Promise<boolean>((r) => {
-                timer = setTimeout(() => r(false), ms);
-              }),
-            ])) === true; // S4 fix 2 (2026-10-15): strict boolean — a truthy
-          // non-boolean ("yes") must never approve destructive work
-        } finally {
-          if (timer) clearTimeout(timer);
-        }
-      }
-      if (approved) {
-        lastApprovedDestructive = { cmd, ts: Date.now() };
-      } else {
-        return blockCall(
-          `Permission Gate (Destructive): '${cmd.slice(0, 60)}' mutates files, deps, or history and needs the user's approval ` +
-            `first — ${ctx?.hasUI ? "the user declined" : "no chat approval, no confirm dialog"}; ask in chat and wait. Never run it unprompted.`,
-        );
-      }
+    // H2 (2026-10-08): destructive/mutating commands need explicit user
+    // approval — AFTER lint and self-modify (never ask permission for a
+    // command commitlint will reject anyway) and BEFORE R10. Approval order:
+    // chat approval → remembered verbatim → UI confirm dialog → fail CLOSED.
+    // S4 (2026-10-15): ladder extracted into confirmDestructive(), shared
+    // with the write/edit protected-path confirm (fix 8); strict `=== true`
+    // approval (fix 2) lives there.
+    if (normSegs.some(segmentDestructive)) {
+      const r = await confirmDestructive(
+        cmd,
+        `'${cmd.slice(0, 60)}' mutates files, deps, or history and`,
+        ctx,
+      );
+      if (r) return blockCall(r);
     }
 
     // R10 (2026-10-06 audit; rekeyed 2026-10-07): identical re-run guard — the
