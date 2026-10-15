@@ -1,0 +1,6 @@
+{
+  "id": "test-repair/t1",
+  "class": "test-repair",
+  "title": "Repair the broken case-conversion tests",
+  "prompt": "The production source src/case.js is correct and must not be touched. The test file src/case.test.js is broken: one test asserts the wrong expected value, and another calls the wrong function for what it claims to check. Repair the tests so they correctly verify the documented behavior of camel() and kebab() and every test passes. Do not modify anything under src/ except the test file itself."
+}

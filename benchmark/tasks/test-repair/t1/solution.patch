@@ -1,0 +1,17 @@
+diff --git a/src/case.test.js b/src/case.test.js
+index a366dd7..f4a85d7 100644
+--- a/src/case.test.js
++++ b/src/case.test.js
+@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
+ import { camel, kebab } from '../src/case.js';
+ 
+ test('camel joins segments and keeps the first lowercase', () => {
+-  assert.equal(camel('hello-world'), 'HelloWorld');
++  assert.equal(camel('hello-world'), 'helloWorld');
+   assert.equal(camel('a-b-c'), 'aBC');
+ });
+ 
+ test('kebab hyphenates capital letters', () => {
+-  assert.equal(camel('myToolName'), 'my-tool-name');
++  assert.equal(kebab('myToolName'), 'my-tool-name');
+ });
