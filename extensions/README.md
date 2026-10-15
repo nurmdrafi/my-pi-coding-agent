@@ -54,7 +54,7 @@ State (per extension instance): `coverage` (path → merged span union + last ki
 - Strict typecheck against the installed package's types (`npx tsc --noEmit --strict` with a `paths` mapping to the global `@earendil-works/pi-coding-agent/dist/index.d.ts` — the global path is machine-specific).
 - `permission-gate` fixture test: `node tests/permission-gate.test.mjs` — 166 black-box cases through a stubbed ExtensionAPI (exit 0 = pass; preflight symlinks the global package into the gitignored root `node_modules`).
 - `node tests/block-recovery-audit.mjs` — re-measures what the model does after blocks (families, message sizes, one-shot recovery) over logged sessions; exits 1 below 85% recovery on a ≥10-block sample. Run after every permission-gate change.
-- `node skills/harness-engineer/scripts/mdcmdcheck.mjs` must exit 0 (validates every command/path this README declares).
+- `npm run doc:check` must exit 0 (validates every command/path this README declares).
 - Restart pi to load changes; watch the first few tool calls — a misfiring rule shows up immediately as a block.
 
 ## Adding a new extension

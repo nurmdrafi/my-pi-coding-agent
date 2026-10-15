@@ -5,7 +5,8 @@
  "scripts": {
   "prepare": "husky",
   "typecheck": "node scripts/link-pi.mjs && tsc -p tsconfig.json",
-  "gate:eval": "node scripts/gate-eval.mjs"
+  "gate:eval": "node scripts/gate-eval.mjs",
+  "doc:check": "node scripts/doc-check.mjs"
  },
  "devDependencies": {
   "@commitlint/cli": "^19.6.1",

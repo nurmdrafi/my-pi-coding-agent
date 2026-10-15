@@ -27,9 +27,9 @@ Read only the reference the current phase needs — not all three.
 6. **Validation gate — mandatory after every create/modify, no exceptions:**
    ```bash
    node ~/.pi/agent/skills/skill-manager/scripts/validate-skill.mjs <skill-dir>  # loop until exit 0
-   node ~/.pi/agent/skills/harness-engineer/scripts/mdcmdcheck.mjs              # if commands/paths changed
+   cd ~/.pi/agent && npm run doc:check                                          # if commands/paths changed
    ```
-   Fix + re-run until exit 0 — "should be fine" ≠ validation. Validator encodes Agent Skills spec checks + layout, XML-tag, reserved-word, vagueness rules; mdcmdcheck verifies every command declared in skill markdown resolves (binaries, flags, script paths).
+   Fix + re-run until exit 0 — "should be fine" ≠ validation. Validator encodes Agent Skills spec checks + layout, XML-tag, reserved-word, vagueness rules; doc-check verifies every command declared in skill markdown resolves (binaries, flags, script paths).
 7. Pi picks up new/changed skills at startup or `/reload` — confirm skill loads: invoke `/skill:name`, or after a session that used it run `bash ~/.pi/agent/skills/session-audit/scripts/skillcheck.sh <name>`. Skill missing from system prompt after reload = frontmatter failed to parse.
 
 ## Checklist before finishing
@@ -37,5 +37,5 @@ Read only the reference the current phase needs — not all three.
 - [ ] `name` matches directory; `description` ≤1024 chars, third person: what + triggers + when + NOT-for
 - [ ] Body tight; long material split to `references/` (or `scripts/`/`assets/` by content type), linked one level deep
 - [ ] Anti-pattern gate clean (`references/anti-patterns.md`): no rituals, boosters, stale examples, contradictions, dated configs
-- [ ] Validator exit 0 (re-run after every fix); mdcmdcheck clean if commands/paths changed
+- [ ] Validator exit 0 (re-run after every fix); doc-check clean if commands/paths changed
 - [ ] After `/reload`, skill loads (`/skill:name` responds or skillcheck.sh confirms a read)

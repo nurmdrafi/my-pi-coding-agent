@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// mdcmdcheck v2 — validate shell commands declared in markdown fenced code blocks.
+// doc-check (mdcmdcheck v2 core) — validate shell commands declared in markdown fenced code blocks.
 // v2: quote-aware segmenting, backslash-continuation joining, flag-check keyed on
 // bin+subcommand, interpreters exempt from flag checks, relative scripts checked
 // for existence against the md file's dir + repo root.
@@ -13,8 +13,8 @@ import { join, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-// repo root = 3 levels up from skills/harness-engineer/scripts/mdcmdcheck.mjs — portable, no absolute paths
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+// repo root = 1 level up from scripts/doc-check.mjs — portable, no absolute paths
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SHELL_LANGS = new Set(['sh', 'bash', 'shell', 'console', 'zsh']);
 const BUILTINS = new Set(['echo','cd','printf','export','set','unset','source','alias','local','return','exit','read','test','[','eval','true','false','pwd','shift','command','type','wait','trap','umask','pushd','popd','dirs','hash','let','declare','readonly','getopts','shopt','ulimit','jobs','fg','bg','kill','times','break','continue','then','else','fi','do','done','if','while','for','until','case','esac','function','in','select','time','coproc','exec']);
 const INTERPRETERS = new Set(['node','npm','npx','python','python3','bash','sh','env','deno','bun']); // flags belong to scripts/subcommands we can't introspect
