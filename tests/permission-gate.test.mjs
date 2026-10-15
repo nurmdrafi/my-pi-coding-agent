@@ -513,18 +513,18 @@ const cases = [
     "pass",
     async (pi) => bash(pi, "sleep 1; rm -f /tmp/x"),
   ],
-  // ---- nested (codemode) sub-calls: context-premise rules exempt, safety rules stay ----
+  // ---- nested (codemode) sub-calls: codemode removed, all rules apply uniformly ----
   [
-    "nested identical re-run passes (codemode batch)",
-    "pass",
+    "nested identical re-run is enforced like a top-level call",
+    "blocked",
     async (pi) => {
       await runBash(pi, "echo NESTED-AB-PROBE one");
       return nestedBash(pi, "echo NESTED-AB-PROBE one");
     },
   ],
   [
-    "nested run does not arm R10 for a model-issued re-run",
-    "pass",
+    "nested calls arm R10 for a model-issued re-run",
+    "blocked",
     async (pi) => {
       await nestedBash(pi, "echo NESTED-ARM-PROBE two");
       return bash(pi, "echo NESTED-ARM-PROBE two");
@@ -536,8 +536,8 @@ const cases = [
     async (pi) => nestedBash(pi, 'git commit -m "Fix the thing"'),
   ],
   [
-    "nested unscoped recursive grep passes (script filters output)",
-    "pass",
+    "nested unscoped recursive grep is search-guard blocked",
+    "blocked",
     async (pi) => nestedBash(pi, "grep -rn 'permission' ."),
   ],
   [
@@ -546,8 +546,8 @@ const cases = [
     async (pi) => nestedBash(pi, "grep -r webpack node_modules/ | head -3"),
   ],
   [
-    "nested big whole-file read passes (R1b exempt)",
-    "pass",
+    "nested big whole-file read is R1b blocked",
+    "blocked",
     async (pi) =>
       pi.invoke("tool_call", {
         type: "tool_call", toolName: "read", toolCallId: `cm0/${++seqId}`, parentToolCallId: "cm0",
