@@ -11,7 +11,9 @@ description: >
 
 # Pidoctor
 
-One deterministic script, zero network, macOS + Linux.
+One deterministic script, zero network, macOS + Linux. Also invoked
+automatically on every `git pull` by `scripts/after-pull.sh` (husky
+`post-merge`/`post-rewrite`) with `--fix`.
 
 1. Run `node ~/.pi/agent/skills/pi-doctor/scripts/pidoc.mjs`.
 2. Report the table as-is (path-style citation, no restating rows).
