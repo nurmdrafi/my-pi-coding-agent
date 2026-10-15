@@ -5,7 +5,7 @@
   "defaultProvider": "zai",
   "defaultModel": "glm-5.3",
   "defaultThinkingLevel": "low",
-  "hideThinkingBlock": true,
+  "hideThinkingBlock": "high",
   "compaction": {
     "enabled": true,
     "midTurnEnabled": true,
