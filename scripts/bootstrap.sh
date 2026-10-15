@@ -6,6 +6,7 @@
 # Does:  npm deps + pi package links, pidoc shim into bin/, pidx build when
 #        cargo exists. Never installs anything itself — prints the exact
 #        commands and exits when a toolchain is missing (ask-first rule).
+# After this, `git pull` re-syncs via .husky/post-merge → scripts/after-pull.sh.
 set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
