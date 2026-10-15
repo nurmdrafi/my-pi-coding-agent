@@ -651,7 +651,7 @@ export default function (pi: ExtensionAPI) {
     if (normSegs.some(segmentDestructive)) {
       const r = await confirmDestructive(
         cmd,
-        `'${cmd.slice(0, 60)}' mutates files, deps, or history and`,
+        `'${cmd.slice(0, 33)}' mutates files, deps, or history and`, // 33c clamp: reason stays ≤ the 220c diet cap for any cmd length
         ctx,
       );
       if (r) return blockCall(r);
