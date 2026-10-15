@@ -65,7 +65,7 @@ import {
   normPath,
   snapshot,
 } from "./read-coverage.ts";
-import type { CoverKind, LineSpan } from "./read-coverage.ts";
+import type { CoverageEntry, LineSpan } from "./read-coverage.ts";
 import { toolchainCheck } from "./toolchain.ts";
 import { nodeModulesPath, searchCheck } from "./search-guard.ts";
 
@@ -117,14 +117,7 @@ export default function (pi: ExtensionAPI) {
    * process restart; edits clear the path (span derivation needs anchor
    * validation — skipping only loses savings, never adds a false block).
    */
-  const coverage = new Map<
-    string,
-    {
-      spans: LineSpan[];
-      kind: CoverKind;
-      stat?: { mtimeMs: number; size: number };
-    }
-  >();
+  const coverage = new Map<string, CoverageEntry>();
   /** edit/write toolCallId -> { path, spans?, kind }, awaiting its tool_result */
   const pendingEdits = new Map<
     string,

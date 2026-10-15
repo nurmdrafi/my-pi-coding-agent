@@ -50,6 +50,7 @@ if (!existsSync(join(pkgLink, "package.json"))) {
 }
 
 const gate = await import("../extensions/permission-gate/index.ts");
+const rc = await import("../extensions/permission-gate/read-coverage.ts"); // S5: hash plumbing units
 
 // ---- stubbed ExtensionAPI + event replay ----
 
@@ -2738,6 +2739,72 @@ const cases = [
       } finally {
         stopCanary();
       }
+    },
+  ],
+
+  // ---- S5 (2026-10-16) edit-validation hardening (spec §9) ----
+  // Step 1: hash plumbing in read-coverage — pure units, no behavior change
+  [
+    "S5 hash: hashText is deterministic sha256-16 of content",
+    "pass",
+    async () => {
+      const a = rc.hashText("hello\nworld\n");
+      const b = rc.hashText("hello\nworld\n");
+      const c = rc.hashText("hello\nworld!");
+      return a === b && a !== c && a === "4a1e67f2fe1d1cc7"
+        ? { blocked: false }
+        : { blocked: true, reason: `hashText: ${a} / ${b} / ${c}` };
+    },
+  ],
+  [
+    "S5 hash: hashFile returns undefined on ENOENT",
+    "pass",
+    async () => {
+      const h = await rc.hashFile(join(tmp, "no-such-file-s5"));
+      return h === undefined
+        ? { blocked: false }
+        : { blocked: true, reason: `ENOENT hashed to ${h}` };
+    },
+  ],
+  [
+    "S5 hash: hashFile matches hashText at the 1 MiB cap, undefined above",
+    "pass",
+    async () => {
+      const MIB = 1024 * 1024;
+      const atCap = join(tmp, "s5-cap.bin");
+      writeFileSync(atCap, "a".repeat(MIB));
+      const overCap = join(tmp, "s5-over.bin");
+      writeFileSync(overCap, "a".repeat(MIB + 1));
+      const hAt = await rc.hashFile(atCap);
+      const hOver = await rc.hashFile(overCap);
+      const expect = rc.hashText("a".repeat(MIB));
+      return hAt === expect && hOver === undefined
+        ? { blocked: false }
+        : { blocked: true, reason: `cap boundary: at=${hAt} over=${hOver} expect=${expect}` };
+    },
+  ],
+  [
+    "S5 hash: certify stores hash (and stat) on the coverage entry",
+    "pass",
+    async () => {
+      const cov = new Map();
+      rc.certify(cov, "/s5/x", { start: 1, end: 5 }, "read", { mtimeMs: 1, size: 2 }, "deadbeefdeadbeef");
+      const e = cov.get("/s5/x");
+      return e && e.hash === "deadbeefdeadbeef" && e.stat && e.stat.mtimeMs === 1 && e.stat.size === 2
+        ? { blocked: false }
+        : { blocked: true, reason: `entry: ${JSON.stringify(e)}` };
+    },
+  ],
+  [
+    "S5 hash: certify without hash leaves entry hash unset",
+    "pass",
+    async () => {
+      const cov = new Map();
+      rc.certify(cov, "/s5/y", { start: 1, end: 5 }, "read");
+      const e = cov.get("/s5/y");
+      return e && e.hash === undefined
+        ? { blocked: false }
+        : { blocked: true, reason: `entry: ${JSON.stringify(e)}` };
     },
   ],
 ];

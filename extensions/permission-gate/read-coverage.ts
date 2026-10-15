@@ -4,7 +4,8 @@
  * stat-based (mtime+size) — external changes are caught by stat, not guessed
  * from bash command text. */
 import { homedir } from "os";
-import { stat } from "fs/promises";
+import { readFile, stat } from "fs/promises";
+import { createHash } from "crypto";
 import { join, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -15,6 +16,38 @@ export interface LineSpan {
 }
 
 export type CoverKind = "read" | "edit" | "write" | "inject";
+
+/** a coverage entry: certified span union + the stat/hash the content was
+ * certified against (S5 M3: hash closes the same-stat drift tail) */
+export interface CoverageEntry {
+  spans: LineSpan[];
+  kind: CoverKind;
+  stat?: { mtimeMs: number; size: number };
+  hash?: string;
+}
+
+/** sha256 of content, truncated to 16 hex — S5 M3 chain token. Mutation
+ * points only (never the read hot path — spec §5.3), so 16 hex (64 bits)
+ * makes an accidental collision impossible for any real adversary. */
+export function hashText(text: string): string {
+  return createHash("sha256").update(text).digest("hex").slice(0, 16);
+}
+
+/** hash of file content, undefined when missing/unreadable or above the
+ * 1 MiB cap (hashing multi-MB files on a mutation boundary costs more than
+ * the same-stat tail it closes — stat-only there, spec §5.3) */
+export const HASH_CAP_BYTES = 1024 * 1024;
+export async function hashFile(
+  key: string,
+): Promise<string | undefined> {
+  try {
+    const s = await stat(key);
+    if (s.size > HASH_CAP_BYTES) return undefined;
+    return hashText(await readFile(key, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
 
 /** absolute map key mirroring pi's own tool path resolution (utils/paths.js:
  * expandPath/resolveToCwd): unicode-space fold, leading-@ strip, ~ and file://
@@ -54,18 +87,12 @@ export async function snapshot(
 
 /** add a certified span to a path's union (sorted, overlap/adjacency-merged) */
 export function certify(
-  coverage: Map<
-    string,
-    {
-      spans: LineSpan[];
-      kind: CoverKind;
-      stat?: { mtimeMs: number; size: number };
-    }
-  >,
+  coverage: Map<string, CoverageEntry>,
   key: string,
   span: LineSpan,
   kind: CoverKind,
   statSnap?: { mtimeMs: number; size: number },
+  hash?: string,
 ): void {
   const spans = [...(coverage.get(key)?.spans ?? []), span].sort(
     (a, b) => a.start - b.start,
@@ -81,6 +108,7 @@ export function certify(
     spans: merged,
     kind,
     stat: statSnap ?? coverage.get(key)?.stat,
+    hash: hash ?? coverage.get(key)?.hash,
   });
 }
 
