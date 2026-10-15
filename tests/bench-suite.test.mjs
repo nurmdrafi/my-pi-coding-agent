@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadArms, getArm, discoverTasks, getTask } from '../benchmark/lib/manifests.mjs';
 import { newRunId, prepareWorkdir } from '../benchmark/lib/workdir.mjs';
+import { runValidator } from '../benchmark/lib/validate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BENCH = join(HERE, '..', 'benchmark');
@@ -173,4 +174,47 @@ test('start: unknown arm → exit 1, {error} JSON stderr (spec §10)', () => {
     '--tasks-dir', synTasksRoot(), '--runs-root', tmp());
   assert.equal(r.status, 1);
   assert.ok(JSON.parse(r.stderr).error.includes('unknown arm'));
+});
+
+// ---------------------------------------------------------------- validator runner (Step 5)
+
+/** Prepared workdir for task-syn, optionally with solution.patch applied. */
+const synWorkdir = (patched) => {
+  const runsRoot = tmp();
+  const { workDir } = prepareWorkdir(SYN, runsRoot);
+  if (patched) {
+    const r = spawnSync('git', ['-C', workDir, 'apply', join(SYN, 'solution.patch')]);
+    assert.equal(r.status, 0, 'solution.patch applied');
+  }
+  return { runsRoot, workDir };
+};
+
+test('validator: pristine workdir → parsed {pass:false, checks[]} (spec §5.2)', () => {
+  const { runsRoot, workDir } = synWorkdir(false);
+  const g = runValidator(SYN, workDir);
+  assert.equal(g.pass, false);
+  assert.ok(Array.isArray(g.checks) && g.checks.length >= 2);
+  assert.ok(g.checks.some((c) => c.name === 'tests-green' && !c.pass));
+  rmSync(runsRoot, { recursive: true, force: true });
+});
+
+test('validator: patched workdir → pass:true', () => {
+  const { runsRoot, workDir } = synWorkdir(true);
+  const g = runValidator(SYN, workDir);
+  assert.equal(g.pass, true);
+  assert.ok(g.checks.every((c) => c.pass));
+  rmSync(runsRoot, { recursive: true, force: true });
+});
+
+test('validator: crashing validator → synthetic validator-crash check (spec §10)', () => {
+  const taskDir = tmp();
+  writeFileSync(join(taskDir, 'validate.mjs'), 'console.error("boom"); process.exit(3);\n');
+  const { runsRoot, workDir } = synWorkdir(false);
+  const g = runValidator(taskDir, workDir);
+  assert.equal(g.pass, false);
+  const crash = g.checks.find((c) => c.name === 'validator-crash');
+  assert.ok(crash && crash.pass === false);
+  assert.match(crash.detail, /boom/);
+  rmSync(taskDir, { recursive: true, force: true });
+  rmSync(runsRoot, { recursive: true, force: true });
 });
