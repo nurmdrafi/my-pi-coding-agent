@@ -13,9 +13,10 @@ use std::process::ExitCode;
 
 mod cli;
 mod envelope;
+mod pipeline;
 
 use cli::{parse_args, Parsed};
-use envelope::{fail_envelope, ErrorKind, Truncation};
+use envelope::{fail_envelope, success_envelope};
 
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
@@ -33,109 +34,33 @@ fn main() -> ExitCode {
             println!("piread {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
-        Ok(Parsed::Run(run)) => match run_pipeline(&run) {
-            Ok((content, truncation, binary, total_bytes)) => {
-                let out = envelope::success_envelope(&content, truncation.as_ref(), binary, total_bytes);
-                println!("{out}");
-                ExitCode::SUCCESS
+        Ok(Parsed::Run(run)) => {
+            let resolved = pipeline::resolve_path(&run.path);
+            match pipeline::read_text(&resolved, &run.path, run.offset, run.limit) {
+                Ok(out) => {
+                    let json = success_envelope(
+                        &out.content,
+                        out.truncation.as_ref(),
+                        out.binary,
+                        out.total_bytes,
+                    );
+                    println!("{json}");
+                    ExitCode::SUCCESS
+                }
+                Err(err) => {
+                    let json = fail_envelope(&err);
+                    println!("{json}");
+                    ExitCode::from(3)
+                }
             }
-            Err(err) => {
-                let out = fail_envelope(&err);
-                println!("{out}");
-                ExitCode::from(3)
-            }
-        },
-    }
-}
-
-/// Placeholder pipeline (Step 1): whole-file lossy read, no slicing yet —
-/// the streaming pipeline (offset/limit, truncateHead parity, binary detect)
-/// lands in Step 2 and replaces this.
-fn run_pipeline(run: &cli::Run) -> Result<(String, Option<Truncation>, bool, u64), ToolError> {
-    let resolved = resolve_path(&run.path);
-    let bytes = read_all(&resolved)?;
-    let total = bytes.len() as u64;
-    let content = String::from_utf8_lossy(&bytes).into_owned();
-    Ok((content, None, false, total))
-}
-
-/// Resolve like the built-in's `resolveToCwd`: `~` expansion, then lexical
-/// normalization against the process cwd. (The built-in's macOS screenshot
-/// filename variants are covered by the extension's fail-open fallback.)
-fn resolve_path(raw: &str) -> String {
-    let expanded = if raw == "~" {
-        std::env::var("HOME").unwrap_or_default()
-    } else if let Some(rest) = raw.strip_prefix("~/") {
-        format!("{}/{}", std::env::var("HOME").unwrap_or_default(), rest)
-    } else {
-        raw.to_string()
-    };
-    if expanded.starts_with('/') {
-        normalize(&expanded)
-    } else {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
-        normalize(&format!("{}/{}", cwd.to_string_lossy(), expanded))
-    }
-}
-
-/// Lexical path cleanup: collapse `//`, `.`, and `..` segments (absolute only).
-fn normalize(abs: &str) -> String {
-    let mut out: Vec<&str> = Vec::new();
-    for seg in abs.split('/') {
-        match seg {
-            "" | "." => {}
-            ".." => {
-                out.pop();
-            }
-            s => out.push(s),
         }
     }
-    format!("/{}", out.join("/"))
 }
 
-fn read_all(resolved: &str) -> Result<Vec<u8>, ToolError> {
-    use std::io::Read;
-    let mut file = std::fs::File::open(resolved).map_err(|e| open_error(e, resolved))?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf).map_err(read_error)?;
-    Ok(buf)
-}
-
-/// Node's `fsPromises.access(path, R_OK)` error messages, byte for byte.
-fn open_error(e: std::io::Error, resolved: &str) -> ToolError {
-    match e.kind() {
-        std::io::ErrorKind::NotFound => ToolError {
-            kind: ErrorKind::Enoent,
-            message: format!("ENOENT: no such file or directory, access '{resolved}'"),
-        },
-        std::io::ErrorKind::PermissionDenied => ToolError {
-            kind: ErrorKind::Eacces,
-            message: format!("EACCES: permission denied, access '{resolved}'"),
-        },
-        _ => generic_io_error(e),
-    }
-}
-
-fn read_error(e: std::io::Error) -> ToolError {
-    if e.kind() == std::io::ErrorKind::IsADirectory {
-        return ToolError {
-            kind: ErrorKind::Eisdir,
-            message: "EISDIR: illegal operation on a directory, read".to_string(),
-        };
-    }
-    generic_io_error(e)
-}
-
-fn generic_io_error(e: std::io::Error) -> ToolError {
-    ToolError {
-        kind: ErrorKind::Io,
-        message: format!("{e}, read"),
-    }
-}
-
-/// Tool-level failure mapped to the JSON envelope (Step 1 stub; full kinds land in Step 2).
+/// Tool-level failure mapped to the JSON envelope.
+#[derive(Debug)]
 pub struct ToolError {
-    pub kind: ErrorKind,
+    pub kind: envelope::ErrorKind,
     pub message: String,
 }
 

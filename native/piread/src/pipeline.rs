@@ -1,0 +1,772 @@
+//! Streaming read pipeline — byte-for-byte parity with the pi built-in `read`
+//! tool's text path (`dist/core/tools/read.js` + `truncate.js`).
+//!
+//! Semantics pinned by the harness oracle suite (`tests/piread-parity.test.mjs`)
+//! and, for the note literals below, by a one-time dump of the built-in tool.
+//!
+//! Memory contract: buffers at most `MAX_BYTES` of decoded output plus the
+//! selection's first line (needed for the firstLineExceedsLimit path); the
+//! rest of the file is scanned (newline counting, binary sniff) without
+//! buffering, so a 1 GiB read costs O(cap) memory like the built-in's caps,
+//! without materializing the whole file.
+
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+
+use crate::envelope::{ErrorKind, Truncation, TruncationKind};
+use crate::ToolError;
+
+/// Built-in caps (`truncate.ts`): DEFAULT_MAX_LINES / DEFAULT_MAX_BYTES.
+pub const MAX_LINES: u64 = 2000;
+pub const MAX_BYTES: u64 = 50 * 1024;
+/// Binary detection window: NUL in the first 8 KiB marks the file binary.
+const BINARY_SNIFF: i64 = 8 * 1024;
+
+#[derive(Debug)]
+pub struct PipelineOutput {
+    /// Final rendered text (content + any continuation note), byte-identical
+    /// to the built-in's `content[0].text`.
+    pub content: String,
+    /// `details.truncation` — present only in the built-in's truncation
+    /// branches (firstLineExceedsLimit / truncated).
+    pub truncation: Option<Truncation>,
+    /// NUL detected in the first 8 KiB (envelope extra; content unchanged).
+    pub binary: bool,
+    /// Raw file size in bytes.
+    pub total_bytes: u64,
+}
+
+/// Full pipeline: open `resolved`, apply 1-based `offset` (≥1) / `limit` (≥1),
+/// truncate, render notes. `raw_path` is the caller-supplied path used inside
+/// the sed fallback note, exactly like the built-in.
+pub fn read_text(
+    resolved: &str,
+    raw_path: &str,
+    offset: Option<u64>,
+    limit: Option<u64>,
+) -> Result<PipelineOutput, ToolError> {
+    let file = File::open(resolved).map_err(|e| open_error(e, resolved))?;
+    let mut segs = Segmenter::new(BufReader::with_capacity(64 * 1024, file));
+
+    // 0-based segment index of the first selected line (JS: max(0, offset-1);
+    // the CLI guarantees offset ≥ 1, saturate for u64::MAX inputs).
+    let start_line = offset.map_or(0, |o| o.saturating_sub(1));
+    let sel_end = limit.map(|l| start_line.saturating_add(l));
+
+    let mut truncator = HeadTruncator::new(MAX_LINES, MAX_BYTES);
+    let mut seg_index: u64 = 0; // segments consumed file-wide (== JS allLines.length)
+    let mut sel_segments: u64 = 0;
+    let mut sel_decoded_bytes: u64 = 0; // byteLength of the joined selection (decoded!)
+    let mut last_sel_empty = false; // selection's last segment is "" (string ends with \n)
+    let mut buf: Vec<u8> = Vec::with_capacity(8 * 1024);
+
+    while segs.next(&mut buf)? {
+        seg_index = seg_index.saturating_add(1);
+        if seg_index > start_line && sel_end.is_none_or(|e| seg_index <= e) {
+            let line = String::from_utf8_lossy(&buf);
+            let sep = u64::from(sel_segments > 0); // \n between joined segments
+            sel_decoded_bytes = sel_decoded_bytes.saturating_add(sep + line.len() as u64);
+            sel_segments = sel_segments.saturating_add(1);
+            last_sel_empty = buf.is_empty();
+            truncator.push(&line);
+        }
+        // Outside the selection: keep scanning (file line count + sniff) but
+        // never buffer — the memory contract above.
+    }
+
+    let file_total_lines = seg_index;
+    if start_line >= file_total_lines {
+        // JS throws with the raw offset value; only Some(offset) reaches here
+        // (start_line == 0 < 1 ≤ file_total_lines otherwise).
+        return Err(ToolError {
+            kind: ErrorKind::Offset,
+            message: format!(
+                "Offset {offset} is beyond end of file ({file_total_lines} lines total)",
+                offset = offset.unwrap_or(0)
+            ),
+        });
+    }
+
+    // JS splitLinesForCounting: a trailing "" segment (string ends with \n)
+    // is popped; a selection of exactly [""] counts as 0 lines.
+    let sel_count_lines = if last_sel_empty { sel_segments - 1 } else { sel_segments };
+    let user_limited = limit.map(|l| l.min(file_total_lines - start_line));
+
+    let truncation = truncator.finalize(sel_count_lines, sel_decoded_bytes);
+    let prefix = truncator.selection_prefix();
+    let first_line_len = truncator.first_line_len();
+    let content = render(
+        truncation.as_ref(),
+        &prefix,
+        raw_path,
+        start_line,
+        file_total_lines,
+        user_limited,
+        first_line_len,
+    );
+    Ok(PipelineOutput {
+        content,
+        truncation,
+        binary: segs.binary,
+        total_bytes: segs.raw_seen,
+    })
+}
+
+/// Continuation-note rendering, mirroring read.js's else-if chain exactly.
+fn render(
+    truncation: Option<&Truncation>,
+    prefix: &str,
+    raw_path: &str,
+    start_line: u64,
+    file_total_lines: u64,
+    user_limited: Option<u64>,
+    first_line_len: u64,
+) -> String {
+    let start_display = start_line + 1;
+    if let Some(t) = truncation
+        && t.first_line_exceeds_limit
+    {
+        return format!(
+            "[Line {start_display} is {size}, exceeds {cap} limit. \
+             Use bash: sed -n '{start_display}p' {raw_path} | head -c {MAX_BYTES}]",
+            size = format_size(first_line_len),
+            cap = format_size(MAX_BYTES),
+        );
+    }
+    if let Some(t) = truncation
+        && t.truncated
+    {
+        let end_display = start_display + t.output_lines - 1;
+        let limit_note = match t.truncated_by {
+            Some(TruncationKind::Lines) => String::new(),
+            _ => format!(" ({} limit)", format_size(MAX_BYTES)),
+        };
+        return format!(
+            "{prefix}\n\n[Showing lines {start_display}-{end_display} of \
+             {file_total_lines}{limit_note}. Use offset={next} to continue.]",
+            next = end_display + 1
+        );
+    }
+    if let Some(u) = user_limited
+        && start_line.saturating_add(u) < file_total_lines
+    {
+        let remaining = file_total_lines - (start_line + u);
+        return format!(
+            "{prefix}\n\n[{remaining} more lines in file. Use offset={next} to continue.]",
+            next = start_line + u + 1
+        );
+    }
+    prefix.to_string()
+}
+
+/// Streaming `truncateHead`: fed the selection's lines in order; stops
+/// buffering once the byte/line cut is certain, mirroring the JS loop's
+/// `lineBytes = byteLength(line) + (i > 0 ? 1 : 0)` accounting.
+struct HeadTruncator {
+    max_lines: u64,
+    max_bytes: u64,
+    out_lines: Vec<String>,
+    out_bytes: u64, // join length of out_lines so far
+    lines_seen: u64, // selection lines pushed (counted past the cut)
+    byte_break: bool,
+    first_line_exceeds: bool,
+    first_line_len: u64,
+    buffering: bool,
+}
+
+impl HeadTruncator {
+    fn new(max_lines: u64, max_bytes: u64) -> Self {
+        Self {
+            max_lines,
+            max_bytes,
+            out_lines: Vec::new(),
+            out_bytes: 0,
+            lines_seen: 0,
+            byte_break: false,
+            first_line_exceeds: false,
+            first_line_len: 0,
+            buffering: true,
+        }
+    }
+
+    fn push(&mut self, line: &str) {
+        if self.lines_seen == 0 {
+            self.first_line_len = line.len() as u64;
+            if self.first_line_len > self.max_bytes {
+                // JS checks firstLineExceedsLimit before the loop.
+                self.first_line_exceeds = true;
+                self.buffering = false;
+            }
+        }
+        self.lines_seen += 1;
+        if !self.buffering {
+            return;
+        }
+        let i = self.lines_seen - 1;
+        if i >= self.max_lines {
+            self.buffering = false; // loop exits on the line limit
+            return;
+        }
+        let line_bytes = line.len() as u64 + u64::from(i > 0);
+        if self.out_bytes.saturating_add(line_bytes) > self.max_bytes {
+            self.byte_break = true; // loop breaks on the byte limit
+            self.buffering = false;
+            return;
+        }
+        self.out_lines.push(line.to_string());
+        self.out_bytes += line_bytes;
+    }
+
+    /// `None` when the selection fits both caps (JS returns truncated:false
+    /// there and read.js leaves `details` undefined).
+    fn finalize(&self, sel_total_lines: u64, sel_total_bytes: u64) -> Option<Truncation> {
+        let truncated = self.first_line_exceeds
+            || self.byte_break
+            || sel_total_lines > self.max_lines
+            || sel_total_bytes > self.max_bytes;
+        if !truncated {
+            return None;
+        }
+        let truncated_by = if self.first_line_exceeds || self.byte_break {
+            TruncationKind::Bytes
+        } else {
+            TruncationKind::Lines
+        };
+        let content = if self.first_line_exceeds {
+            String::new()
+        } else {
+            self.out_lines.join("\n")
+        };
+        let output_bytes = content.len() as u64;
+        Some(Truncation {
+            output_lines: self.out_lines.len() as u64,
+            content,
+            truncated: true,
+            truncated_by: Some(truncated_by),
+            total_lines: sel_total_lines,
+            total_bytes: sel_total_bytes,
+            output_bytes,
+            last_line_partial: false,
+            first_line_exceeds_limit: self.first_line_exceeds,
+            max_lines: self.max_lines,
+            max_bytes: self.max_bytes,
+        })
+    }
+
+    /// The buffered selection prefix — the full selection when untruncated.
+    fn selection_prefix(&self) -> String {
+        self.out_lines.join("\n")
+    }
+
+    fn first_line_len(&self) -> u64 {
+        self.first_line_len
+    }
+}
+
+/// Newline-segment iterator over a reader with JS `split("\n")` semantics:
+/// `n` newlines yield `n + 1` segments; a file ending in `\n` (or an empty
+/// file) contributes a trailing empty segment. Also owns raw-byte counting
+/// and the 8 KiB NUL sniff.
+struct Segmenter<R: BufRead> {
+    inner: R,
+    /// Previous chunk ended with `\n`; starts true so an empty file yields
+    /// its single `[""]` segment.
+    last_ended_newline: bool,
+    finished: bool,
+    raw_seen: u64,
+    sniff_left: i64,
+    binary: bool,
+}
+
+impl<R: BufRead> Segmenter<R> {
+    fn new(inner: R) -> Self {
+        Self {
+            inner,
+            last_ended_newline: true,
+            finished: false,
+            raw_seen: 0,
+            sniff_left: BINARY_SNIFF,
+            binary: false,
+        }
+    }
+
+    /// Fills `buf` (reused) with the next segment's bytes, newline stripped.
+    /// Returns Ok(false) after the last segment.
+    fn next(&mut self, buf: &mut Vec<u8>) -> Result<bool, ToolError> {
+        if self.finished {
+            return Ok(false);
+        }
+        buf.clear();
+        let n = self.inner.read_until(b'\n', buf).map_err(read_error)?;
+        if n == 0 {
+            self.finished = true;
+            if self.last_ended_newline {
+                return Ok(true); // the trailing empty segment
+            }
+            return Ok(false);
+        }
+        self.raw_seen = self.raw_seen.saturating_add(n as u64);
+        self.sniff(buf);
+        let ended = buf.last() == Some(&b'\n');
+        if ended {
+            buf.pop();
+        }
+        self.last_ended_newline = ended;
+        Ok(true)
+    }
+
+    /// NUL sniff over the leading 8 KiB of raw file bytes, chunk by chunk.
+    fn sniff(&mut self, chunk: &[u8]) {
+        if self.sniff_left <= 0 {
+            return;
+        }
+        let window = &chunk[..(chunk.len() as i64).min(self.sniff_left) as usize];
+        if window.contains(&0) {
+            self.binary = true;
+        }
+        self.sniff_left -= window.len() as i64;
+    }
+}
+
+/// Node's `fsPromises.access(path, R_OK)` error messages, byte for byte.
+fn open_error(e: std::io::Error, resolved: &str) -> ToolError {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => ToolError {
+            kind: ErrorKind::Enoent,
+            message: format!("ENOENT: no such file or directory, access '{resolved}'"),
+        },
+        std::io::ErrorKind::PermissionDenied => ToolError {
+            kind: ErrorKind::Eacces,
+            message: format!("EACCES: permission denied, access '{resolved}'"),
+        },
+        _ => generic_io_error(e),
+    }
+}
+
+fn read_error(e: std::io::Error) -> ToolError {
+    if e.kind() == std::io::ErrorKind::IsADirectory {
+        return ToolError {
+            kind: ErrorKind::Eisdir,
+            message: "EISDIR: illegal operation on a directory, read".to_string(),
+        };
+    }
+    generic_io_error(e)
+}
+
+fn generic_io_error(e: std::io::Error) -> ToolError {
+    ToolError {
+        kind: ErrorKind::Io,
+        message: format!("{e}, read"),
+    }
+}
+
+/// `formatSize` from truncate.ts. The one-decimal rounding matches JS
+/// `Number.toFixed(1)` (round-half-up on the exact double value): tenths are
+/// computed as `floor(x * 10 + 0.5)`.
+pub fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes}B")
+    } else if bytes < 1024 * 1024 {
+        format!("{}KB", to_fixed_1(bytes as f64 / 1024.0))
+    } else {
+        format!("{}MB", to_fixed_1(bytes as f64 / (1024.0 * 1024.0)))
+    }
+}
+
+fn to_fixed_1(x: f64) -> String {
+    let tenths = (x * 10.0 + 0.5).floor();
+    let whole = (tenths / 10.0) as u64;
+    let frac = (tenths % 10.0) as u64;
+    format!("{whole}.{frac}")
+}
+
+/// Resolve like the built-in's `resolveToCwd`: `~` expansion, then lexical
+/// normalization against the process cwd. (The built-in's macOS screenshot
+/// filename variants are covered by the extension's fail-open fallback.)
+pub fn resolve_path(raw: &str) -> String {
+    let expanded = if raw == "~" {
+        std::env::var("HOME").unwrap_or_default()
+    } else if let Some(rest) = raw.strip_prefix("~/") {
+        format!("{}/{}", std::env::var("HOME").unwrap_or_default(), rest)
+    } else {
+        raw.to_string()
+    };
+    if expanded.starts_with('/') {
+        normalize(&expanded)
+    } else {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+        normalize(&format!("{}/{}", cwd.to_string_lossy(), expanded))
+    }
+}
+
+/// Lexical path cleanup: collapse `//`, `.`, and `..` segments (absolute only).
+fn normalize(abs: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for seg in abs.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                out.pop();
+            }
+            s => out.push(s),
+        }
+    }
+    format!("/{}", out.join("/"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn truncation_reference() -> Truncation {
+        // The built-in's details.truncation for the 2500-line dump fixture.
+        Truncation {
+            content: "x".repeat(17_999),
+            truncated: true,
+            truncated_by: Some(TruncationKind::Lines),
+            total_lines: 2500,
+            total_bytes: 22_500,
+            output_lines: 2000,
+            output_bytes: 17_999,
+            last_line_partial: false,
+            first_line_exceeds_limit: false,
+            max_lines: 2000,
+            max_bytes: 51_200,
+        }
+    }
+
+    // ---- format_size: JS toFixed(1) parity, including the tie case ----
+
+    #[test]
+    fn format_size_matches_js_to_fixed() {
+        assert_eq!(format_size(0), "0B");
+        assert_eq!(format_size(1023), "1023B");
+        assert_eq!(format_size(1024), "1.0KB");
+        assert_eq!(format_size(1280), "1.3KB"); // exact .25 tie: toFixed rounds up
+        assert_eq!(format_size(51_200), "50.0KB");
+        assert_eq!(format_size(60_000), "58.6KB"); // 58.59375 -> 58.6
+        assert_eq!(format_size(1_048_575), "1024.0KB"); // 1023.999… -> 1024.0
+        assert_eq!(format_size(1_048_576), "1.0MB");
+        assert_eq!(format_size(1_572_864), "1.5MB");
+    }
+
+    // ---- HeadTruncator cap arithmetic (small caps, exact boundaries) ----
+
+    fn trunc(caps: (u64, u64), lines: &[&str], sel_total_lines: u64, sel_total_bytes: u64) -> Option<Truncation> {
+        let mut t = HeadTruncator::new(caps.0, caps.1);
+        for l in lines {
+            t.push(l);
+        }
+        t.finalize(sel_total_lines, sel_total_bytes)
+    }
+
+    #[test]
+    fn no_truncation_when_within_caps() {
+        assert_eq!(trunc((3, 10), &["ab", "cd"], 2, 5), None);
+    }
+
+    #[test]
+    fn line_cap_cuts_at_max_lines() {
+        let t = trunc((3, 100), &["a", "b", "c", "d"], 4, 7).unwrap();
+        assert_eq!(t.output_lines, 3);
+        assert_eq!(t.truncated_by, Some(TruncationKind::Lines));
+        assert_eq!(t.content, "a\nb\nc");
+        assert_eq!(t.output_bytes, 5);
+    }
+
+    #[test]
+    fn byte_cap_counts_separator_from_second_line() {
+        // out_bytes: 2, then 2+ (2+1) = 5; third line 2+1=3 would reach 8 > 5.
+        let t = trunc((10, 5), &["ab", "cd", "ef"], 3, 8).unwrap();
+        assert_eq!(t.output_lines, 2);
+        assert_eq!(t.truncated_by, Some(TruncationKind::Bytes));
+        assert_eq!(t.content, "ab\ncd");
+        assert_eq!(t.output_bytes, 5);
+    }
+
+    #[test]
+    fn byte_cap_boundary_is_inclusive() {
+        // Exactly max_bytes fits; a strictly larger line breaks.
+        assert_eq!(trunc((10, 5), &["abcde"], 1, 5), None);
+        let t = trunc((10, 5), &["abcde", "x"], 2, 6).unwrap();
+        assert_eq!(t.truncated_by, Some(TruncationKind::Bytes));
+        assert_eq!(t.output_lines, 1);
+    }
+
+    #[test]
+    fn first_line_exceeding_byte_cap_short_circuits() {
+        let t = trunc((10, 5), &["abcdef", "x"], 2, 8).unwrap();
+        assert!(t.first_line_exceeds_limit);
+        assert_eq!(t.truncated_by, Some(TruncationKind::Bytes));
+        assert_eq!(t.content, "");
+        assert_eq!(t.output_lines, 0);
+        assert_eq!(t.output_bytes, 0);
+    }
+
+    #[test]
+    fn empty_selection_counts_zero_lines() {
+        assert_eq!(trunc((10, 10), &[""], 0, 0), None);
+    }
+
+    // ---- render: note literals pinned from a one-time built-in dump ----
+
+    #[test]
+    fn render_lines_truncation_note_matches_builtin() {
+        let t = truncation_reference();
+        let out = render(Some(&t), &t.content.clone(), "f.txt", 0, 2501, None, t.output_bytes);
+        assert!(out.ends_with(
+            "\n\n[Showing lines 1-2000 of 2501. Use offset=2001 to continue.]"
+        ));
+        assert!(out.starts_with(t.content.as_str()));
+    }
+
+    #[test]
+    fn render_bytes_truncation_note_matches_builtin() {
+        // b600 dump: 600 lines of 100 chars, byte cut at line 506.
+        let t = Truncation {
+            content: "x".repeat(51_105),
+            truncated: true,
+            truncated_by: Some(TruncationKind::Bytes),
+            total_lines: 600,
+            total_bytes: 60_599,
+            output_lines: 506,
+            output_bytes: 51_105,
+            ..truncation_reference()
+        };
+        let out = render(Some(&t), &t.content.clone(), "b600.txt", 0, 600, None, 100);
+        assert!(out.ends_with(
+            "\n\n[Showing lines 1-506 of 600 (50.0KB limit). Use offset=507 to continue.]"
+        ));
+    }
+
+    #[test]
+    fn render_first_line_exceeds_note_matches_builtin() {
+        // big1st dump: 60000-byte first line -> "58.6KB", raw path, head -c 51200.
+        let t = Truncation {
+            content: String::new(),
+            truncated: true,
+            truncated_by: Some(TruncationKind::Bytes),
+            total_lines: 2,
+            total_bytes: 60_007,
+            output_lines: 0,
+            output_bytes: 0,
+            first_line_exceeds_limit: true,
+            ..truncation_reference()
+        };
+        let out = render(Some(&t), "", "/tmp/dump/big1st.txt", 0, 2, None, 60_000);
+        assert_eq!(
+            out,
+            "[Line 1 is 58.6KB, exceeds 50.0KB limit. Use bash: sed -n '1p' \
+             /tmp/dump/big1st.txt | head -c 51200]"
+        );
+    }
+
+    #[test]
+    fn render_user_limit_note_matches_builtin() {
+        // limit.txt dump: "a\nb\nc\nd\n", limit 2 (phantom counts as a line).
+        assert_eq!(
+            render(None, "a\nb", "limit.txt", 0, 5, Some(2), 2),
+            "a\nb\n\n[3 more lines in file. Use offset=3 to continue.]"
+        );
+        // mid.txt dump: 30 lines, offset 10, limit 5.
+        assert_eq!(
+            render(None, "L9\nL10\nL11\nL12\nL13", "mid.txt", 9, 30, Some(5), 3),
+            "L9\nL10\nL11\nL12\nL13\n\n[16 more lines in file. Use offset=15 to continue.]"
+        );
+        // limitnl.txt dump: "a\nb\nc\n", limit 2.
+        assert_eq!(
+            render(None, "a\nb", "limitnl.txt", 0, 4, Some(2), 2),
+            "a\nb\n\n[2 more lines in file. Use offset=3 to continue.]"
+        );
+    }
+
+    #[test]
+    fn render_plain_when_no_notes_apply() {
+        assert_eq!(render(None, "abc", "f", 0, 1, None, 3), "abc");
+        // limit that reaches EOF: no note (phantom2 dump: offset 3, limit 2).
+        assert_eq!(render(None, "c\n", "f", 2, 4, Some(2), 2), "c\n");
+    }
+
+    // ---- path resolution ----
+
+    #[test]
+    fn normalize_collapses_segments() {
+        assert_eq!(normalize("/a//b/./c/../"), "/a/b");
+        assert_eq!(normalize("/../x"), "/x");
+        assert_eq!(normalize("/"), "/");
+    }
+
+    // ---- full pipeline over real files (fixtures from the Step 2 dump) ----
+
+    mod file {
+        use super::super::{read_text, PipelineOutput};
+        use crate::envelope::{ErrorKind, TruncationKind};
+        use crate::ToolError;
+        use std::fs;
+        use std::path::{Path, PathBuf};
+
+        fn tmp_file(name: &str, bytes: &[u8]) -> PathBuf {
+            let dir = std::env::temp_dir()
+                .join(format!("piread-unit-{}-{name}", std::process::id()));
+            fs::create_dir_all(&dir).expect("temp dir");
+            let file = dir.join("f");
+            fs::write(&file, bytes).expect("fixture write");
+            file
+        }
+
+        fn read(path: &Path, offset: Option<u64>, limit: Option<u64>) -> Result<PipelineOutput, ToolError> {
+            read_text(&path.to_string_lossy(), &path.to_string_lossy(), offset, limit)
+        }
+
+        #[test]
+        fn t2500_lines_truncation_end_to_end() {
+            let body: String = (0..2500).map(|i| format!("line{:04}\n", i)).collect();
+            let f = tmp_file("t2500", body.as_bytes());
+            let out = read(&f, None, None).unwrap();
+            let prefix: String = (0..2000).map(|i| format!("line{:04}", i)).collect::<Vec<_>>().join("\n");
+            assert_eq!(prefix.len(), 17_999);
+            assert!(!out.binary, "no NULs");
+            assert_eq!(out.total_bytes, 22_500);
+            let t = out.truncation.as_ref().unwrap();
+            assert_eq!(t.content, prefix);
+            assert!(t.truncated);
+            assert_eq!(t.truncated_by, Some(TruncationKind::Lines));
+            assert_eq!(t.total_lines, 2500); // popped count of the selection
+            assert_eq!(t.total_bytes, 22_500);
+            assert_eq!(t.output_lines, 2000);
+            assert_eq!(t.output_bytes, 17_999);
+            assert_eq!(out.content, format!(
+                "{prefix}\n\n[Showing lines 1-2000 of 2501. Use offset=2001 to continue.]"
+            ));
+        }
+
+        #[test]
+        fn b600_bytes_truncation_end_to_end() {
+            let body: String = (0..600).map(|_| "x".repeat(100)).collect::<Vec<_>>().join("\n");
+            let f = tmp_file("b600", body.as_bytes());
+            let out = read(&f, None, None).unwrap();
+            assert_eq!(out.total_bytes, 60_599);
+            let t = out.truncation.as_ref().unwrap();
+            assert_eq!(t.truncated_by, Some(TruncationKind::Bytes));
+            assert_eq!(t.total_lines, 600);
+            assert_eq!(t.output_lines, 506);
+            assert_eq!(t.output_bytes, 51_105);
+            assert_eq!(out.content, format!(
+                "{}\n\n[Showing lines 1-506 of 600 (50.0KB limit). Use offset=507 to continue.]",
+                t.content
+            ));
+        }
+
+        #[test]
+        fn big_first_line_sed_note() {
+            let body = format!("{}\nsmall\n", "y".repeat(60_000));
+            let f = tmp_file("big1st", body.as_bytes());
+            let p = f.to_string_lossy().into_owned();
+            let out = read_text(&p, &p, None, None).unwrap();
+            assert_eq!(out.content, format!(
+                "[Line 1 is 58.6KB, exceeds 50.0KB limit. Use bash: sed -n '1p' {p} | head -c 51200]"
+            ));
+            let t = out.truncation.unwrap();
+            assert!(t.first_line_exceeds_limit);
+            assert_eq!(t.total_bytes, 60_007);
+            assert_eq!(t.output_lines, 0);
+        }
+
+        #[test]
+        fn crlf_noeol_empty_one_and_unicode() {
+            let out = read(&tmp_file("crlf", b"one\r\ntwo\r\nthree\r\n"), None, None).unwrap();
+            assert_eq!(out.content, "one\r\ntwo\r\nthree\r\n");
+            assert!(out.truncation.is_none());
+            assert_eq!(out.total_bytes, 17);
+
+            let out = read(&tmp_file("noeol", b"alpha\nbeta\ngamma"), None, None).unwrap();
+            assert_eq!(out.content, "alpha\nbeta\ngamma");
+            assert!(out.truncation.is_none());
+
+            let out = read(&tmp_file("empty", b""), None, None).unwrap();
+            assert_eq!(out.content, "");
+            assert!(out.truncation.is_none());
+            assert_eq!(out.total_bytes, 0);
+            // empty file still has one (phantom) line: offset 1 reads it
+            let out = read(&tmp_file("empty", b""), Some(1), None).unwrap();
+            assert_eq!(out.content, "");
+
+            let out = read(&tmp_file("one", b"solo\n"), None, None).unwrap();
+            assert_eq!(out.content, "solo\n");
+
+            let out = read(&tmp_file("uni", "héllo\n🎉emoji\n".as_bytes()), None, None).unwrap();
+            assert_eq!(out.content, "héllo\n🎉emoji\n");
+            assert_eq!(out.total_bytes, 17); // 6 + 1 + 9 + 1 raw
+        }
+
+        #[test]
+        fn lossy_decode_matches_node_replacement_semantics() {
+            let out = read(&tmp_file("bad", &[0x61, 0xff, 0x62, 0x0a, 0x63, 0xfe, 0x0a]), None, None).unwrap();
+            assert_eq!(out.content, "a\u{FFFD}b\nc\u{FFFD}\n");
+            assert_eq!(out.total_bytes, 7); // raw, not decoded
+
+            // maximal-subpart rules pinned against Node (2026-10 dump):
+            assert_eq!(read(&tmp_file("c0", &[0xc0, 0x80]), None, None).unwrap().content, "\u{FFFD}\u{FFFD}");
+            assert_eq!(read(&tmp_file("ed", &[0xed, 0xa0, 0x80]), None, None).unwrap().content, "\u{FFFD}\u{FFFD}\u{FFFD}");
+            assert_eq!(read(&tmp_file("f0", &[0xf0, 0x9f]), None, None).unwrap().content, "\u{FFFD}");
+            assert_eq!(read(&tmp_file("f4", &[0xf0, 0x9f, 0x8f, 0x80]), None, None).unwrap().content, "🏀");
+        }
+
+        #[test]
+        fn binary_sniff_window_is_first_8k() {
+            let in_window = format!("{}\0\n", "a".repeat(8191));
+            let out = read(&tmp_file("nul-in", in_window.as_bytes()), None, None).unwrap();
+            assert!(out.binary);
+            let out_window = format!("{}\0\n", "a".repeat(8192));
+            let out2 = read(&tmp_file("nul-out", out_window.as_bytes()), None, None).unwrap();
+            assert!(!out2.binary);
+            // NUL is valid UTF-8: content keeps it, unchanged (nul.bin dump)
+            let out3 = read(&tmp_file("nulbin", b"ab\0cd\0ef\n"), None, None).unwrap();
+            assert!(out3.binary);
+            assert_eq!(out3.content, "ab\0cd\0ef\n");
+        }
+
+        #[test]
+        fn offset_windows_and_phantom_line() {
+            // mid dump: 30 lines, offset 10 (0-based 9), limit 5 -> L9..L13 + note
+            let body: String = (0..30).map(|i| format!("L{i}")).collect::<Vec<_>>().join("\n");
+            let f = tmp_file("mid", body.as_bytes());
+            let out = read(&f, Some(10), Some(5)).unwrap();
+            assert_eq!(out.content, "L9\nL10\nL11\nL12\nL13\n\n[16 more lines in file. Use offset=15 to continue.]");
+            assert!(out.truncation.is_none());
+
+            // phantom line: "a\nb\nc\n" has 4 segments; offset 4 reads ""
+            let f = tmp_file("phantom", b"a\nb\nc\n");
+            assert_eq!(read(&f, Some(4), None).unwrap().content, "");
+            // offset 3, limit 2 -> [c, ""] -> "c\n", no note (reached EOF)
+            assert_eq!(read(&f, Some(3), Some(2)).unwrap().content, "c\n");
+            // beyond EOF rejects with the built-in's message
+            let err = read(&f, Some(5), None).unwrap_err();
+            assert!(matches!(err.kind, ErrorKind::Offset));
+            assert_eq!(err.message, "Offset 5 is beyond end of file (4 lines total)");
+            // u64::MAX offset: no overflow, clean rejection
+            let err = read(&f, Some(u64::MAX), None).unwrap_err();
+            assert_eq!(err.message, "Offset 18446744073709551615 is beyond end of file (4 lines total)");
+        }
+
+        #[test]
+        fn user_limit_note_counts_phantom() {
+            // limit dump: "a\nb\nc\nd\n" limit 2 -> 5 segments, 3 remain
+            let out = read(&tmp_file("limit", b"a\nb\nc\nd\n"), None, Some(2)).unwrap();
+            assert_eq!(out.content, "a\nb\n\n[3 more lines in file. Use offset=3 to continue.]");
+            assert!(out.truncation.is_none());
+        }
+
+        #[test]
+        fn bytelim_offset_reads_untruncated_window() {
+            let body: String = (0..3).map(|_| "z".repeat(19_999)).collect::<Vec<_>>().join("\n");
+            let f = tmp_file("bytelim", body.as_bytes());
+            let out = read(&f, Some(2), None).unwrap();
+            // offset 2 selects lines 2-3 (no trailing newline): 39999 bytes, no truncation
+            let expected = format!("{}\n{}", "z".repeat(19_999), "z".repeat(19_999));
+            assert_eq!(out.content, expected);
+            assert!(out.truncation.is_none());
+            assert_eq!(out.total_bytes, 59_999);
+        }
+    }
+}

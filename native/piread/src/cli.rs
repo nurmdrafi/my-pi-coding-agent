@@ -1,7 +1,6 @@
 //! CLI parsing: `piread --path <P> [--offset <N>] [--limit <N>]`.
 
 /// A fully validated invocation.
-#[allow(dead_code, reason = "offset/limit are consumed by the Step 2 pipeline")]
 pub struct Run {
     /// Path exactly as the caller supplied it (the built-in renders notes with
     /// the raw path; resolution happens at I/O time).

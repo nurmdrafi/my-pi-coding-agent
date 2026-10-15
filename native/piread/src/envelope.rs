@@ -28,7 +28,6 @@ pub struct Truncation {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
-#[allow(dead_code, reason = "constructed by the Step 2 pipeline")]
 pub enum TruncationKind {
     #[serde(rename = "lines")]
     Lines,
