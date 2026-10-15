@@ -7,6 +7,7 @@ description: >
   optimization, performance, numeric safety, conversions, serde, pattern
   matching, macros, closures, observability, testing, and common anti-patterns.
   Invoke with /rust-skills.
+disable-model-invocation: true
 license: MIT
 metadata:
   author: leonardomso
