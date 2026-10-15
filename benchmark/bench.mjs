@@ -10,6 +10,9 @@ import { fileURLToPath } from 'node:url';
 
 import { loadArms, getArm, getTask } from './lib/manifests.mjs';
 import { prepareWorkdir } from './lib/workdir.mjs';
+import { runValidator } from './lib/validate.mjs';
+import { runMetrics } from './lib/metrics.mjs';
+import { readStub, flipStub, writeRecord } from './lib/runs.mjs';
 
 const BENCH = dirname(fileURLToPath(import.meta.url));
 export const DEFAULTS = {
@@ -91,6 +94,30 @@ next: run the agent in the workdir with the prompt above, then:
   node benchmark/bench.mjs finish --run ${runId} --session <sessionId>`);
 }
 
+// ---------------------------------------------------------------- finish (spec §7.3)
+
+function cmdFinish(opts) {
+  if (!opts.run || !opts.session) die('finish requires --run <runId> and --session <sessionId|path>');
+  if (!/^[A-Za-z0-9._-]+$/.test(opts.run)) die(`invalid run id: ${opts.run}`);
+  const runDir = join(opts.runsRoot, opts.run);
+  const stub = readStub(runDir, opts.run);
+  if (stub.status === 'done') die(`run already finished: ${opts.run}`);
+  const task = getTask(opts.tasksDir, stub.task);
+  const grade = runValidator(task.dir, join(runDir, 'work'));
+  let metrics, metricsError; // schema mismatch throws loudly (spec §12)
+  ({ metrics, metricsError } = runMetrics(opts.session, opts));
+  const record = {
+    schema: 's2-run/1', runId: stub.runId, task: stub.task, arm: stub.arm,
+    startedAt: stub.startedAt, finishedAt: new Date().toISOString(), sessionId: opts.session,
+    grade: grade.pass ? 'SUCCESS' : 'FAIL', checks: grade.checks, metrics, metricsError,
+  };
+  writeRecord(opts.resultsDir, record);
+  flipStub(runDir, stub);
+  const ok = record.checks.filter((c) => c.pass).length;
+  console.log(`${record.grade} — run ${record.runId} (${record.task} @ ${record.arm}): ` +
+    `${ok}/${record.checks.length} checks passed; metrics ${metrics ? 'ok' : `incomplete (${metricsError})`}`);
+}
+
 // ---------------------------------------------------------------- dispatch
 
 const [, , cmd, ...rest] = process.argv;
@@ -98,4 +125,5 @@ const { opts, positional } = parseArgs(rest);
 const optsWithDefaults = { ...DEFAULTS, ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)) };
 if (!cmd || opts.help) { console.log(HELP); process.exit(cmd ? 0 : 1); }
 else if (cmd === 'start') { try { cmdStart(optsWithDefaults); } catch (e) { die(e.message); } }
+else if (cmd === 'finish') { try { cmdFinish(optsWithDefaults); } catch (e) { die(e.message); } }
 else die(`unknown command: ${cmd}\n${HELP}`);

@@ -218,3 +218,103 @@ test('validator: crashing validator → synthetic validator-crash check (spec §
   rmSync(taskDir, { recursive: true, force: true });
   rmSync(runsRoot, { recursive: true, force: true });
 });
+
+// ---------------------------------------------------------------- finish (Step 6)
+
+/** start → (optionally patch workdir) → finish; returns everything for assertions. */
+const finishFlow = ({ patched = true, session = 'session-syn', finishArgs = [] } = {}) => {
+  const tasksRoot = synTasksRoot();
+  const runsRoot = tmp();
+  const resultsDir = tmp();
+  const s = runCli('start', '--task', 'bugfix/task-syn', '--arm', 'baseline',
+    '--tasks-dir', tasksRoot, '--runs-root', runsRoot);
+  assert.equal(s.status, 0, s.stderr);
+  const runId = readdirSync(runsRoot)[0];
+  const workDir = join(runsRoot, runId, 'work');
+  if (patched) {
+    assert.equal(spawnSync('git', ['-C', workDir, 'apply', join(SYN, 'solution.patch')]).status, 0);
+  }
+  const f = runCli('finish', '--run', runId, '--session', session,
+    '--sessions-dir', FIX, '--tasks-dir', tasksRoot, '--runs-root', runsRoot,
+    '--results-dir', resultsDir, ...finishArgs);
+  return { f, runId, workDir, tasksRoot, runsRoot, resultsDir };
+};
+
+test('finish: patched run → s2-run/1 record with embedded s1-metrics/1 (spec §8)', () => {
+  const { f, runId, resultsDir, runsRoot, tasksRoot } = finishFlow({});
+  assert.equal(f.status, 0, f.stderr);
+  const rec = JSON.parse(readFileSync(join(resultsDir, `${runId}.json`), 'utf8'));
+  assert.equal(rec.schema, 's2-run/1');
+  assert.equal(rec.runId, runId);
+  assert.equal(rec.task, 'bugfix/task-syn');
+  assert.equal(rec.arm, 'baseline');
+  assert.ok(!Number.isNaN(Date.parse(rec.startedAt)));
+  assert.ok(!Number.isNaN(Date.parse(rec.finishedAt)));
+  assert.equal(rec.sessionId, 'session-syn');
+  assert.equal(rec.grade, 'SUCCESS');
+  assert.ok(Array.isArray(rec.checks) && rec.checks.every((c) => c.pass));
+  assert.equal(rec.metrics.schema, 's1-metrics/1');
+  assert.equal(rec.metrics.sessionId, 'session-syn');
+  assert.equal(rec.metricsError, null);
+  // stub flipped to done + summary line
+  assert.equal(JSON.parse(readFileSync(join(runsRoot, runId, 'run.json'), 'utf8')).status, 'done');
+  assert.match(f.stdout, /SUCCESS/);
+  rmSync(runsRoot, { recursive: true, force: true });
+  rmSync(resultsDir, { recursive: true, force: true });
+  rmSync(tasksRoot, { recursive: true, force: true });
+});
+
+test('finish: pristine run → grade FAIL, exit 0', () => {
+  const { f, runId, resultsDir, runsRoot, tasksRoot } = finishFlow({ patched: false });
+  assert.equal(f.status, 0, f.stderr);
+  const rec = JSON.parse(readFileSync(join(resultsDir, `${runId}.json`), 'utf8'));
+  assert.equal(rec.grade, 'FAIL');
+  assert.ok(rec.checks.some((c) => !c.pass));
+  rmSync(runsRoot, { recursive: true, force: true });
+  rmSync(resultsDir, { recursive: true, force: true });
+  rmSync(tasksRoot, { recursive: true, force: true });
+});
+
+test('finish: double-finish → exit 1, {error} JSON stderr (spec §10)', () => {
+  const { f, runId, resultsDir, runsRoot, tasksRoot } = finishFlow({});
+  assert.equal(f.status, 0, f.stderr);
+  const again = runCli('finish', '--run', runId, '--session', 'session-syn',
+    '--sessions-dir', FIX, '--tasks-dir', tasksRoot, '--runs-root', runsRoot, '--results-dir', resultsDir);
+  assert.equal(again.status, 1);
+  assert.ok(JSON.parse(again.stderr).error.includes('already finished'));
+  rmSync(runsRoot, { recursive: true, force: true });
+  rmSync(resultsDir, { recursive: true, force: true });
+  rmSync(tasksRoot, { recursive: true, force: true });
+});
+
+test('finish: unknown run → exit 1, {error} JSON stderr', () => {
+  const r = runCli('finish', '--run', 'nope', '--session', 'x', '--runs-root', tmp(), '--results-dir', tmp());
+  assert.equal(r.status, 1);
+  assert.ok(JSON.parse(r.stderr).error.includes('unknown run'));
+});
+
+test('finish: unknown session → metrics:null + metricsError, grade still recorded (spec §10)', () => {
+  const { f, runId, resultsDir, runsRoot, tasksRoot } = finishFlow({ session: 'no-such-session' });
+  assert.equal(f.status, 0, f.stderr);
+  const rec = JSON.parse(readFileSync(join(resultsDir, `${runId}.json`), 'utf8'));
+  assert.equal(rec.grade, 'SUCCESS');
+  assert.equal(rec.metrics, null);
+  assert.ok(typeof rec.metricsError === 'string' && rec.metricsError.length > 0);
+  rmSync(runsRoot, { recursive: true, force: true });
+  rmSync(resultsDir, { recursive: true, force: true });
+  rmSync(tasksRoot, { recursive: true, force: true });
+});
+
+test('finish: schema pin — wrong s1-metrics schema throws loudly (spec §12)', async () => {
+  const { runMetrics } = await import('../benchmark/lib/metrics.mjs');
+  const dir = tmp();
+  const fake = join(dir, 'fake-metrics.mjs');
+  writeFileSync(fake, 'console.log(JSON.stringify({ schema: "s1-metrics/9", sessionId: "x" }));\n');
+  assert.throws(() => runMetrics('x', { metricsScript: fake }), /schema mismatch/);
+  const failing = join(dir, 'failing-metrics.mjs');
+  writeFileSync(failing, 'console.error(JSON.stringify({ error: "boom" })); process.exit(1);\n');
+  const r = runMetrics('x', { metricsScript: failing });
+  assert.equal(r.metrics, null);
+  assert.match(r.metricsError, /boom/);
+  rmSync(dir, { recursive: true, force: true });
+});
