@@ -464,7 +464,11 @@ export default function (pi: ExtensionAPI) {
         const r = await confirmDestructive(`edit:${path}`, prot, ctx);
         if (r) return blockCall(r);
       }
-      const checked = await validateEditAnchors(event.input, ctx?.cwd);
+      const checked = await validateEditAnchors(
+        event.input,
+        ctx?.cwd,
+        coverage.get(path),
+      );
       if (checked && "block" in checked) return blockCall(checked.reason);
       pendingEdits.set(event.toolCallId, {
         path,

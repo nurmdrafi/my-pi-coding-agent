@@ -1886,17 +1886,16 @@ const cases = [
   ],
   // ---- item 6 — pre-edit stat + fuzzy anchors drop stale coverage ----
   [
-    "item6: external drift between read and edit drops stale spans",
+    "item6: external drift between read and edit blocks the edit (M1)",
     "pass",
     async (pi) => {
       const f = join(tmp, "drift.ts");
-      writeFileSync(f, "a\nb\nc\nd\n");
-      await read(pi, f, { offset: 1, limit: 4 }, { outputLines: 4 }); // certify 1-4 at S0
-      appendFileSync(f, "X\n"); // external write: pre-edit stat (S1) mismatches S0
+      // S5 M1: drift before the edit call now blocks at tool_call (family 1);
+      // the blocked edit never certifies — and the stale span must not block the re-read
       const e = await edit(pi, f, [{ oldText: "a", newText: "z" }]);
-      if (e.blocked)
-        return { blocked: true, reason: "edit blocked: " + e.reason };
-      return read(pi, f, { offset: 3, limit: 1 }, { outputLines: 1 }); // stale span 3 must not block
+      if (!e.blocked || !e.reason.startsWith("Anchor Guard (Stale):"))
+        return { blocked: false, reason: `family: ${e.reason ?? "(pass)"}` };
+      return read(pi, f, { offset: 3, limit: 1 }, { outputLines: 1 });
     },
   ],
   [
@@ -2807,6 +2806,64 @@ const cases = [
         : { blocked: true, reason: `entry: ${JSON.stringify(e)}` };
     },
   ],
+
+  // Step 2 (family 1): M1 stale-bind for edit — spec §5.1
+  [
+    "S5 M1: external write since last read blocks the edit (Stale)",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-m1-stale.ts");
+      writeFileSync(f, "alpha\nbeta\ngamma\n");
+      await read(pi, f);
+      writeFileSync(f, "alpha\nbeta\ngamma\nepsilon\n"); // external writer: content + stat change
+      const r = await edit(pi, f, [{ oldText: "gamma", newText: "GAMMA" }]);
+      return r.blocked && r.reason.startsWith("Anchor Guard (Stale):")
+        ? r
+        : { blocked: false, reason: `family: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 M1: targeted re-read clears the stale block",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-m1-reread.ts");
+      writeFileSync(f, "a\nb\nc\n");
+      await read(pi, f);
+      writeFileSync(f, "a\nb\nc\nd\n");
+      const b1 = await edit(pi, f, [{ oldText: "c", newText: "C" }]);
+      if (!b1.blocked) return { blocked: false, reason: "precondition: first edit not blocked" };
+      await read(pi, f); // fresh stat certified
+      return edit(pi, f, [{ oldText: "c", newText: "C" }]);
+    },
+  ],
+  [
+    "S5 M1: mutating bash (sed -i) makes a subsequent edit stale",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-m1-sed.ts");
+      writeFileSync(f, "alpha\nbeta\n");
+      await read(pi, f);
+      // runBash replays gate events only — the external writer must actually execute
+      execSync(`sed -i 's/^beta/BBB/' ${f}`);
+      await runBash(pi, `sed -i 's/^beta/BBB/' ${f}`);
+      const r = await edit(pi, f, [{ oldText: "alpha", newText: "ALPHA" }]);
+      return r.blocked && r.reason.startsWith("Anchor Guard (Stale):")
+        ? r
+        : { blocked: false, reason: `family: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 M1: back-to-back own edits still pass",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-m1-own.ts");
+      writeFileSync(f, "alpha\nbeta\n");
+      await read(pi, f);
+      const e1 = await edit(pi, f, [{ oldText: "alpha", newText: "ALPHA" }]);
+      if (e1.blocked) return e1;
+      return edit(pi, f, [{ oldText: "beta", newText: "BETA" }]); // post-op stat re-certified by edit 1
+    },
+  ],
 ];
 
 // ---- runner: each case replays its preamble on a fresh gate, then the probe ----
@@ -3019,7 +3076,7 @@ const preambles = {
     await read(pi, fileA, { offset: 1, limit: 3 }, { outputLines: 3 });
     return pi;
   },
-  "item6: external drift between read and edit drops stale spans": async () => {
+  "item6: external drift between read and edit blocks the edit (M1)": async () => {
     const pi = freshGate();
     writeFileSync(join(tmp, "drift.ts"), "a\nb\nc\nd\n");
     await read(

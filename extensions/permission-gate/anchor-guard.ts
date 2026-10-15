@@ -5,7 +5,7 @@
  * check) and whether any anchor matched only fuzzily. */
 import { readFile } from "fs/promises";
 import { normPath, snapshot } from "./read-coverage.ts";
-import type { LineSpan } from "./read-coverage.ts";
+import type { CoverageEntry, LineSpan } from "./read-coverage.ts";
 
 export interface EditEntry {
   oldText: string;
@@ -89,6 +89,7 @@ export async function validateEditAnchors(
     edits?: unknown;
   },
   cwd?: string,
+  cov?: CoverageEntry,
 ): Promise<
   | { block: true; reason: string }
   | {
@@ -103,6 +104,7 @@ export async function validateEditAnchors(
   if (!Array.isArray(edits)) return; // let the tool's own validation respond
 
   const absPath = normPath(input.path, cwd);
+  const display = String(input.path ?? "");
   let content: string;
   try {
     const raw = await readFile(absPath, "utf8");
@@ -114,6 +116,25 @@ export async function validateEditAnchors(
   // the coverage snapshot to drop externally-drifted spans instead of
   // re-validating them against the post-edit file
   const preStat = await snapshot(absPath);
+
+  // S5 M1 (2026-10-16): stale-bind. The coverage entry's stat is the last
+  // content this session certified into context; if the file drifted since
+  // (external writer: bash, git, watcher), the anchors were built against
+  // old bytes — one that still matches SOMEWHERE in the drifted file lands
+  // silently in the wrong place. Block before matching; the fix is one
+  // targeted re-read. Missing entry/stat fails open like the existing
+  // freshness posture (spec §5.1); M2 owns the never-read case.
+  if (
+    cov?.stat &&
+    preStat &&
+    (cov.stat.mtimeMs !== preStat.mtimeMs || cov.stat.size !== preStat.size)
+  ) {
+    const shown = display.length > 57 ? `…${display.slice(-56)}` : display;
+    return {
+      block: true,
+      reason: `Anchor Guard (Stale): '${shown}' changed on disk since your last read (mtime/size) — re-read the region (offset/limit), then re-send the edit.`,
+    };
+  }
 
   const fuzzyContent = normalizeForFuzzyMatch(content);
   // verified exact-match spans, for the intra-call overlap check
