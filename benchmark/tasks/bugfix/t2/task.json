@@ -1,0 +1,6 @@
+{
+  "id": "bugfix/t2",
+  "class": "bugfix",
+  "title": "Fix string-search comparison bugs",
+  "prompt": "In this repository, both predicates in src/search.js use the wrong comparison: contains() misses matches at position 0, and endsWith() rejects a string equal to its suffix. Fix both functions so every test in src/search.test.js passes. Do not modify any test files."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "bugfix/t1",
+  "class": "bugfix",
+  "title": "Fix pagination off-by-one errors",
+  "prompt": "In this repository, both functions in src/paging.js are off by one: pageCount() drops the final partial page, and firstIndex() returns a 1-based instead of 0-based index. Fix both functions so every test in src/paging.test.js passes. Do not modify any test files."
+}

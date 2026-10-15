@@ -1,0 +1,16 @@
+diff --git a/src/paging.js b/src/paging.js
+index 96684ba..6015d7e 100644
+--- a/src/paging.js
++++ b/src/paging.js
+@@ -1,9 +1,9 @@
+ /** Number of pages needed to list `total` items at `pageSize` per page. */
+ export function pageCount(total, pageSize) {
+-  return Math.floor(total / pageSize);
++  return Math.ceil(total / pageSize);
+ }
+ 
+ /** 0-based index of the first item on `page` (pages are 0-based too). */
+ export function firstIndex(page, pageSize) {
+-  return page * pageSize + 1;
++  return page * pageSize;
+ }
