@@ -318,3 +318,88 @@ test('finish: schema pin — wrong s1-metrics schema throws loudly (spec §12)',
   assert.match(r.metricsError, /boom/);
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ---------------------------------------------------------------- aggregation (Step 7)
+
+const { median, aggregateCells, metricValues } = await import('../benchmark/lib/aggregate.mjs');
+
+test('aggregate: median nearest-rank, n=1, null-skipping (spec §9)', () => {
+  assert.deepEqual(median([3]), { value: 3, n: 1 });
+  assert.deepEqual(median([9, 1, 5]), { value: 5, n: 3 });
+  assert.deepEqual(median([5, 9]), { value: 5, n: 2 }); // nearest-rank, consistent with S1
+  assert.deepEqual(median([null, 4, null, 2]), { value: 2, n: 2 }); // non-null [2,4] → rank 1 → 2
+  assert.deepEqual(median([null, null]), null);
+});
+
+/** Synthetic s2-run/1 record for pure aggregation tests. */
+const mkMetrics = (over = {}) => ({
+  schema: 's1-metrics/1', partial: false,
+  durationMs: 1000, apiTurns: 5,
+  tokens: { input: 100, output: 50, peakContext: 150 },
+  costUsd: 0.01, cacheHitRatio: 0.5,
+  tools: { bash: { latencyMs: { p95: 100 } }, read: { latencyMs: { p95: 200 } } },
+  edits: { failureRate: 0.1 }, reads: { repeatRate: 0.2 },
+  ...over,
+});
+const mkRec = (over = {}) => ({
+  schema: 's2-run/1', runId: 'r', task: 'bugfix/t1', arm: 'baseline',
+  grade: 'SUCCESS', metrics: mkMetrics(), metricsError: null, ...over,
+});
+
+test('aggregate: cells group by (task,arm) with success rate and medians', () => {
+  const cells = aggregateCells([
+    mkRec(), mkRec({ grade: 'FAIL' }), mkRec({ metrics: mkMetrics({ durationMs: 3000, costUsd: null }) }),
+    mkRec({ arm: 'candidate', metrics: mkMetrics({ durationMs: 2000, apiTurns: 7 }) }),
+  ]);
+  assert.equal(cells.length, 2);
+  const base = cells.find((c) => c.arm === 'baseline');
+  assert.equal(base.n, 3);
+  assert.equal(base.successRate, 2 / 3);
+  assert.deepEqual(base.medians.durationMs, { value: 1000, n: 3 });
+  assert.deepEqual(base.medians.costUsd, { value: 0.01, n: 2 }); // null skipped, n = non-null
+  assert.deepEqual(base.medians.worstToolP95, { value: 200, n: 3 });
+  const cand = cells.find((c) => c.arm === 'candidate');
+  assert.deepEqual(cand.medians.durationMs, { value: 2000, n: 1 }); // n=1 → the single value
+  assert.deepEqual(cand.medians.apiTurns, { value: 7, n: 1 });
+});
+
+test('aggregate: partial records excluded unless includePartial; counted per cell', () => {
+  const partial = mkRec({ metrics: mkMetrics({ partial: true, durationMs: 9999 }) });
+  const cells = aggregateCells([mkRec(), partial]);
+  const base = cells.find((c) => c.arm === 'baseline');
+  assert.equal(base.n, 1);
+  assert.equal(base.partialExcluded, 1);
+  assert.deepEqual(base.medians.durationMs, { value: 1000, n: 1 });
+  const incl = aggregateCells([mkRec(), partial], { includePartial: true }).find((c) => c.arm === 'baseline');
+  assert.equal(incl.n, 2);
+  assert.deepEqual(incl.medians.durationMs, { value: 1000, n: 2 });
+});
+
+test('aggregate: metrics-null records mark cell metricsIncomplete and contribute nothing', () => {
+  const cells = aggregateCells([mkRec(), mkRec({ metrics: null, metricsError: 'boom' })]);
+  const base = cells.find((c) => c.arm === 'baseline');
+  assert.equal(base.metricsIncomplete, true);
+  assert.equal(base.n, 2); // grade still counted
+  assert.deepEqual(base.medians.durationMs, { value: 1000, n: 1 }); // only the metrics-bearing run
+});
+
+test('aggregate: empty input → no cells', () => {
+  assert.deepEqual(aggregateCells([]), []);
+});
+
+test('aggregate: metricValues maps a record to the report metric list', () => {
+  const v = metricValues(mkRec());
+  assert.equal(v.durationMs, 1000);
+  assert.equal(v.tokensInput, 100);
+  assert.equal(v.tokensOutput, 50);
+  assert.equal(v.tokensPeak, 150);
+  assert.equal(v.costUsd, 0.01);
+  assert.equal(v.cacheHitRatio, 0.5);
+  assert.equal(v.apiTurns, 5);
+  assert.equal(v.worstToolP95, 200);
+  assert.equal(v.editFailureRate, 0.1);
+  assert.equal(v.readRepeatRate, 0.2);
+  assert.deepEqual(metricValues(null), Object.fromEntries(
+    ['durationMs', 'tokensInput', 'tokensOutput', 'tokensPeak', 'costUsd', 'cacheHitRatio',
+      'apiTurns', 'worstToolP95', 'editFailureRate', 'readRepeatRate'].map((k) => [k, null])));
+});
