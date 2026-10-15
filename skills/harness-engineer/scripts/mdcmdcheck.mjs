@@ -10,6 +10,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 // repo root = 3 levels up from skills/harness-engineer/scripts/mdcmdcheck.mjs — portable, no absolute paths
@@ -19,6 +20,12 @@ const BUILTINS = new Set(['echo','cd','printf','export','set','unset','source','
 const INTERPRETERS = new Set(['node','npm','npx','python','python3','bash','sh','env','deno','bun']); // flags belong to scripts/subcommands we can't introspect
 const MAC_ONLY = new Set(['pbcopy','pbpaste','osascript','launchctl','security','codesign','mdfind','open','defaults','brew','say','caffeinate','networksetup','screencapture','textutil','pluid','xcodebuild','swift','sw_vers','softwareupdate','pmset','system_profiler','diskutil','hdiutil','installer','port']);
 const SOURCED = new Set(['nvm']); // shell functions from init scripts — never visible to command -v
+// Toolchains this harness documents but does not require on every machine (e.g. the
+// optional Rust toolchain). Absent binaries are info-only, like MAC_ONLY.
+const OPTIONAL_TOOLCHAINS = new Set(['cargo', 'rustc', 'rustup', 'rustfmt', 'perf', 'valgrind', 'hyperfine', 'llvm-profdata', 'llvm-bolt', 'inferno-collapse-perf', 'inferno-flamegraph', 'loom']);
+// Docs that legitimately example foreign build artifacts (e.g. `./target/release/app`) —
+// reference/ docs are on-demand material, not harness runbooks.
+const isReferenceDoc = (md) => /\/references\//.test(md.slice(ROOT.length + 1));
 
 // bare script name → resolve against skills/*/scripts/ (sibling-skill references)
 const harnessScript = (tok) => readdirSync(join(ROOT, 'skills')).some(s => existsSync(join(ROOT, 'skills', s, 'scripts', tok)));
@@ -33,7 +40,7 @@ const mds = [];
   }
 })(ROOT);
 
-const syntaxFail = [], binFail = [], macOnlyRefs = [], scriptMissing = [], flagFail = [], onDemandRefs = [];
+const syntaxFail = [], binFail = [], macOnlyRefs = [], scriptMissing = [], flagFail = [], onDemandRefs = [], optionalToolchainRefs = [], artifactRefs = [];
 const helpCache = new Map();
 const helpFlags = (key) => {
   if (helpCache.has(key)) return helpCache.get(key);
@@ -62,32 +69,32 @@ const segSplit = (line) => {
   }
   return segs;
 };
-// var=$(…) assignments: the env-prefix regex below is blind to '$(' and eats into the
-// substitution (tag=$(gh api …) → head token "api"). Strip a leading run of them with
-// quote/paren depth counting; unterminated (segment split inside $()) or pure
-// assignments check nothing. Returns null when the remainder is unanalyzable.
-const stripSubst = (t) => {
+// Leading VAR=value assignments: shell allows quoted values with spaces and $(…)
+// substitutions. Strip them with quote/paren depth counting so `RUSTFLAGS="-C
+// target-cpu=native" cargo …` and `PGO_DIR=/tmp/pgo-$(date +%s)` resolve to the real
+// head token. Returns null when a substitution is unterminated.
+const stripAssignments = (t) => {
   while (true) {
-    const m = /^[A-Za-z_][A-Za-z0-9_]*=\$\(/.exec(t);
+    const m = /^[A-Za-z_][A-Za-z0-9_]*=/.exec(t);
     if (!m) return t;
-    let depth = 0, q = null, closed = -1;
-    for (let i = m[0].length - 1; i < t.length; i++) {
+    let i = m[0].length, q = null, depth = 0;
+    for (; i < t.length; i++) {
       const c = t[i];
       if (q) { if (c === q) q = null; continue; }
       if (c === "'" || c === '"') { q = c; continue; }
       if (c === '(') depth++;
-      else if (c === ')' && --depth === 0) { closed = i; break; }
+      else if (c === ')' && depth > 0) depth--;
+      else if (/\s/.test(c) && depth === 0) break;
     }
-    if (closed < 0) return null;
-    t = t.slice(closed + 1).replace(/^\s+/, '');
+    if (depth > 0) return null;
+    t = t.slice(i).replace(/^\s+/, '');
   }
 };
 const headTok = (seg) => {
   let t = seg.trim().replace(/^[$#>]\s+/, '');
   if (!t || t.startsWith('#')) return null;
-  t = stripSubst(t) ?? '';
+  t = stripAssignments(t) ?? '';
   if (!t) return null;
-  t = t.replace(/^([A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, '');
   t = t.replace(/^(sudo|command|nohup)\s+/, '');
   const tok = t.split(/\s+/)[0];
   if (!tok) return null;
@@ -97,7 +104,7 @@ const headTok = (seg) => {
 };
 const subCmd = (seg, tok) => {
   let t = seg.trim().replace(/^[$#>]\s+/, '');
-  t = (stripSubst(t) ?? '').replace(/^([A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, '');
+  t = stripAssignments(t) ?? '';
   const parts = t.split(/\s+/);
   if (parts[0] !== tok) return null;
   const s = parts[1] || '';
@@ -136,12 +143,22 @@ for (const md of mds) {
           while (c2 !== ROOT && !existsSync(join(c2, 'SKILL.md'))) { c2 = dirname(c2); }
           if (existsSync(join(c2, 'SKILL.md'))) skillRoot = c2;
           const cands = [resolve(dirname(md), tok), resolve(ROOT, tok), resolve(skillRoot, tok)];
-          if (!cands.some(c => existsSync(c)) && !harnessScript(tok)) scriptMissing.push(`${rel}  <<< ${line.slice(0,70)}`);
+          if (!cands.some(c => existsSync(c)) && !harnessScript(tok)) {
+            if (/\/target\//.test(tok) || (isReferenceDoc(md) && tok.startsWith('./'))) artifactRefs.push(`${rel}  <<< ${line.slice(0,70)}`);
+            else scriptMissing.push(`${rel}  <<< ${line.slice(0,70)}`);
+          }
+          continue;
+        }
+        if (tok.startsWith('~/')) {
+          // home-relative harness shim (e.g. ~/.pi/agent/bin/pidoc) — expand before probe
+          if (existsSync(join(homedir(), tok.slice(2)))) binSeen.add(tok);
+          else binFail.push(`${rel}  <<< ${line.slice(0,70)}`);
           continue;
         }
         if (SOURCED.has(tok)) { binSeen.add(tok); continue; }
         if (/^\/tmp\//.test(tok)) { onDemandRefs.push(`${rel}  <<< ${line.slice(0,70)}`); continue; } // downloaded on demand — absence is not a doc bug
         if (MAC_ONLY.has(tok)) { macOnlyRefs.push(`${rel}  <<< ${line.slice(0,70)}`); continue; }
+        if (OPTIONAL_TOOLCHAINS.has(tok)) { optionalToolchainRefs.push(`${rel}  <<< ${line.slice(0,70)}`); continue; }
         try { execFileSync('bash', ['-c', 'command -v "$1" >/dev/null 2>&1', '_', tok]); binSeen.add(tok); }
         catch { binFail.push(`${rel}  <<< ${line.slice(0,70)}`); continue; }
         if (INTERPRETERS.has(tok)) continue;
@@ -157,21 +174,40 @@ for (const md of mds) {
 }
 const KNOWN = /^(rg|grep|egrep|fgrep|find|xargs|jq|sed|cut|sort|uniq|wc|head|tail|ast-grep|git|npm|npx|node|tvly|pi|fd|awk|tr|chmod|ls|cat|curl|sh|bash|command|skillcheck\.sh)\s/;
 const inlineRe = /`([^`\n]+)`/g;
+// Inline prose uses `|` as an alternation more often than a pipeline (`git commit|push|…`);
+// split on `|` only when spaced, so a prose list is not read as bare commands.
+const inlineSegSplit = (line) => {
+  const segs = ['']; let q = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) { segs[segs.length-1] += c; if (c === q) q = null; continue; }
+    if (c === "'" || c === '"') { q = c; segs[segs.length-1] += c; continue; }
+    if (c === ';' || (c === '&' && line[i+1] === '&') || (c === '|' && line[i+1] === '|')) { segs.push(''); if (c !== ';') i++; continue; }
+    if (c === '|' && /\s/.test(line[i-1] || '') && /\s/.test(line[i+1] || '')) { segs.push(''); continue; }
+    segs[segs.length-1] += c;
+  }
+  return segs;
+};
+// Curated false positives: reviewed commands whose flags `--help` omits (curl prints the
+// full option list only under `--help all`; a prose table names `git reset --hard`).
+const FLAG_WAIVERS = new Set(['git --hard', 'git reset --hard', 'curl --proto', 'curl --tlsv1']);
 for (const md of mds) {
   const relMd = md.slice(ROOT.length + 1);
   // history, not declarations: CHANGELOG, HANDOFF files, generated handoff/ docs — quoting past
-  // commands in prose is their job; binaries may not exist on this machine
-  if (relMd === 'CHANGELOG.md' || /^HANDOFF-[^/]*\.md$/.test(relMd) || relMd.startsWith('handoff/')) continue;
+  // commands in prose is their job; binaries may not exist on this machine. audit-reports are
+  // dated machine-local records of past runs, same rationale.
+  if (relMd === 'CHANGELOG.md' || /^HANDOFF-[^/]*\.md$/.test(relMd) || relMd.startsWith('handoff/') || relMd.startsWith('audit-reports/')) continue;
   const text = readFileSync(md, 'utf8');
   let im;
   while ((im = inlineRe.exec(text)) !== null) {
     let line = im[1].trim();
     if (!KNOWN.test(line + ' ')) continue;
     if (line.includes('…') || line.includes('...')) line = line.split(/…|\.\.\./)[0];
-    for (const seg of segSplit(line)) {
+    for (const seg of inlineSegSplit(line)) {
       const tok = headTok(seg);
       if (!tok) continue;
       if (SOURCED.has(tok)) { binSeen.add(tok); continue; }
+      if (OPTIONAL_TOOLCHAINS.has(tok)) { optionalToolchainRefs.push(`${md.replace(ROOT+'/','')}: INLINE: ${tok}  <<< ${line.slice(0,70)}`); continue; }
       try { execFileSync('bash', ['-c', 'command -v "$1" >/dev/null 2>&1', '_', tok]); binSeen.add(tok); }
       catch {
         if (harnessScript(tok)) { binSeen.add(tok); continue; }
@@ -191,6 +227,7 @@ for (const [key, flags] of flagByKey) {
   const help = helpFlags(key);
   for (const f of flags) {
     if (f === '--help') continue; // universal flag; git man pages don't list it — documenting help commands is legit prose
+    if (FLAG_WAIVERS.has(`${key} ${f}`)) continue;
     if (!help.has(f)) flagFail.push(`${key} ${f}`);
   }
 }
@@ -200,9 +237,11 @@ console.log(`binaries OK: ${[...binSeen].sort().join(' ') || '(none)'}`);
 console.log(`\nSYNTAX FAIL (${syntaxFail.length}):`); syntaxFail.forEach(x => console.log('  ' + x));
 console.log(`\nBINARY NOT FOUND (${binFail.length}):`); binFail.forEach(x => console.log('  ' + x));
 console.log(`\nRELATIVE SCRIPT MISSING (${scriptMissing.length}):`); scriptMissing.forEach(x => console.log('  ' + x));
+console.log(`\nOPTIONAL TOOLCHAIN REFS (info, ${optionalToolchainRefs.length}):`); optionalToolchainRefs.forEach(x => console.log('  ' + x));
+console.log(`\nBUILD/EXAMPLE ARTIFACT REFS (info, ${artifactRefs.length}):`); artifactRefs.forEach(x => console.log('  ' + x));
 console.log(`\nMAC-ONLY REFS (info, ${macOnlyRefs.length}):`); macOnlyRefs.forEach(x => console.log('  ' + x));
 console.log(`\nON-DEMAND /tmp REFS (info, ${onDemandRefs.length}):`); onDemandRefs.forEach(x => console.log('  ' + x));
 console.log(`\nFLAG NOT IN HELP (${flagFail.length}):`); flagFail.forEach(x => console.log('  ' + x));
 
-// macOnly is info-only; everything else fails the gate
+// info-only: MAC_ONLY, OPTIONAL_TOOLCHAINS, artifactRefs (reference examples), onDemandRefs
 process.exit([syntaxFail, binFail, scriptMissing, flagFail].some((a) => a.length) ? 1 : 0);

@@ -155,7 +155,7 @@ All 22 skills are **manual** — invoke with `/skill:<name>`; none auto-load on 
 └── assets/         # static resources: templates, images, data files
 ```
 
-Layout is enforced by `node skills/skill-manager/scripts/validate-skill.mjs <skill-dir>` (exit 0 required); `node skills/harness-engineer/scripts/mdcmdcheck.mjs` additionally verifies every command/path declared in markdown resolves.
+Layout is enforced by `node skills/skill-manager/scripts/validate-skill.mjs <skill-dir>` (exit 0 required); `node skills/harness-engineer/scripts/mdcmdcheck.mjs` additionally verifies harness commands/paths declared in markdown resolve — optional toolchains (e.g. Rust), reference-doc example artifacts, and machine-only tools are reported info-only.
 
 ## Subagents
 
