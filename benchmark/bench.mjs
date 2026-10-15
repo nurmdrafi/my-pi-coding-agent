@@ -8,7 +8,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadArms, getArm, getTask } from './lib/manifests.mjs';
+import { loadArms, getArm, getTask, discoverTasks } from './lib/manifests.mjs';
 import { prepareWorkdir } from './lib/workdir.mjs';
 import { runValidator } from './lib/validate.mjs';
 import { runMetrics } from './lib/metrics.mjs';
@@ -144,6 +144,21 @@ function cmdReport(opts) {
     `${records.length} runs, ${cells.length} (task × arm) cells`);
 }
 
+// ---------------------------------------------------------------- list (spec §7.5)
+
+function cmdList(opts) {
+  const tasks = discoverTasks(opts.tasksDir);
+  const arms = loadArms(opts.armsPath);
+  const records = readRecords(opts.resultsDir);
+  const count = (task, arm) => records.filter((r) => r.task === task && r.arm === arm).length;
+  console.log(`tasks (${tasks.length}):`);
+  for (const t of tasks) console.log(`  ${t.id} — ${t.class} — ${t.title}`);
+  console.log(`arms (${arms.length}):`);
+  for (const a of arms) console.log(`  ${a.name}${a.baseline ? ' (baseline)' : ''} — ${a.description}`);
+  console.log('runs per task × arm:');
+  for (const t of tasks) for (const a of arms) console.log(`  ${t.id} × ${a.name}: ${count(t.id, a.name)}`);
+}
+
 // ---------------------------------------------------------------- dispatch
 
 const [, , cmd, ...rest] = process.argv;
@@ -153,4 +168,5 @@ if (!cmd || opts.help) { console.log(HELP); process.exit(cmd ? 0 : 1); }
 else if (cmd === 'start') { try { cmdStart(optsWithDefaults); } catch (e) { die(e.message); } }
 else if (cmd === 'finish') { try { cmdFinish(optsWithDefaults); } catch (e) { die(e.message); } }
 else if (cmd === 'report') { try { cmdReport(optsWithDefaults); } catch (e) { die(e.message); } }
+else if (cmd === 'list') { try { cmdList(optsWithDefaults); } catch (e) { die(e.message); } }
 else die(`unknown command: ${cmd}\n${HELP}`);
