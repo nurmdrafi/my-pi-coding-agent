@@ -1,0 +1,6 @@
+{
+  "id": "refactor/t1",
+  "class": "refactor",
+  "title": "Extract the duplicated tax math into src/tax.js",
+  "prompt": "src/prices.js has two functions whose bodies duplicate the same apply-tax-and-round-to-cents math with different rates. Refactor: create src/tax.js exporting applyTax(amount, rate), and make both functions in src/prices.js delegate to it so the duplicated math is gone. Behavior must not change — every test in src/prices.test.js must stay green. Do not modify any test files."
+}

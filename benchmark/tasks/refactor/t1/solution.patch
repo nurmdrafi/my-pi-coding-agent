@@ -1,0 +1,30 @@
+diff --git a/src/prices.js b/src/prices.js
+index 1e3f005..d17f44c 100644
+--- a/src/prices.js
++++ b/src/prices.js
+@@ -1,11 +1,11 @@
++import { applyTax } from './tax.js';
++
+ /** Price with 20% VAT, rounded to cents. */
+ export function withVat(amountEur) {
+-  const taxed = amountEur * 1.2;
+-  return Math.round(taxed * 100) / 100;
++  return applyTax(amountEur, 0.2);
+ }
+ 
+ /** Price with 8% sales tax, rounded to cents. */
+ export function withSalesTax(amountUsd) {
+-  const taxed = amountUsd * 1.08;
+-  return Math.round(taxed * 100) / 100;
++  return applyTax(amountUsd, 0.08);
+ }
+diff --git a/src/tax.js b/src/tax.js
+new file mode 100644
+index 0000000..5a2fb51
+--- /dev/null
++++ b/src/tax.js
+@@ -0,0 +1,4 @@
++/** Apply `rate` tax to `amount` and round to cents. */
++export function applyTax(amount, rate) {
++  return Math.round(amount * (1 + rate) * 100) / 100;
++}
