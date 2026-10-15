@@ -2,7 +2,7 @@
 # after-pull.sh — keep the machine-local harness setup in sync after a pull.
 # Invoked by .husky/post-merge and .husky/post-rewrite on macOS + Linux.
 #
-# Always runs the pi-doctor health check. Safe, non-privileged fixes apply
+# Always runs the pidoc health check. Safe, non-privileged fixes apply
 # automatically (npm deps + host links, pidoc shim, pidx rebuild). Missing
 # toolchains (cargo/rg/gh/jq/fd) are reported with their fix command — installs
 # are never run from here (ask-first rule). Always exits 0.
@@ -35,14 +35,14 @@ fi
 mkdir -p bin
 cat > bin/pidoc <<EOF
 #!/bin/sh
-exec node "$ROOT/skills/pi-doctor/scripts/pidoc.mjs" "\$@"
+exec node "$ROOT/skills/pidoc/scripts/pidoc.mjs" "\$@"
 EOF
 chmod +x bin/pidoc
 
 # 3. Full health check; --fix rebuilds pidx when missing/stale and applies
 #    any other safe fix. FAIL/WARN rows print their own fix hints.
 if command -v node >/dev/null 2>&1; then
-  node skills/pi-doctor/scripts/pidoc.mjs --fix || true
+  node skills/pidoc/scripts/pidoc.mjs --fix || true
 else
   echo "!! node not found — cannot verify setup" >&2
 fi

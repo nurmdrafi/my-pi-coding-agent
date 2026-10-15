@@ -27,7 +27,7 @@ fi
 mkdir -p bin
 cat > bin/pidoc <<EOF
 #!/bin/sh
-exec node "$ROOT/skills/pi-doctor/scripts/pidoc.mjs" "\$@"
+exec node "$ROOT/skills/pidoc/scripts/pidoc.mjs" "\$@"
 EOF
 chmod +x bin/pidoc
 echo "== pidoc shim: bin/pidoc"
@@ -45,5 +45,5 @@ else
 fi
 
 # 4. health check
-node skills/pi-doctor/scripts/pidoc.mjs || true
+node skills/pidoc/scripts/pidoc.mjs || true
 echo "== done. Put $ROOT/bin on PATH for pidoc/pidx."

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-/** pi-doctor — deterministic harness setup check (macOS + Linux).
+/** pidoc — deterministic harness setup check (macOS + Linux).
  *
- * Usage: node scripts/pi-doctor.mjs [--fix] [--json]
+ * Usage: node scripts/pidoc.mjs [--fix] [--json]
  * Exit 0 = all pass (warnings allowed); exit 1 = any FAIL.
  * Safe fixes (pidx rebuild) apply with --fix; installs never run here —
  * the skill body carries the ask-first install commands.
@@ -93,7 +93,7 @@ for (const d of ['sessions', join('.cache', '')]) {
 // 8. session-audit end-to-end probe (run --max 1 into a throwaway workdir —
 // exercises discover+parse+rules+write, incl. the pidx fast path when present)
 {
-  const tmp = mkdtempSync(join(tmpdir(), 'pi-doctor-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'pidoc-'));
   try {
     const r = spawnSync(process.execPath,
       [join(AGENT, 'skills', 'session-audit', 'scripts', 'audit.mjs'), 'run', '--max', '1'],
@@ -127,6 +127,6 @@ if (JSON_OUT) { console.log(JSON.stringify(finalRows, null, 1)); }
 else {
   for (const r of finalRows) console.log(`${r.status.padEnd(5)}  ${r.check.padEnd(10)}  ${r.detail}${r.fixHint ? `  [fix: ${r.fixHint}]` : ''}`);
   const n = (s) => finalRows.filter((r) => r.status === s).length;
-  console.log(`\npi-doctor: ${n('PASS')} pass, ${n('WARN')} warn, ${n('FAIL')} fail${FIX ? ' (fix mode)' : ' (run with --fix to apply safe fixes)'}`);
+  console.log(`\npidoc: ${n('PASS')} pass, ${n('WARN')} warn, ${n('FAIL')} fail${FIX ? ' (fix mode)' : ' (run with --fix to apply safe fixes)'}`);
 }
 process.exit(finalRows.some((r) => r.status === 'FAIL') ? 1 : 0);

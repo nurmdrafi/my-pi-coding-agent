@@ -1,5 +1,5 @@
 ---
-name: pi-doctor
+name: pidoc
 description: >
   Checks pi harness setup health — node pin, cargo/pidx build, helper CLIs,
   permission-gate, settings, hooks, writable dirs, session-audit fallback —
@@ -16,10 +16,10 @@ One deterministic script, zero network, macOS + Linux. Also invoked
 automatically on every `git pull` by `scripts/after-pull.sh` (husky
 `post-merge`/`post-rewrite`) with `--fix`.
 
-1. Run `node ~/.pi/agent/skills/pi-doctor/scripts/pidoc.mjs`.
+1. Run `node ~/.pi/agent/skills/pidoc/scripts/pidoc.mjs`.
 2. Report the table as-is (path-style citation, no restating rows).
 3. FAIL rows first, then WARN. For each FAIL/WARN with a `--fix` route, run
-   `node ~/.pi/agent/skills/pi-doctor/scripts/pidoc.mjs --fix` — it only
+   `node ~/.pi/agent/skills/pidoc/scripts/pidoc.mjs --fix` — it only
    applies safe fixes (pidx rebuild via cargo, all local).
 4. Installs (rustup, gh, rg, fd) are never run by the script. Tell the user
    the exact command and wait for approval:

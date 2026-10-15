@@ -140,7 +140,7 @@ All skills are **manual** — invoke with `/skill:<name>`; none auto-load on tas
 | harness-engineer          | Meta: audit/improve this harness (budgets, evidence, skill audits, anti-pattern sweep)                  | `/skill:harness-engineer`           |
 | map-integration           | Any map work: maplibre/mapbox-gl, deck.gl, turf, draw; Barikoi stack                                    | `/skill:map-integration`            |
 | llm-format-checker        | LLM-rule markdown format check/fix (AGENTS.md, system prompts, SKILL.md bodies): bold/heading/list discipline | `/skill:llm-format-checker`        |
-| pi-doctor                 | Harness setup health check — node pin, cargo/pidx, helper CLIs, gate, settings, hooks, dirs, audit; `--fix` rebuilds pidx | `/skill:pi-doctor`                  |
+| pidoc                     | Harness setup health check — node pin, cargo/pidx, helper CLIs, gate, settings, hooks, dirs, audit; `--fix` rebuilds pidx | `/skill:pidoc`                      |
 | playwright-tester         | e2e specs, stress/update-flow runs, bug-hunt iterations, untested-critical-path coverage                | `/skill:playwright-tester`          |
 | refactoring-ui            | Audit/fix existing UI: hierarchy, spacing, color, depth, small UI defects                               | `/skill:refactoring-ui`             |
 | rust-skills               | Rust coding guidelines (265 rules, 26 categories): ownership, errors, async, unsafe, API, serde, testing | `/skill:rust-skills`                |
