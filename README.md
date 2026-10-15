@@ -55,13 +55,19 @@ git clone https://github.com/nurmdrafi/my-pi-coding-agent.git ~/.pi/agent
 # Additionally, per machine — copy extras from an existing machine
 scp <your-other-machine>:~/.agents/skills/* ~/.pi/agent/skills/  # private skills, not in the repo
 scp <your-other-machine>:~/.pi/agent/auth.json ~/.pi/agent/      # secrets — or /login per provider inside pi
+
+# 4. Bootstrap — npm deps, pidoc shim, pidx build (skips politely if no cargo)
+sh ~/.pi/agent/scripts/bootstrap.sh
 ```
 
-Then start pi:
+Then verify and start pi:
 
 ```console
+$ ~/.pi/agent/bin/pidoc
+# expect 0 FAIL (warnings OK — e.g. no cargo yet means session-audit uses its Node fallback)
+
 $ pi
-# First run regenerates bin/, npm/, git/, models-store.json automatically.
+# First run regenerates npm/, git/, models-store.json automatically; bin/ came from bootstrap.
 ```
 
 Optional, for subagents: `brew install tmux` (macOS) or `sudo apt install tmux` (Linux).
@@ -75,6 +81,7 @@ That's it — no env vars to export, no paths to fix.
 | Node.js     | ≥ 22.19 (`.nvmrc` pins 24, the current LTS)           |
 | OS          | macOS or Linux                                        |
 | tmux        | Only if using subagents — see [Subagents](#subagents) |
+| Rust (cargo) | Optional — builds `pidx` (session-audit fast path); without it session-audit uses its Node parser. Bootstrap prints the rustup command if missing |
 | Git         | For sync; `~/.pi/agent` is itself a repo              |
 
 ## What's inside
@@ -91,6 +98,7 @@ That's it — no env vars to export, no paths to fix.
 ├── skills/                   # one dir per skill: SKILL.md + scripts/ references/ assets/
 ├── extensions/               # Always-on TS extensions (permission-gate)
 ├── agents/                   # Subagent definitions (scout/researcher/worker/reviewer)
+├── tools/                    # Native helper crates (pidx — session-log indexer)
 ├── prompts/                  # /command prompt templates (/issue, /ship, /update-changelog)
 ├── tests/                    # Node test runner suite (permission-gate)
 ├── .github/workflows/        # Release CI/CD
@@ -230,7 +238,8 @@ cd ~/.pi/agent && git add -A && git commit -m "harness: <what>" && git push
 
 # Machine B
 cd ~/.pi/agent && git pull
-# then start a fresh pi session — first run regenerates bin/, npm/, git/, models-store.json
+# fresh clone instead? sh scripts/bootstrap.sh (deps + shims + pidx + health check)
+# then start a fresh pi session — first run regenerates npm/, git/, models-store.json
 ```
 
 `auth.json` (secrets) is copied manually **once per machine** via `scp` (or `/login` per provider). It is never in git; `.gitignore` enforces this. On key rotation, update `auth.json` on each machine.
