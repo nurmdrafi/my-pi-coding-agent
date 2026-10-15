@@ -2,7 +2,8 @@
 name: pidoc
 description: >
   Checks pi harness setup health — node pin, cargo/pidx build, helper CLIs,
-  permission-gate, settings, hooks, writable dirs, session-audit fallback —
+  rg PCRE2 pin, piread smoke, shell rc PATH pin, permission-gate, settings, hooks,
+  writable dirs, session-audit fallback —
   and fixes what is safe. Use when the user says doctor, check my setup,
   diagnose the harness, is my setup ok, after cloning the harness on a new
   machine, or when pidx/session-audit misbehaves. NOT for skill authoring

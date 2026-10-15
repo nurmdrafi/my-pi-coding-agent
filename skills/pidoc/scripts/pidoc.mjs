@@ -40,7 +40,7 @@ row(cargo ? 'PASS' : 'WARN', 'cargo', cargo ?? 'not found — pidx cannot rebuil
 
 // 3. pidx binary + freshness vs crate sources
 const pidxBin = join(AGENT, 'bin', 'pidx');
-const crateDir = join(AGENT, 'tools', 'pidx');
+const crateDir = join(AGENT, 'native', 'pidx');
 if (!existsSync(pidxBin)) {
   row('FAIL', 'pidx', `missing ${pidxBin}${cargo ? ' — fixable with --fix' : ' — needs cargo (see cargo row)'}`);
   if (FIX && cargo) rebuildPidx(row);
@@ -70,6 +70,43 @@ for (const [bin, why] of [['rg', 'search'], ['gh', 'issues'], ['jq', 'payload pi
 }
 const fd = which('fd') ?? join(AGENT, 'bin', 'fd');
 row(existsSync(fd) ? 'PASS' : 'WARN', 'fd', existsSync(fd) ? fd : 'not found (find alternative)');
+
+// 4b. rg must be the agent build with PCRE2 (rg -P; SS2 rg-first default)
+const rgBin = which('rg');
+if (!rgBin) {
+  row('WARN', 'rg-pcre2', 'rg not on PATH — see rg row above');
+} else {
+  const pcre = spawnSync(rgBin, ['-P', 'a(?=b)'], { input: 'ab\n', encoding: 'utf8' });
+  const pinned = rgBin === join(AGENT, 'bin', 'rg');
+  row(pinned && pcre.status === 0 ? 'PASS' : 'WARN', 'rg-pcre2',
+    pinned && pcre.status === 0 ? `${rgBin} — PCRE2 ok`
+      : `${rgBin} ${pinned ? 'lacks PCRE2' : 'is not the agent build'} — rebuild: cargo install ripgrep --features pcre2 --root ~/.pi/agent`);
+}
+
+// 4c. piread native read tool (AGENTS.md tooling default; read is fallback)
+const pireadBin = join(AGENT, 'bin', 'piread');
+if (!existsSync(pireadBin)) {
+  row('WARN', 'piread', 'missing — read stays built-in (build via scripts/bootstrap.sh)');
+} else {
+  const pr = spawnSync(pireadBin, ['--path', join(AGENT, 'AGENTS.md'), '--limit', '1'], { encoding: 'utf8' });
+  row(pr.status === 0 && pr.stdout.includes('"ok":true') ? 'PASS' : 'FAIL', 'piread',
+    pr.status === 0 ? `${pireadBin} — ok:true` : `exit ${pr.status} — rebuild via scripts/bootstrap.sh`);
+}
+
+// 4d. terminal PATH pin: any shell rc prepending agent bin so fresh shells match
+// (zsh: ~/.zshenv, bash: ~/.bashrc — macOS and Linux alike)
+let pinFile = null;
+for (const rc of ['.zshenv', '.zshrc', '.bashrc', '.profile']) {
+  try {
+    if (existsSync(join(homedir(), rc)) && readFileSyncText(join(homedir(), rc)).includes('.pi/agent/bin')) {
+      pinFile = rc;
+      break;
+    }
+  } catch {}
+}
+row(pinFile ? 'PASS' : 'WARN', 'shell-path',
+  pinFile ? `~/${pinFile} prepends agent bin — fresh terminals resolve pinned tools`
+    : 'add to your shell rc (zsh: ~/.zshenv, bash: ~/.bashrc): export PATH="$HOME/.pi/agent/bin:$PATH"');
 
 // 5. gate + settings + extensions
 row(existsSync(join(AGENT, 'extensions', 'permission-gate', 'index.ts')) ? 'PASS' : 'FAIL', 'gate', 'permission-gate present');

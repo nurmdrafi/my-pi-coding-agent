@@ -41,6 +41,11 @@ Loaded every session. Task rule sets in `docs/` — follow link when task touche
 - Tests/lint/tsc: ALWAYS run, scoped to changed files. Never full suite — too slow. Full run only at task end or CI. `eslint <files>`, `tsc --noEmit` (whole project if no incremental), `vitest run <file>`.
 - Build: do NOT always run. Only at task end or after risky structural edits (new files, import graph changes, integration doubt) — not after every edit batch; edits are cheap to verify by re-read.
 
+### Tooling defaults
+- Search: `rg`. Fallback `grep` only when rg is missing or errors.
+- Find files: `fd`. Fallback `find` only when fd is missing or errors.
+- Text file reads: `piread` first — `~/.pi/agent/bin/piread --path <P> [--offset <N>] [--limit <N>]` via bash, take `.content`. Fallback built-in `read` when piread is missing or fails. Images always built-in `read` (piread is text-only).
+
 ## Scoped rule sets
 - [docs/change-discipline.md](docs/change-discipline.md) — surgical scope, ponytail ladder, root-cause fixes
 - [docs/agent-hygiene.md](docs/agent-hygiene.md) — toolchain, edit anchors, issue/commit discipline

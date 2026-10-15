@@ -75,7 +75,24 @@ $ pi
 
 Optional, for subagents: `brew install tmux` (macOS) or `sudo apt install tmux` (Linux).
 
-That's it — no env vars to export, no paths to fix.
+That's it for the bootstrap itself; one optional shell export pins the same
+tools in your own terminals — see [Custom tool binaries](#custom-tool-binaries).
+
+## Custom tool binaries
+
+`bin/` is gitignored and regenerated; pi prepends it to `PATH` for every bash
+call, and your shell rc should prepend it too — zsh: `~/.zshenv`, bash:
+`~/.bashrc` (`export PATH="$HOME/.pi/agent/bin:$PATH"`) — so terminals on
+macOS and Linux resolve identically:
+
+| Binary  | Purpose | Rebuild |
+| ------- | ------- | ------- |
+| `rg`    | Search default (permission-gate SS2 rg-first); built **with PCRE2** so `rg -P` never needs a grep fallback | `cargo install ripgrep --features pcre2 --root ~/.pi/agent` |
+| `piread`| Native read tool (AGENTS.md tooling default; built-in `read` is the fallback and still certifies Anchor Guard edit coverage) | `scripts/bootstrap.sh` |
+| `pidx`, `fd`, `pidoc` | Session-audit fast path, `find` default (permission-gate SS3 fd-first), this health check | `scripts/bootstrap.sh` |
+
+`pidoc` verifies all of the above — look for the `rg-pcre2`, `piread`, and
+`shell-path` rows.
 
 ## Requirements
 

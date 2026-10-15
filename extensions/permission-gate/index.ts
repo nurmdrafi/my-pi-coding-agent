@@ -678,7 +678,8 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
-    // TC1/TC2/SS1/PB1/NM1 (2026-10-13 audit): toolchain pins + search scope —
+    // TC1/TC2/SS1/SS2/SS3/PB1/NM1 (2026-10-13 audit): toolchain pins + search
+    // scope/rg-first/fd-first —
     // BEFORE H2 for the same reason as R9: never ask the confirm dialog for a
     // command a rule rejects anyway
     const isDarwin = process.platform === "darwin";

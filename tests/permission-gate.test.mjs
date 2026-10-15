@@ -2316,20 +2316,78 @@ const cases = [
     },
   ],
   [
-    "SS1: path-scoped grep passes",
-    "pass",
-    async (pi) => bash(pi, "grep -rn 'x' src/", approveUi()),
+    "SS2: path-scoped grep still blocked (rg-first)",
+    "blocked",
+    async (pi) => {
+      const r = await bash(pi, "grep -rn 'x' src/", approveUi());
+      return r.blocked && !r.reason.startsWith("Search (rg-first)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
   ],
   [
-    "SS1: --include glob scope passes",
-    "pass",
-    async (pi) =>
-      bash(pi, "grep -rn --include='*.ts' 'x' .", approveUi()),
+    "SS2: --include-scoped grep still blocked (rg-first)",
+    "blocked",
+    async (pi) => {
+      const r = await bash(
+        pi,
+        "grep -rn --include='*.ts' 'x' .",
+        approveUi(),
+      );
+      return r.blocked && !r.reason.startsWith("Search (rg-first)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
   ],
   [
-    "SS1: non-recursive grep passes",
+    "SS2: non-recursive grep still blocked (rg-first)",
+    "blocked",
+    async (pi) => {
+      const r = await bash(pi, "grep -n 'x' package.json", approveUi());
+      return r.blocked && !r.reason.startsWith("Search (rg-first)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
+  ],
+  [
+    "SS2: mid-pipe grep blocked",
+    "blocked",
+    async (pi) => {
+      const r = await bash(pi, "ls | grep -i json", approveUi());
+      return r.blocked && !r.reason.startsWith("Search (rg-first)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
+  ],
+  [
+    "SS2: scoped rg passes",
     "pass",
-    async (pi) => bash(pi, "grep -n 'x' package.json", approveUi()),
+    async (pi) => bash(pi, "rg 'x' src/", approveUi()),
+  ],
+  [
+    "SS3: bare find blocked (fd-first)",
+    "blocked",
+    async (pi) => {
+      const r = await bash(pi, "find src -name '*.ts'", approveUi());
+      return r.blocked && !r.reason.startsWith("Search (fd-first)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
+  ],
+  [
+    "SS3: fd passes",
+    "pass",
+    async (pi) => bash(pi, "fd -e ts . src/", approveUi()),
+  ],
+  [
+    "NM1: find into node_modules keeps NM1 reason over SS3",
+    "blocked",
+    async (pi) => {
+      const r = await bash(pi, "find node_modules -name vite.ts", approveUi());
+      return r.blocked && !r.reason.startsWith("Search (node_modules)")
+        ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
+        : r;
+    },
   ],
   [
     "SS1: unscoped rg passes (gitignore-aware by design)",

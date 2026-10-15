@@ -11,6 +11,8 @@
  * | PB1 | grep -P on darwin (BSD grep lacks it)            | rg / grep -E              |
  * | SS1 | recursive grep with no path/glob scope           | scope path/--include or rg |
  * | NM1 | read tool + grep/find/rg/cat/head/tail into node_modules | docs/types, not the tree |
+ * | SS2 | bare grep/egrep/fgrep head or mid-pipe (rg-first policy) | rg PATTERN path/           |
+ * | SS3 | bare find head (fd-first policy)                    | fd PATTERN path/           |
  *
  * `ls node_modules/<pkg>` stays allowed (presence checks are legitimate);
  * rg is gitignore-aware and fast, so unscoped rg passes by design.
@@ -84,6 +86,18 @@ const isEarendilExempt = (t: string) =>
   t.startsWith("node_modules/@earendil-works/") ||
   t.includes("/node_modules/@earendil-works/");
 
+/** SS2 (2026-10-16): AGENTS.md tooling defaults — rg is the search default;
+ * grep/egrep/fgrep (segment head or mid-pipe) is fallback only when rg errors.
+ * Fires after PB1/SS1/NM1 so their specific reasons still teach first. */
+const SS2_MSG =
+  "Search (rg-first): 'grep' is the fallback, not the default — use 'rg PATTERN path/' (scope with -t <lang> or a glob). If rg genuinely errored, say so in chat and wait for approval before using grep.";
+
+/** SS3 (2026-10-16): AGENTS.md tooling defaults — fd is the file-find default;
+ * find is fallback only when fd errors. Fires after NM1 so the node_modules
+ * approval policy keeps its specific reason. */
+const SS3_MSG =
+  "Search (fd-first): 'find' is the fallback, not the default — use 'fd PATTERN path/' (regex pattern; -e exact, -H hidden, -t f files). If fd genuinely errored, say so in chat and wait for approval before using find.";
+
 /**
  * SS1's crawl-cost premise applies to all searches.
  * PB1 (deterministic BSD failure) and NM1 (user-approval policy) still block.
@@ -100,6 +114,12 @@ export function searchCheck(
     if (/^(?:find|rg|cat|head|tail)$/.test(head) &&
         toks.some((t) => isNodeModulesToken(t) && !isEarendilExempt(t)))
       return NM1_MSG;
+    // SS3 fd-first: `find` head → fd (NM1's node_modules reason stays first)
+    if (head === "find") return SS3_MSG;
+    // SS2 mid-pipe: `… | grep …` in a segment headed by another command
+    for (let k = 1; k < toks.length; k++)
+      if (toks[k - 1] === "|" && /^(?:grep|egrep|fgrep)$/.test(toks[k]))
+        return SS2_MSG;
     return undefined;
   }
   // grep: flags, then the pattern, then path args / mid-command options
@@ -133,7 +153,10 @@ export function searchCheck(
     return "Search (Scope): recursive grep with no path/glob scope crawls node_modules/.git and timed out at 30s — scope it (grep -rn --include='*.ts' PATTERN src/) or use rg PATTERN src/.";
   if ([...paths, ...opts].some((t) => isNodeModulesToken(t) && !isEarendilExempt(t)))
     return NM1_MSG;
-  return undefined;
+  // user-approved 2026-10-13: grep into @earendil-works pi docs stays allowed
+  return paths.length > 0 && paths.every(isEarendilExempt)
+    ? undefined
+    : SS2_MSG;
 }
 
 /** NM1 for the read tool: block reads of dependency internals */

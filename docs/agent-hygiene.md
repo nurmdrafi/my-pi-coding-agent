@@ -8,7 +8,9 @@ Toolchain, edits, issue/commit rules. Loaded via AGENTS.md link.
 - Repo pkg manager only (`pnpm exec` in pnpm repo); never `npx`/`npm` against it.
 - Never read `node_modules`.
 - Never repo-wide `grep`/`rg` with no path + broad pattern — scope or timeout.
-- TC1/TC2, SS1, PB1, NM1 enforced by permission-gate; block reason = stop, not retry differently.
+- `rg` is the search default; `grep`/`egrep`/`fgrep` only when rg errored (say so in chat first).
+- `fd` is the file-find default; `find` only when fd errored (say so in chat first).
+- TC1/TC2, SS1, SS2, SS3, PB1, NM1 enforced by permission-gate; block reason = stop, not retry differently.
 
 ## Edits
 - Re-read exact region immediately before editing.

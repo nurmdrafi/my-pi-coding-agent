@@ -9,6 +9,9 @@ auth.json
 # Machine-local binaries & deps (pi regenerates)
 /bin/
 npm/
+# cargo install --root metadata (rg/pidx rebuilds)
+.crates.toml
+.crates2.json
 tmp/
 **/node_modules/
 
