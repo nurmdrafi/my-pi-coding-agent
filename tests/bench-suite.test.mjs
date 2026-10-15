@@ -505,7 +505,11 @@ test('report: zero completed runs → message, exit 0, no file (spec §10)', () 
 // ---------------------------------------------------------------- list (Step 9)
 
 test('list: tasks, arms, and run counts per task × arm (spec §7.5)', () => {
-  const { resultsDir, reportsDir } = reportSetup([REC_T1A, REC_T1B, REC_T2C]);
+  const { resultsDir } = reportSetup([
+    mkRec({ runId: 's1', task: 'bugfix/task-syn', arm: 'baseline' }),
+    mkRec({ runId: 's2', task: 'bugfix/task-syn', arm: 'baseline', grade: 'FAIL' }),
+    mkRec({ runId: 's3', task: 'bugfix/task-syn', arm: 'candidate' }),
+  ]);
   const r = runCli('list', '--tasks-dir', synTasksRoot(), '--results-dir', resultsDir);
   assert.equal(r.status, 0, r.stderr);
   assert.ok(r.stdout.includes('bugfix/task-syn'));
@@ -513,10 +517,9 @@ test('list: tasks, arms, and run counts per task × arm (spec §7.5)', () => {
   assert.ok(r.stdout.includes('Synthetic: fix double() off-by-one'));
   assert.ok(r.stdout.includes('baseline'));
   assert.ok(r.stdout.includes('candidate'));
-  assert.ok(/bugfix\/t1\s*×\s*baseline:\s*2/.test(r.stdout), 'run count per task × arm');
-  assert.ok(/feature\/t1\s*×\s*candidate:\s*1/.test(r.stdout));
+  assert.ok(/bugfix\/task-syn\s*×\s*baseline:\s*2/.test(r.stdout), 'run count per task × arm');
+  assert.ok(/bugfix\/task-syn\s*×\s*candidate:\s*1/.test(r.stdout));
   rmSync(resultsDir, { recursive: true, force: true });
-  rmSync(reportsDir, { recursive: true, force: true });
 });
 
 test('list: zero runs → counts render 0, exit 0', () => {
