@@ -26,7 +26,7 @@
  * Change history lives in git log; this table lists what is CURRENTLY enforced.
  */
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionHandler } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "crypto";
 import { homedir } from "os";
 import {
@@ -278,11 +278,47 @@ export default function (pi: ExtensionAPI) {
     }
     return { block: true, reason };
   };
+  // S4 fix 1 (2026-10-15, spec §5.2): fail-closed handler wrap — an unexpected
+  // exception in ANY handler must never fail open. tool_call → generic internal
+  // block (the call never runs; a rejected handler otherwise lets the tool
+  // proceed); every other hook passes through with console.error (a
+  // post-execution result must not be corrupted; prompt/session hooks have
+  // nothing to prevent).
+  const guarded = <E, R>(
+    hook: string,
+    handler: ExtensionHandler<E, R>,
+  ): ExtensionHandler<E, R> =>
+  async (event, ctx) => {
+    try {
+      return await handler(event, ctx);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (hook === "tool_call") {
+        return blockCall(
+          `Permission Gate (Internal): unexpected error while checking this call (${msg}) — failing closed. Ask the user in chat before re-sending.`,
+        ) as unknown as R;
+      }
+      console.error(
+        `[permission-gate] ${hook} handler error (passing through): ${msg}`,
+      );
+      return;
+    }
+  };
+  // pi.on with every handler wrap-checked (above); the cast keeps pi's own
+  // overload-checked signatures — the wrapper is type-transparent
+  const on = ((
+    event: string,
+    handler: (e: never, c: never) => unknown,
+  ) =>
+    pi.on(
+      event as never,
+      guarded(event, handler as never) as never,
+    )) as typeof pi.on;
   // module scope: one process can host several sessions (ctx.newSession, e.g.
   // /handoff, replaces the session in-process) — injection stays suppressed for
   // the replacement session; accepted for now, name documents the scope
   let memoryInjectedThisProcess = false;
-  pi.on("before_agent_start", (event) => {
+  on("before_agent_start", (event) => {
     if (memoryInjectedThisProcess) return; // once per process — per-run re-entry must not stack copies
     memoryInjectedThisProcess = true;
     const lessons = Object.entries(counts)
@@ -305,7 +341,7 @@ export default function (pi: ExtensionAPI) {
   // coverage, so R1 blocks re-reads of prompt-injected content exactly like
   // read results. Hint/empty/mismatched blocks certify nothing — err toward
   // allowing (never over-block on unverifiable injections).
-  pi.on("before_agent_start", async (event) => {
+  on("before_agent_start", async (event) => {
     // prompt exists only on user-triggered runs (custom messages carry
     // "message", not "prompt" - BeforeAgentStartEvent is a union)
     if (event.messageType !== "user") return;
@@ -339,14 +375,19 @@ export default function (pi: ExtensionAPI) {
   // only a call that passes is tracked for read-freshness below
   // per-turn chat state (2026-10-11): turns drive the cadence nudge, the
   // latest prompt arms/disarms chat approval for the destructive gate
-  pi.on("before_agent_start", (event) => {
+  on("before_agent_start", (event) => {
     turnsSeen++;
     const prompt = event.messageType === "user" ? event.prompt : "";
     promptApproves = APPROVAL_RE.test(prompt);
   });
 
-  pi.on("tool_call", async (event, ctx) => {
+  on("tool_call", async (event, ctx) => {
     if (isToolCallEventType("edit", event)) {
+      // S4 fix 3: malformed edit input — explicit block, never an analyzer throw
+      if (typeof event.input.path !== "string" || !event.input.path.trim())
+        return blockCall(
+          "Permission Gate (Malformed): edit call has no path string — re-send the tool call with input.path.",
+        );
       const path = normPath(event.input.path, ctx?.cwd);
       const checked = await validateEditAnchors(event.input, ctx?.cwd);
       if (checked && "block" in checked) return blockCall(checked.reason);
@@ -364,6 +405,11 @@ export default function (pi: ExtensionAPI) {
     // R1: block a read whose requested window is fully covered by this
     // session's in-context spans (2026-10-05 coverage model)
     if (isToolCallEventType("read", event)) {
+      // S4 fix 3: malformed read input — explicit block, never an analyzer throw
+      if (typeof event.input.path !== "string" || !event.input.path.trim())
+        return blockCall(
+          "Permission Gate (Malformed): read call has no path string — re-send the tool call with input.path.",
+        );
       const display = String(event.input.path ?? "");
       const path = normPath(display, ctx?.cwd);
       // clamp the path contribution so the reason stays inside the 220c diet cap for any path length or kind
@@ -428,6 +474,11 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (isToolCallEventType("write", event)) {
+      // S4 fix 3: malformed write input — explicit block, never an analyzer throw
+      if (typeof event.input.path !== "string" || !event.input.path.trim())
+        return blockCall(
+          "Permission Gate (Malformed): write call has no path string — re-send the tool call with input.path.",
+        );
       const path = normPath(event.input.path, ctx?.cwd);
       // whole file content is in context after a write — every window overlaps it
       pendingEdits.set(event.toolCallId, {
@@ -439,6 +490,12 @@ export default function (pi: ExtensionAPI) {
 
     if (!isToolCallEventType("bash", event)) return;
     const cmd = event.input.command;
+    // S4 fix 3: malformed bash input — a missing/non-string command never
+    // reaches the analyzers (splitSegments would throw → fail-open wrap)
+    if (typeof cmd !== "string" || cmd.trim() === "")
+      return blockCall(
+        "Permission Gate (Malformed): bash call has no command string — re-send the tool call with input.command.",
+      );
     pendingBashFull.set(event.toolCallId, cmd);
 
     // Re-block (2026-10-08 extensions audit): the audit's one RETRY-SAME case
@@ -515,12 +572,14 @@ export default function (pi: ExtensionAPI) {
         const ms = Number.isFinite(t) && t > 0 ? t : 120_000;
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-          approved = await Promise.race([
-            ctx.ui.confirm("Allow destructive command?", cmd),
-            new Promise<boolean>((r) => {
-              timer = setTimeout(() => r(false), ms);
-            }),
-          ]);
+          approved =
+            (await Promise.race([
+              ctx.ui.confirm("Allow destructive command?", cmd),
+              new Promise<boolean>((r) => {
+                timer = setTimeout(() => r(false), ms);
+              }),
+            ])) === true; // S4 fix 2 (2026-10-15): strict boolean — a truthy
+          // non-boolean ("yes") must never approve destructive work
         } finally {
           if (timer) clearTimeout(timer);
         }
@@ -575,7 +634,7 @@ export default function (pi: ExtensionAPI) {
   // below so the pendingBash* maps still identify the call; handlers compose,
   // and this one's RETURN value overlays the truncated content onto what the
   // model sees while bookkeeping (R10 records, Re-block arming) still runs.
-  pi.on("tool_result", async (event) => {
+  on("tool_result", async (event) => {
     if (
       !pendingBashFull.has(event.toolCallId) &&
       !pendingBash.has(event.toolCallId)
@@ -593,7 +652,7 @@ export default function (pi: ExtensionAPI) {
     return capBashOutput(event);
   });
 
-  pi.on("tool_result", async (event) => {
+  on("tool_result", async (event) => {
     const read = pendingReads.get(event.toolCallId);
     if (read !== undefined) {
       pendingReads.delete(event.toolCallId);
@@ -728,7 +787,7 @@ export default function (pi: ExtensionAPI) {
   // cadence nudge (2026-10-11): NON-blocking — appended once to the next real
   // tool_result when turns or context tokens cross the AGENTS.md Token
   // Economy thresholds; never rides a synthesized block result
-  pi.on("tool_result", async (event, ctx) => {
+  on("tool_result", async (event, ctx) => {
     if (cadenceFired) return;
     const usage = ctx?.getContextUsage?.();
     const overCtx =
@@ -747,7 +806,7 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
-  pi.on("session_compact", async () => {
+  on("session_compact", async () => {
     // the compaction summary replaced earlier read/edit content — nothing
     // is in context anymore, so every re-read and re-run is legitimate again
     coverage.clear();
@@ -776,7 +835,7 @@ export default function (pi: ExtensionAPI) {
   // block); R10 is skipped (10-min window makes it moot). Truncation is
   // derived from the replayed text; stale entries are dropped lazily by the
   // stat-mismatch check at the next read attempt.
-  pi.on("session_start", async (event, ctx) => {
+  on("session_start", async (event, ctx) => {
     void event;
     // in-process switches reuse this module — drop the previous session's
     // coverage/pending state so only the new session's branch is certified
