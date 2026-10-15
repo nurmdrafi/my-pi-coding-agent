@@ -14,6 +14,7 @@ use std::process::ExitCode;
 mod cli;
 mod envelope;
 mod pipeline;
+mod serve;
 
 use cli::{parse_args, Parsed};
 use envelope::{fail_envelope, success_envelope};
@@ -34,6 +35,7 @@ fn main() -> ExitCode {
             println!("piread {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
+        Ok(Parsed::Serve) => serve::serve(),
         Ok(Parsed::Run(run)) => {
             let resolved = pipeline::resolve_path(&run.path);
             match pipeline::read_text(&resolved, &run.path, run.offset, run.limit) {
@@ -137,9 +139,10 @@ mod tests {
     }
 
     #[test]
-    fn recognizes_version_and_help() {
+    fn recognizes_version_help_and_serve() {
         assert!(matches!(parse_args(&args(&["--version"])).unwrap(), Parsed::Version));
         assert!(matches!(parse_args(&args(&["--help"])).unwrap(), Parsed::Help));
+        assert!(matches!(parse_args(&args(&["--serve"])).unwrap(), Parsed::Serve));
         // even alongside other flags (informational flags win)
         assert!(matches!(parse_args(&args(&["--path", "/x", "--version"])).unwrap(), Parsed::Version));
     }

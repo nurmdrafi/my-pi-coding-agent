@@ -4,6 +4,7 @@
 //! extension can forward values verbatim.
 
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::ToolError;
 
@@ -38,6 +39,9 @@ pub enum TruncationKind {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Success<'a> {
+    /// Daemon request id (echoed verbatim); absent in one-shot output.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<&'a Value>,
     ok: bool,
     content: &'a str,
     truncation: Option<&'a Truncation>,
@@ -47,6 +51,9 @@ struct Success<'a> {
 
 #[derive(Serialize)]
 struct Failure<'a> {
+    /// Daemon request id (echoed verbatim); absent in one-shot output.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<&'a Value>,
     ok: bool,
     error: &'a ToolErrorBody<'a>,
 }
@@ -70,6 +77,12 @@ pub enum ErrorKind {
     Io,
     #[serde(rename = "offset")]
     Offset,
+    /// Daemon-mode only: request violated the CLI contract (offset/limit < 1).
+    #[serde(rename = "usage")]
+    Usage,
+    /// Daemon-mode only: unparseable request line.
+    #[serde(rename = "protocol")]
+    Protocol,
 }
 
 impl ErrorKind {
@@ -80,6 +93,8 @@ impl ErrorKind {
             ErrorKind::Eisdir => "EISDIR",
             ErrorKind::Io => "io",
             ErrorKind::Offset => "offset",
+            ErrorKind::Usage => "usage",
+            ErrorKind::Protocol => "protocol",
         }
     }
 }
@@ -90,7 +105,23 @@ pub fn success_envelope(
     binary: bool,
     total_bytes: u64,
 ) -> String {
+    success_envelope_with_id(None, content, truncation, binary, total_bytes)
+}
+
+pub fn fail_envelope(err: &ToolError) -> String {
+    fail_envelope_with_id(None, err)
+}
+
+/// Daemon response: the one-shot envelope plus the echoed request id first.
+pub fn success_envelope_with_id(
+    id: Option<&Value>,
+    content: &str,
+    truncation: Option<&Truncation>,
+    binary: bool,
+    total_bytes: u64,
+) -> String {
     let value = Success {
+        id,
         ok: true,
         content,
         truncation,
@@ -100,11 +131,12 @@ pub fn success_envelope(
     serde_json::to_string(&value).expect("success envelope serializes")
 }
 
-pub fn fail_envelope(err: &ToolError) -> String {
+/// Daemon response: the one-shot failure envelope plus the echoed request id.
+pub fn fail_envelope_with_id(id: Option<&Value>, err: &ToolError) -> String {
     let body = ToolErrorBody {
         kind: &err.kind,
         message: &err.message,
     };
-    let value = Failure { ok: false, error: &body };
+    let value = Failure { id, ok: false, error: &body };
     serde_json::to_string(&value).expect("failure envelope serializes")
 }

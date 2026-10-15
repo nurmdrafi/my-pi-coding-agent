@@ -8,18 +8,20 @@
  * copied verbatim from `createReadToolDefinition` so the system prompt —
  * and therefore the prompt-cache prefix — is byte-identical between arms.
  *
- * Dispatch (spec §5.2):
+ * Dispatch (spec §5.2, daemon amendment 2026-10-17):
  *   1. image extension on `path`  → built-in instance (image processing
  *      needs the model context — D4)
- *   2. sane integer offset/limit  → spawn `bin/piread`, rebuild the
- *      built-in result shape from its JSON envelope
- *   3. anything else (spawn failure, non-zero exit, unparseable JSON,
+ *   2. sane integer offset/limit  → persistent `bin/piread --serve` daemon
+ *      (lazy-started, id-matched NDJSON over stdio; restarts on death)
+ *   3. daemon transport failure   → one-shot `bin/piread` spawn per call
+ *   4. anything else (spawn failure, non-zero exit, unparseable JSON,
  *      binary content, pathological numeric params) → built-in instance
- *      plus one stderr fallback line — fail-open to correctness.
+ *      plus one stderr fallback line — fail-open to correctness. The ladder
+ *      emits at most ONE fallback line per call (the terminal reason).
  *
  * Default off (D5): the load guard requires PI_NATIVE_READ=1.
  */
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -30,6 +32,24 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 const execFileAsync = promisify(execFile);
+
+/** Transport-level daemon failure — the call moves to the one-shot rung. */
+class DaemonUnavailableError extends Error {
+  constructor(reason: string) {
+    super(`daemon unavailable (${reason})`);
+    this.name = "DaemonUnavailableError";
+  }
+}
+
+/** One-shot rung failure — carries the terminal fallback-line reason. */
+class OneshotError extends Error {
+  readonly reason: string;
+  constructor(reason: string) {
+    super(`piread one-shot failed: ${reason}`);
+    this.name = "OneshotError";
+    this.reason = reason;
+  }
+}
 
 /** Built-in image support (read tool docs: jpg, png, gif, webp, bmp). */
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
@@ -76,6 +96,217 @@ type PireadEnvelope = {
   error?: { kind: string; message: string };
 };
 
+// ---- daemon client (`piread --serve`, NDJSON over stdio) ----
+
+type DaemonPending = {
+  resolve: (envelope: PireadEnvelope) => void;
+  reject: (err: Error) => void;
+};
+
+type DaemonState = {
+  proc: ChildProcess;
+  stdin: PipeStdin;
+  stdout: PipeStdout;
+  pending: Map<number, DaemonPending>;
+  nextId: number;
+  buffer: string;
+};
+
+/** Child stdio pipes expose libuv handle refcounting (`ref`/`unref`) at
+ * runtime; @types/node models them as plain Writable/Readable — structural
+ * bridge (same pattern as the d.ts identity casts above). */
+interface Refable {
+  ref(): void;
+  unref(): void;
+}
+type PipeStdin = NonNullable<ChildProcess["stdin"]> & Refable;
+type PipeStdout = NonNullable<ChildProcess["stdout"]> & Refable;
+
+/** Module-lifetime daemon; null when not started or after death (lazy restart). */
+let daemon: DaemonState | null = null;
+
+function killDaemon(state: DaemonState, reason: string): void {
+  if (daemon === state) daemon = null; // next dispatch lazily restarts
+  for (const p of state.pending.values()) p.reject(new DaemonUnavailableError(reason));
+  state.pending.clear();
+  maybeUnrefStreams(state);
+  state.proc.kill();
+}
+
+let exitHooked = false;
+
+function startDaemon(): DaemonState | null {
+  let proc: ChildProcess;
+  try {
+    proc = spawn(PIREAD_BIN, ["--serve"], { stdio: ["pipe", "pipe", "inherit"] });
+  } catch {
+    return null; // sync spawn failure (rare); async ones arrive via 'error'
+  }
+  const { stdin, stdout } = proc as ChildProcess & { stdin: PipeStdin | null; stdout: PipeStdout | null };
+  if (!stdin || !stdout) {
+    proc.kill();
+    return null;
+  }
+  // Prompt daemon teardown on process exit (belt-and-braces with the
+  // daemon's own stdin-EOF exit); registered once, only when the native
+  // path is actually used.
+  if (!exitHooked) {
+    exitHooked = true;
+    process.on("exit", () => {
+      if (daemon) daemon.proc.kill();
+    });
+  }
+  const state: DaemonState = { proc, stdin, stdout, pending: new Map(), nextId: 1, buffer: "" };
+  // Any death (crash, spawn ENOENT, garbage protocol) fails pending requests
+  // into the one-shot rung and clears the slot for a lazy restart.
+  proc.on("error", () => killDaemon(state, "spawn error"));
+  proc.on("exit", () => killDaemon(state, "exited"));
+  stdin.on("error", () => killDaemon(state, "stdin error")); // incl. EPIPE
+  stdout.setEncoding("utf8");
+  stdout.on("data", (chunk: string) => {
+    state.buffer += chunk;
+    for (let nl = state.buffer.indexOf("\n"); nl >= 0; nl = state.buffer.indexOf("\n")) {
+      const line = state.buffer.slice(0, nl);
+      state.buffer = state.buffer.slice(nl + 1);
+      handleDaemonLine(state, line);
+    }
+  });
+  // Refcount hygiene: the daemon never keeps the host's event loop alive
+  // while idle (streams unref'd), but a request in flight DOES hold the
+  // loop until its response arrives — see daemonRequest/maybeUnrefStreams.
+  // The daemon exits on stdin EOF when the parent goes away regardless.
+  proc.unref();
+  stdin.unref();
+  stdout.unref();
+  return state;
+}
+
+/** Streams may unref only when nothing is in flight — a ref'd stdout while
+ * a response is pending is what keeps the loop (and the awaited call)
+ * alive; an idle daemon must not hold the host process open. */
+function maybeUnrefStreams(state: DaemonState): void {
+  if (state.pending.size === 0) {
+    state.stdin.unref();
+    state.stdout.unref();
+  }
+}
+
+function handleDaemonLine(state: DaemonState, line: string): void {
+  if (!line) return;
+  let envelope: (PireadEnvelope & { id?: unknown }) | null = null;
+  try {
+    envelope = JSON.parse(line) as PireadEnvelope & { id?: unknown };
+  } catch {
+    killDaemon(state, "unparseable daemon line");
+    return;
+  }
+  const pending = state.pending.get(Number(envelope.id));
+  if (pending) {
+    state.pending.delete(Number(envelope.id));
+    maybeUnrefStreams(state);
+    pending.resolve(envelope);
+  }
+  // Unknown ids (late responses to aborted calls) are dropped silently.
+}
+
+function daemonRequest(
+  path: string,
+  offset: number | undefined,
+  limit: number | undefined,
+  cwd: string,
+  signal: AbortSignal | undefined,
+): Promise<PireadEnvelope> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+    if (!daemon) daemon = startDaemon();
+    const state = daemon;
+    if (!state) {
+      reject(new DaemonUnavailableError("start failed"));
+      return;
+    }
+    const id = state.nextId++;
+    const onAbort = () => {
+      if (state.pending.delete(id)) {
+        maybeUnrefStreams(state);
+        reject(abortError());
+      }
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const settle = {
+      resolve: (envelope: PireadEnvelope) => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve(envelope);
+      },
+      reject: (err: Error) => {
+        signal?.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    };
+    state.pending.set(id, settle);
+    state.stdin.ref(); // hold the loop until this response settles
+    state.stdout.ref();
+    const request = JSON.stringify({
+      id,
+      path,
+      ...(offset !== undefined ? { offset } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+      cwd,
+    });
+    state.stdin.write(`${request}\n`, (err) => {
+      if (err && state.pending.delete(id)) {
+        maybeUnrefStreams(state);
+        settle.reject(new DaemonUnavailableError("write failed"));
+      }
+    });
+  });
+}
+
+function abortError(): Error {
+  const err = new Error("Operation aborted");
+  err.name = "AbortError";
+  return err;
+}
+
+const isAbort = (err: unknown, signal: AbortSignal | undefined): boolean =>
+  signal?.aborted === true || (err instanceof Error && err.name === "AbortError");
+
+/** One-shot rung: per-call spawn, the pre-daemon dispatch path verbatim. */
+async function oneshotDispatch(
+  path: string,
+  offset: number | undefined,
+  limit: number | undefined,
+  spawnCwd: string,
+  signal: AbortSignal | undefined,
+): Promise<PireadEnvelope> {
+  const args = ["--path", path];
+  if (offset !== undefined) args.push("--offset", String(offset));
+  if (limit !== undefined) args.push("--limit", String(limit));
+  let stdout: string;
+  try {
+    ({ stdout } = await execFileAsync(PIREAD_BIN, args, {
+      cwd: spawnCwd,
+      signal,
+      maxBuffer: 16 * 1024 * 1024,
+    }));
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException & { code?: string | number };
+    if (signal?.aborted || e.name === "AbortError") throw abortError();
+    // execFile failures: numeric `code` is the child's exit status (piread
+    // usage/I-O errors), anything else (ENOENT, EACCES…) is a spawn failure.
+    throw new OneshotError(
+      typeof e.code === "number" ? `exit ${e.code}` : `spawn ${String(e.code ?? e.message)}`,
+    );
+  }
+  try {
+    return JSON.parse(stdout) as PireadEnvelope;
+  } catch {
+    throw new OneshotError("unparseable stdout");
+  }
+}
+
 export default function pireadExtension(pi: ExtensionAPI): void {
   // Load guard (D5): default off, zero footprint when unset.
   if (process.env.PI_NATIVE_READ !== "1") return;
@@ -114,46 +345,36 @@ export default function pireadExtension(pi: ExtensionAPI): void {
       return builtinExecute(toolCallId, params, signal, onUpdate, ctx);
     }
 
-    const args = ["--path", path];
-    if (offset !== undefined) args.push("--offset", String(offset));
-    if (limit !== undefined) args.push("--limit", String(limit));
-
-    let stdout: string;
     const spawnCwd = (ctx as { cwd?: string } | undefined)?.cwd || process.cwd();
-    try {
-      ({ stdout } = await execFileAsync(PIREAD_BIN, args, {
-        cwd: spawnCwd,
-        signal,
-        maxBuffer: 16 * 1024 * 1024,
-      }));
-    } catch (err) {
-      const e = err as NodeJS.ErrnoException & { code?: string | number };
-      if (signal?.aborted || e.name === "AbortError") {
-        // Same rejection as the built-in's abort path.
-        throw new Error("Operation aborted");
-      }
-      // execFile failures: numeric `code` is the child's exit status (piread
-      // usage/I-O errors), anything else (ENOENT, EACCES…) is a spawn failure.
-      const reason =
-        typeof e.code === "number" ? `exit ${e.code}` : `spawn ${String(e.code ?? e.message)}`;
-      return fallbackToBuiltin(toolCallId, params, signal, onUpdate, ctx, reason);
-    }
 
+    // Dispatch ladder: daemon (persistent) → one-shot spawn → built-in.
+    // A daemon TRANSPORT failure (crash, missing binary, bad protocol) moves
+    // to the one-shot rung; only the terminal failure emits the fallback
+    // line — exactly one per call.
     let envelope: PireadEnvelope;
     try {
-      envelope = JSON.parse(stdout) as PireadEnvelope;
-    } catch {
-      return fallbackToBuiltin(toolCallId, params, signal, onUpdate, ctx, "unparseable stdout");
+      envelope = await daemonRequest(path, offset, limit, spawnCwd, signal);
+    } catch (err) {
+      if (isAbort(err, signal)) throw new Error("Operation aborted");
+      try {
+        envelope = await oneshotDispatch(path, offset, limit, spawnCwd, signal);
+      } catch (err2) {
+        if (isAbort(err2, signal)) throw new Error("Operation aborted");
+        const reason = err2 instanceof OneshotError ? err2.reason : `spawn ${String(err2)}`;
+        return fallbackToBuiltin(toolCallId, params, signal, onUpdate, ctx, reason);
+      }
     }
+
     if (envelope.ok !== true || typeof envelope.content !== "string") {
-      // Non-zero exits land here too: the built-in produces the identical
-      // error (messages are replicated), so fall back rather than re-wrap.
-      return fallbackToBuiltin(toolCallId, params, signal, onUpdate, ctx, "error envelope");
+      // Tool-level failures (missing file, EISDIR, …): the built-in produces
+      // the identical error — one-shot rungs report this as `exit 3`; daemon
+      // envelopes carry the same condition without an exit status.
+      return fallbackToBuiltin(toolCallId, params, signal, onUpdate, ctx, "exit 3");
     }
     if (envelope.binary) {
       // Content-sniffed images without an image extension, and NUL-bearing
       // text: the built-in pipeline is authoritative (and byte-identical for
-      // text, so this costs nothing but a spawn).
+      // text, so this costs nothing but a dispatch).
       return fallbackToBuiltin(toolCallId, params, signal, onUpdate, ctx, "binary");
     }
 
@@ -170,4 +391,11 @@ export default function pireadExtension(pi: ExtensionAPI): void {
   // definition's precise one (its d.ts lives in the nested pi-agent-core
   // identity, which does not unify under skipLibCheck).
   pi.registerTool({ ...definition, execute: execute as typeof definition.execute });
+}
+
+/** Test affordance: kill the persistent daemon so suites can exercise the
+ * cold-start paths (missing binary, one-shot rung) mid-process. Not used by
+ * the harness at runtime. */
+export function __resetDaemonForTest(): void {
+  if (daemon) killDaemon(daemon, "test reset");
 }

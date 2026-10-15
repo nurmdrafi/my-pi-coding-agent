@@ -15,6 +15,8 @@ pub struct Run {
 /// Non-`Run` outcomes that still exit 0.
 pub enum Parsed {
     Run(Run),
+    /// Long-lived NDJSON request/response loop over stdio (daemon mode).
+    Serve,
     Version,
     Help,
 }
@@ -23,11 +25,15 @@ pub const HELP: &str = "\
 piread — native read pipeline for the pi agent harness
 
 usage: piread --path <P> [--offset <N>] [--limit <N>]
+       piread --serve
 
   --path <P>    file to read; ~ and relative paths resolve against the
                 process working directory, mirroring the built-in read tool
   --offset <N>  1-based first line to read (default: 1)
   --limit <N>   maximum number of lines to read
+  --serve       daemon mode: newline-delimited JSON requests on stdin, one
+                response line per request (same envelope plus an echoed
+                `id`); exits on stdin EOF
 
 Prints one JSON object on stdout:
   success: {ok, content, truncation, binary, totalBytes}
@@ -54,6 +60,7 @@ pub fn parse_args(args: &[String]) -> Result<Parsed, String> {
         let takes_value = matches!(flag, "--path" | "--offset" | "--limit");
         if !takes_value && inline.is_none() {
             return match flag {
+                "--serve" => Ok(Parsed::Serve),
                 "--version" => Ok(Parsed::Version),
                 "--help" | "-h" => Ok(Parsed::Help),
                 other => Err(format!("unknown flag '{other}'")),
@@ -71,7 +78,7 @@ pub fn parse_args(args: &[String]) -> Result<Parsed, String> {
             "--path" => path = Some(value),
             "--offset" => offset = Some(parse_count(flag, &value)?),
             "--limit" => limit = Some(parse_count(flag, &value)?),
-            "--version" | "--help" | "-h" => return Err(format!("{flag} takes no value")),
+            "--serve" | "--version" | "--help" | "-h" => return Err(format!("{flag} takes no value")),
             other => return Err(format!("unknown flag '{other}'")),
         }
         i += 1;

@@ -384,6 +384,14 @@ fn to_fixed_1(x: f64) -> String {
 /// normalization against the process cwd. (The built-in's macOS screenshot
 /// filename variants are covered by the extension's fail-open fallback.)
 pub fn resolve_path(raw: &str) -> String {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+    resolve_path_against(raw, &cwd.to_string_lossy())
+}
+
+/// Resolve against an explicit base directory — daemon requests carry the
+/// caller's cwd per request; the one-shot CLI resolves against the process
+/// cwd. Same `~` expansion and lexical normalization in both cases.
+pub fn resolve_path_against(raw: &str, base: &str) -> String {
     let expanded = if raw == "~" {
         std::env::var("HOME").unwrap_or_default()
     } else if let Some(rest) = raw.strip_prefix("~/") {
@@ -394,8 +402,7 @@ pub fn resolve_path(raw: &str) -> String {
     if expanded.starts_with('/') {
         normalize(&expanded)
     } else {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
-        normalize(&format!("{}/{}", cwd.to_string_lossy(), expanded))
+        normalize(&format!("{base}/{expanded}"))
     }
 }
 

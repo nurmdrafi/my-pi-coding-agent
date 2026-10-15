@@ -36,7 +36,9 @@ if (!existsSync(join(pkgLink, "package.json"))) {
 const { createReadTool, createReadToolDefinition } = await import(
   join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js")
 );
-const piread = (await import("../extensions/piread/index.ts")).default;
+const pireadModule = await import("../extensions/piread/index.ts");
+const piread = pireadModule.default;
+const resetDaemon = pireadModule.__resetDaemonForTest;
 
 const BIN = join(ROOT, "bin", "piread");
 
@@ -198,9 +200,14 @@ add("parity: relative path via ctx.cwd", () => {
 });
 
 // fallback: fail-open to the oracle plus one stderr line
+// (resetDaemon kills any live daemon first: the cold-start paths under test
+// are "binary missing/garbage before first daemon start" — a live daemon
+// would keep serving from the renamed inode, which is correct production
+// behavior but not what these two cases pin.)
 add("fallback: missing binary → oracle result + one stderr line", async () => {
   const bak = `${BIN}.parity-bak`;
   renameSync(BIN, bak);
+  resetDaemon();
   try {
     const cap = captureStderr(() => parityCase({ path: join(dir, "no-eol") }));
     const r = await cap.run();
@@ -224,6 +231,7 @@ add("fallback: garbage stdout → oracle result + stderr line", async () => {
   renameSync(BIN, bak);
   writeFileSync(BIN, "#!/bin/sh\necho 'not-json at all'\n");
   chmodSync(BIN, 0o755);
+  resetDaemon();
   try {
     const cap = captureStderr(() => parityCase({ path: join(dir, "no-eol") }));
     const r = await cap.run();
@@ -234,6 +242,59 @@ add("fallback: garbage stdout → oracle result + stderr line", async () => {
     unlinkSync(BIN);
     renameSync(bak, BIN);
   }
+});
+
+// ---- daemon (persistent dispatch) lock-ins ----
+// The wrapped tool now dispatches through a lazy-started `piread --serve`
+// daemon (spawn-floor fix). These pin the client behaviors parity does not:
+// id matching under concurrency, lazy restart after death, abort semantics.
+
+add("daemon: concurrent dispatches keep responses matched", async () => {
+  const paths = ["one-line", "crlf", "unicode", "mid30", "no-eol"].map((n) => join(dir, n));
+  const wrappedResults = await Promise.all(
+    paths.map((path, i) => armResult(wrapped, { path, offset: i === 3 ? 3 : undefined, limit: i === 3 ? 2 : undefined }))
+  );
+  for (let i = 0; i < paths.length; i++) {
+    const b = await armResult(oracle, {
+      path: paths[i],
+      offset: i === 3 ? 3 : undefined,
+      limit: i === 3 ? 2 : undefined,
+    });
+    try {
+      assert.deepStrictEqual(wrappedResults[i], b);
+    } catch (e) {
+      return { ok: false, diff: `concurrent dispatch ${paths[i]}: ${e.message}` };
+    }
+  }
+  return { ok: true };
+});
+
+add("daemon: lazy restart after death (no fallback line)", async () => {
+  const path = join(dir, "one-line");
+  const warm = await armResult(wrapped, { path }); // ensures a daemon exists
+  resetDaemon(); // kills it — next dispatch must lazily restart
+  const cap = captureStderr(() => armResult(wrapped, { path }));
+  const r = await cap.run();
+  const lines = cap.done();
+  if (!r.ok) return r;
+  const fb = lines.filter((l) => l.startsWith("piread: fallback"));
+  if (fb.length > 0) return { ok: false, diff: `restart must not fall back: ${JSON.stringify(fb)}` };
+  try {
+    assert.deepStrictEqual(r.value, warm);
+  } catch (e) {
+    return { ok: false, diff: `post-restart result differs: ${e.message}` };
+  }
+  return { ok: true };
+});
+
+add("daemon: pre-aborted signal rejects like the one-shot path", async () => {
+  const path = join(dir, "one-line");
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    wrapped.execute("abort-1", { path }, controller.signal),
+    (e) => /abort/i.test(String(e?.message ?? e)),
+  );
 });
 
 // ---- gate compatibility (Step 4): real permission-gate through stubbed events ----
