@@ -38,6 +38,8 @@ Loaded every session. Task rule sets in `docs/` — follow link when task touche
 
 ### Mechanical checks
 - Re-reads, output caps, re-runs, commit format, edit anchors, destructive confirms, toolchain pins, search scope, node_modules reads — enforced by `permission-gate`; block reason carries fix.
+- Verification gate (build/tests): run ONCE at task end or after risky structural edits (new files, import graph changes, syntax doubt) — not after every edit batch; edits are cheap to verify by re-read.
+- Tests/lint/tsc: changed files only. Never full suite — too slow. Full run only at task end or CI. `eslint <files>`, `tsc --noEmit` (whole project if no incremental), `vitest run <file>`.
 
 ## Scoped rule sets
 - [docs/change-discipline.md](docs/change-discipline.md) — surgical scope, ponytail ladder, root-cause fixes
