@@ -44,8 +44,8 @@ else
        "To enable: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && re-run"
 fi
 
-# 4. piread (optional — native read tool behind PI_NATIVE_READ=1; the
-#    extension falls back to the built-in read without it)
+# 4. piread (native read tool, default-on — PI_NATIVE_READ=0 opts out;
+#    the extension falls back to the built-in read without the binary)
 if [ -n "$CARGO" ]; then
   (cd native/piread && "$CARGO" build --release)
   cp native/piread/target/release/piread bin/piread

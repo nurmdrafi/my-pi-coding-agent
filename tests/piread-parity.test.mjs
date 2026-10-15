@@ -152,8 +152,11 @@ const cases = [];
 const add = (name, fn) => cases.push([name, fn]);
 
 // env gating + shadow lock-in (R2)
-add("env gate: unset registers nothing", () => {
-  assert.equal(loadExtension(undefined).tools.size, 0);
+add("env gate: default-on registers the shadow unless PI_NATIVE_READ=0", () => {
+  // Default-on (D5 flip): unset registers; explicit 0 opts out.
+  const unsetPi = loadExtension(undefined);
+  assert.equal(unsetPi.tools.size, 1);
+  assert.ok(unsetPi.tools.has("read"), "unset must register 'read' (default on)");
   assert.equal(loadExtension("0").tools.size, 0);
 });
 add("env gate: PI_NATIVE_READ=1 registers exactly one shadowing 'read'", () => {

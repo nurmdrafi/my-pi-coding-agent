@@ -19,7 +19,9 @@
  *      plus one stderr fallback line — fail-open to correctness. The ladder
  *      emits at most ONE fallback line per call (the terminal reason).
  *
- * Default off (D5): the load guard requires PI_NATIVE_READ=1.
+ * Default on (D5 flip, 2026-10-17): the load guard registers unless
+ * PI_NATIVE_READ=0 (explicit opt-out — fail-open ladder still guarantees
+ * the built-in path when the native binary is missing).
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { dirname, resolve } from "node:path";
@@ -308,8 +310,8 @@ async function oneshotDispatch(
 }
 
 export default function pireadExtension(pi: ExtensionAPI): void {
-  // Load guard (D5): default off, zero footprint when unset.
-  if (process.env.PI_NATIVE_READ !== "1") return;
+  // Load guard (D5 flip, 2026-10-17): default on; PI_NATIVE_READ=0 opts out.
+  if (process.env.PI_NATIVE_READ === "0") return;
 
   const fallbackToBuiltin = async (
     toolCallId: string,

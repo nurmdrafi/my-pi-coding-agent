@@ -70,6 +70,8 @@ Exit codes: 0 ok · 2 usage (stderr message, no JSON) · 3 I/O error (JSON on st
 ### 5.2 Extension `extensions/piread/index.ts`
 
 - Load guard: `process.env.PI_NATIVE_READ !== "1"` → register nothing (zero footprint when off — doc:check env family covers the variable).
+
+> **Amendment (2026-10-17, adoption flip):** per user decision (ahead of the S2 pair run) the load guard is now **default-on**: the shadow tool registers unless `PI_NATIVE_READ=0` (explicit opt-out). Everything else — ladder, envelope, parity, daemon — is unchanged. The S2 arm design (§7) predates the flip; arm configs for any future pair run should treat `PI_NATIVE_READ=0` as the off-arm.
 - `const builtin = createReadTool(process.cwd())` — kept private as fallback, image path, and never registered.
 - `pi.registerTool({ ...createReadToolDefinition(process.cwd()), execute })` — name/label/description/parameters verbatim (prompt-cache stable), `execute` overrides:
   1. image extension on `path` → `builtin.execute(...)`;

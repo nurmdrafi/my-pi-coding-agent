@@ -203,7 +203,7 @@ Always-on TypeScript modules in `extensions/` — loaded by pi, never in the mod
 
 Raw events (tool errors, guard blocks) land in pi's native `sessions/**/*.jsonl` — the audit toolkit derives every signal from there. Full docs: [`extensions/README.md`](extensions/README.md).
 
-**`piread/`** is not an extension in the behavioral sense — it is the native `read` *tool*: with `PI_NATIVE_READ=1` the built-in `read` tool's execution dispatches to a Rust binary (`native/piread`, built by bootstrap) behind a byte-identical interface — same schema, description, and result shapes, gate-neutral (name-based events). Dispatch goes through a persistent `--serve` daemon (lazy-started, id-matched line protocol over stdio) so reads don't pay a process spawn per call; the one-shot CLI remains the fallback rung. Any dispatch problem fails open to the built-in implementation; unset (the default) it registers nothing at all.
+**`piread/`** is not an extension in the behavioral sense — it is the native `read` *tool*: by default (opt out with `PI_NATIVE_READ=0`) the built-in `read` tool's execution dispatches to a Rust binary (`native/piread`, built by bootstrap) behind a byte-identical interface — same schema, description, and result shapes, gate-neutral (name-based events). Dispatch goes through a persistent `--serve` daemon (lazy-started, id-matched line protocol over stdio) so reads don't pay a process spawn per call; the one-shot CLI remains the fallback rung. Any dispatch problem fails open to the built-in implementation; with `PI_NATIVE_READ=0` it registers nothing at all.
 
 ## Context layers
 

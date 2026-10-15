@@ -39,8 +39,8 @@ exec node "$ROOT/skills/pidoc/scripts/pidoc.mjs" "\$@"
 EOF
 chmod +x bin/pidoc
 
-# 3. piread (optional — native read tool behind PI_NATIVE_READ=1; the
-#    extension falls back to the built-in read without it). Rebuild when
+# 3. piread (native read tool, default-on — PI_NATIVE_READ=0 opts out;
+#    falls back to the built-in read without the binary). Rebuild when
 #    missing or older than crate sources; pidx staleness is handled by the
 #    pidoc --fix step below.
 PIREAD_CRATE=native/piread
