@@ -89,8 +89,7 @@ cargo instruments -t alloc --release
 
 ### DHAT (Heap Profiling)
 
-```bash
-# In your code
+```rust
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
@@ -98,7 +97,9 @@ fn main() {
     let _profiler = dhat::Profiler::new_heap();
     // ... your code
 }
+```
 
+```bash
 # Run and get allocation report
 cargo run --release
 ```

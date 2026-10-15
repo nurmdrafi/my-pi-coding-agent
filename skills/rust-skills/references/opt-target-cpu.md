@@ -38,7 +38,7 @@ rustc --print cfg -C target-cpu=native | grep target_feature
 
 ## Common Target CPUs
 
-```bash
+```text
 # x86-64 targets
 target-cpu=native          # Current machine
 target-cpu=x86-64          # Baseline (SSE2)
