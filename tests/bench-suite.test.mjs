@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, rmSync, readdirSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -125,4 +125,52 @@ test('workdir: runId collisions within the same second get a -2 suffix', () => {
 
 test('workdir: missing fixture dir throws', () => {
   assert.throws(() => prepareWorkdir(join(FIX, 'no-such'), tmp()), /fixture/);
+});
+
+/** Copy task-syn into a discoverable <root>/bugfix/task-syn layout. */
+const synTasksRoot = () => {
+  const root = tmp();
+  cpSync(SYN, join(root, 'bugfix', 'task-syn'), { recursive: true });
+  return root;
+};
+
+// ---------------------------------------------------------------- start (Step 4)
+
+test('start: creates work + run.json stub, prints prompt/config/workdir/hint (spec §7.1)', () => {
+  const tasksRoot = synTasksRoot();
+  const runsRoot = tmp();
+  const r = runCli('start', '--task', 'bugfix/task-syn', '--arm', 'baseline',
+    '--tasks-dir', tasksRoot, '--runs-root', runsRoot);
+  assert.equal(r.status, 0, r.stderr);
+  const ids = readdirSync(runsRoot);
+  assert.equal(ids.length, 1);
+  const stub = JSON.parse(readFileSync(join(runsRoot, ids[0], 'run.json'), 'utf8'));
+  assert.equal(stub.status, 'started');
+  assert.equal(stub.task, 'bugfix/task-syn');
+  assert.equal(stub.arm, 'baseline');
+  assert.equal(stub.runId, ids[0]);
+  assert.ok(!Number.isNaN(Date.parse(stub.startedAt)));
+  assert.ok(existsSync(join(runsRoot, ids[0], 'work', 'failing.js')));
+  const prompt = JSON.parse(readFileSync(join(SYN, 'task.json'), 'utf8')).prompt;
+  const config = JSON.parse(readFileSync(join(BENCH, 'arms.json'), 'utf8')).find((a) => a.name === 'baseline').config;
+  assert.ok(r.stdout.includes(prompt), 'stdout has task prompt');
+  assert.ok(r.stdout.includes(config), 'stdout has arm config');
+  assert.ok(r.stdout.includes(join(runsRoot, ids[0], 'work')), 'stdout has workdir path');
+  assert.ok(r.stdout.includes(`finish --run ${ids[0]}`), 'stdout has next-step hint');
+  rmSync(tasksRoot, { recursive: true, force: true });
+  rmSync(runsRoot, { recursive: true, force: true });
+});
+
+test('start: unknown task → exit 1, {error} JSON stderr (spec §10)', () => {
+  const r = runCli('start', '--task', 'bugfix/nope', '--arm', 'baseline',
+    '--tasks-dir', synTasksRoot(), '--runs-root', tmp());
+  assert.equal(r.status, 1);
+  assert.ok(JSON.parse(r.stderr).error.includes('unknown task'));
+});
+
+test('start: unknown arm → exit 1, {error} JSON stderr (spec §10)', () => {
+  const r = runCli('start', '--task', 'bugfix/task-syn', '--arm', 'nope',
+    '--tasks-dir', synTasksRoot(), '--runs-root', tmp());
+  assert.equal(r.status, 1);
+  assert.ok(JSON.parse(r.stderr).error.includes('unknown arm'));
 });

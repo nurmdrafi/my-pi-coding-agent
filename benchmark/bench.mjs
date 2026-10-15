@@ -1,0 +1,101 @@
+#!/usr/bin/env node
+/**
+ * S2 benchmark suite CLI (spec: docs/specs/2026-10-15-s2-benchmark-design.md §7).
+ * Commands: start | finish | report | list | check-tasks.
+ * Zero-dependency; errors exit 1 with {error} JSON on stderr (spec §10).
+ */
+import { writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { loadArms, getArm, getTask } from './lib/manifests.mjs';
+import { prepareWorkdir } from './lib/workdir.mjs';
+
+const BENCH = dirname(fileURLToPath(import.meta.url));
+export const DEFAULTS = {
+  tasksDir: join(BENCH, 'tasks'),
+  armsPath: join(BENCH, 'arms.json'),
+  runsRoot: join(BENCH, 'runs'),
+  resultsDir: join(BENCH, 'results', 'runs'),
+  reportsDir: join(BENCH, 'results'),
+  metricsScript: join(BENCH, '..', 'skills', 'session-audit', 'scripts', 'metrics.mjs'),
+};
+
+const HELP = `usage: node benchmark/bench.mjs <command> [options]
+
+commands:
+  start --task <class/id> --arm <name>
+        Copy the task fixture into benchmark/runs/<runId>/work, git-init it, print the
+        prompt + arm config + next steps. Then run the agent with cwd = workdir.
+  finish --run <runId> --session <sessionId|path> [--sessions-dir DIR]
+        Grade the workdir (task validate.mjs), attach S1 metrics, write the run record.
+  report [--task <id>...] [--arm <name>...] [--include-partial]
+        Aggregate completed records into results/report-YYYY-MM-DD.md (+ .json sibling).
+  list  Tasks, arms, and run counts per task x arm.
+  check-tasks
+        QA every task: pristine fixture must FAIL validation, patched must PASS.
+
+options (defaults suit repo-root usage; overridable for tests):
+  --tasks-dir DIR --arms FILE --runs-root DIR --results-dir DIR --reports-dir DIR`;
+
+function parseArgs(argv) {
+  const opts = {};
+  const positional = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const flag = (name) => { opts[name] = argv[++i]; };
+    if (a === '--task') flag('task');
+    else if (a === '--arm') flag('arm');
+    else if (a === '--run') flag('run');
+    else if (a === '--session') flag('session');
+    else if (a === '--sessions-dir') flag('sessionsDir');
+    else if (a === '--tasks-dir') flag('tasksDir');
+    else if (a === '--arms') flag('armsPath');
+    else if (a === '--runs-root') flag('runsRoot');
+    else if (a === '--results-dir') flag('resultsDir');
+    else if (a === '--reports-dir') flag('reportsDir');
+    else if (a === '--include-partial') opts.includePartial = true;
+    else if (a === '--help' || a === '-h') opts.help = true;
+    else positional.push(a);
+  }
+  return { opts, positional };
+}
+
+const die = (msg) => { console.error(JSON.stringify({ error: msg })); process.exit(1); };
+
+// ---------------------------------------------------------------- start (spec §7.1)
+
+function cmdStart(opts) {
+  if (!opts.task || !opts.arm) die('start requires --task <class/id> and --arm <name>');
+  const arm = getArm(loadArms(opts.armsPath), opts.arm);
+  const task = getTask(opts.tasksDir, opts.task);
+  const { runId, runDir, workDir } = prepareWorkdir(task.dir, opts.runsRoot);
+  const startedAt = new Date().toISOString();
+  writeFileSync(join(runDir, 'run.json'),
+    JSON.stringify({ runId, task: task.id, arm: arm.name, startedAt, status: 'started' }, null, 1));
+  console.log(`=== S2 run started ===
+runId: ${runId}
+task:  ${task.id} — ${task.title}
+arm:   ${arm.name}${arm.baseline ? ' (baseline)' : ''}
+
+--- task prompt (paste into the agent session) ---
+${task.prompt}
+
+--- arm config — apply MANUALLY before the session, never auto-applied (spec §6) ---
+${arm.config}
+
+--- workdir (run the agent with cwd = this path) ---
+${workDir}
+
+next: run the agent in the workdir with the prompt above, then:
+  node benchmark/bench.mjs finish --run ${runId} --session <sessionId>`);
+}
+
+// ---------------------------------------------------------------- dispatch
+
+const [, , cmd, ...rest] = process.argv;
+const { opts, positional } = parseArgs(rest);
+const optsWithDefaults = { ...DEFAULTS, ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)) };
+if (!cmd || opts.help) { console.log(HELP); process.exit(cmd ? 0 : 1); }
+else if (cmd === 'start') { try { cmdStart(optsWithDefaults); } catch (e) { die(e.message); } }
+else die(`unknown command: ${cmd}\n${HELP}`);
