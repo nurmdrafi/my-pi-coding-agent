@@ -19,6 +19,15 @@ npm test 2>&1 | rg "FAIL" | head -40
 # S4 (2026-10-15): transparent-prefix guard — flag forms stay lookups (fix 4)
 command -v rm
 nohup npm test > /dev/null 2>&1 &
+# S4 (2026-10-15): false-positive guards for the variable-command-word,
+# pipe-to-shell and persistence-redirect families (spec §5.1)
+echo rm -rf /
+grep rm file
+man rm
+cat > tmp/out.log
+npm run build
+printf '%s\n' hi | tee out.log
+ls | sort | head -5
 git commit -m "fix: API timeout" 2>&1 | tail -20
 git commit -m "fix: JSON parse" 2>&1 | tail -20
 # B21: \n in message is a newline, header = first line (fixed 2026-10-08)

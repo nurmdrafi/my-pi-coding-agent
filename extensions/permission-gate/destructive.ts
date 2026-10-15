@@ -6,6 +6,7 @@
  * It catches the realistic unsanctioned shapes at command positions; a
  * determined rewrite escapes it. AGENTS.md discipline and the user's eyes are
  * the actual boundary. */
+import { homedir } from "os";
 
 
 /**
@@ -63,14 +64,74 @@ const DESTRUCTIVE_CORE_SRC = String.raw`(?:sudo\b|(?:\S*\/)?rm\b|git\s+(?:reset\
 const DESTRUCTIVE_BASH = new RegExp(
   CMD_POS_SRC +
     DESTRUCTIVE_CORE_SRC +
-    String.raw`|>\s*/(?:etc|usr|var|boot|root)\b|\b(?:DROP\s+(?:TABLE|DATABASE)|DELETE\s+FROM)\b|\bfind\b[^|;&]*\s-[a-zA-Z]*delete\b`,
+    // S4 fix 5 (2026-10-15, spec §6.5): a $VAR/${VAR} COMMAND WORD is
+    // unclassifiable — it confirms, never silently allows. Anchored like the
+    // core but NOT inside it: DESTRUCTIVE_ANYWHERE would then fire on every
+    // $arg expansion (sed … $f, awk '{print $1}')
+    String.raw`|` +
+    CMD_POS_SRC +
+    String.raw`\$\{?[A-Za-z_]\w*\}?(?=[\s;|&)]|$)` +
+    // S4 fix 6 (§6.6): pipe-to-interpreter — unanchored on purpose (matches
+    // anywhere in the segment, incl. inside sh -c "…" payloads); `bash
+    // build.sh` (no pipe) and `| shasum` (no \b after sh) stay allowed
+    String.raw`|\|\s*(?:ba|z|da|k)?sh\b` +
+    String.raw`|\b(?:DROP\s+(?:TABLE|DATABASE)|DELETE\s+FROM)\b|\bfind\b[^|;&]*\s-[a-zA-Z]*delete\b`,
   "i",
 );
 /** bash/sh -c "…" and $(…) hide payloads inside quotes — for wrapped segments the bare core is scanned anywhere */
 const SHELL_WRAPPED = /\b(?:ba|z|da|k)?sh\s+(?:-[a-zA-Z]+\s+)*-c\b|\$\(/;
 const DESTRUCTIVE_ANYWHERE = new RegExp(DESTRUCTIVE_CORE_SRC, "i");
+
+/** S4 fixes 7+8 (2026-10-15, spec §6.7–8): the single protected-prefix
+ * source, shared by the bash redirect/tee target check below and the
+ * write/edit realpath confirm in index.ts. RegExp-shaped but rebuilt when
+ * os.homedir() changes — the S4 canary suite runs the gate under a fake
+ * HOME, and ~/.ssh there must confirm exactly like the real one.
+ * System trees: /etc /usr /var /boot /root; home: rc files, ~/.ssh/,
+ * ~/.gnupg/, ~/.config/systemd/. */
+let ppHome = "";
+let ppRe: RegExp | undefined;
+export const PROTECTED_PREFIX_RE = {
+  test(p: string): boolean {
+    const h = homedir();
+    if (!ppRe || h !== ppHome) {
+      const esc = h.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+      ppHome = h;
+      ppRe = new RegExp(
+        String.raw`^(?:/etc|/usr|/var|/boot|/root)(?:/|$)` +
+          String.raw`|^` +
+          esc +
+          String.raw`/\.(?:bashrc|zshrc|profile|bash_profile|bash_aliases|bash_login|tmux\.conf|gitconfig)(?:/|$)` +
+          String.raw`|^` +
+          esc +
+          String.raw`/\.(?:ssh|gnupg)/` +
+          String.raw`|^` +
+          esc +
+          String.raw`/\.config/systemd/`,
+      );
+    }
+    return ppRe.test(p);
+  },
+};
+/** `~/.ssh/x` / `$HOME/.ssh/x` as written in command text → absolute, then
+ * judged against PROTECTED_PREFIX_RE (quoted forms are the documented
+ * tripwire miss, same class as the rest) */
+const expandWrittenTarget = (t: string) =>
+  t.replace(/^~\//, homedir() + "/").replace(/^\$HOME\//, homedir() + "/");
+const REDIRECT_TARGET = /(?<![=>!\-\d])(?:>>?)\s+([^\s&>]+)/g;
+const TEE_TARGET = /\btee(?:\s+-[a-zA-Z][a-zA-Z0-9]*)*\s+([^\s|;&)]+)/g;
+
 export const segmentDestructive = (seg: string): boolean =>
   DESTRUCTIVE_BASH.test(seg) ||
+  // S4 fix 7 (§6.7): persistence redirect/tee targets — same protected-prefix
+  // source as the write/edit realpath check (replaces the old /etc-only
+  // redirect alternative)
+  [...seg.matchAll(REDIRECT_TARGET)].some((m) =>
+    PROTECTED_PREFIX_RE.test(expandWrittenTarget(m[1])),
+  ) ||
+  [...seg.matchAll(TEE_TARGET)].some((m) =>
+    PROTECTED_PREFIX_RE.test(expandWrittenTarget(m[1])),
+  ) ||
   (SHELL_WRAPPED.test(seg) && DESTRUCTIVE_ANYWHERE.test(seg));
 export const APPROVED_WINDOW_MS = 2 * 60_000;
 

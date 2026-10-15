@@ -19,3 +19,24 @@ nice rm canary	Permission Gate (Destructive)
 # S4: env-assignment + git global-flag lock-ins (existing stripEnvPrefix)
 TARGET=canary rm -f $TARGET	Permission Gate (Destructive)
 GIT_TERMINAL_PROMPT=0 git reset --hard	Permission Gate (Destructive)
+# S4 (2026-10-15): variable command word — unclassifiable → confirm (fix 5)
+$R canary	Permission Gate (Destructive)
+${R} canary	Permission Gate (Destructive)
+echo prep && $CMD run	Permission Gate (Destructive)
+# S4: pipe-to-shell (fix 6) — payload text never reaches a command position
+# as a segment head, but the pipe-into-interpreter shape is destructive itself
+echo 'rm -rf canary' | sh	Permission Gate (Destructive)
+printf 'rm canary' | bash	Permission Gate (Destructive)
+echo 'cm0gcmYgLXJmIGNhbmFyeQ==' | base64 -d | sh	Permission Gate (Destructive)
+cat deploy.sh | sh	Permission Gate (Destructive)
+# S4: persistence redirects + tee targets (fix 7) — same protected-prefix
+# source as the write/edit realpath check (PROTECTED_PREFIX_RE, fix 8)
+> ~/.bashrc	Permission Gate (Destructive)
+echo x >> ~/.ssh/authorized_keys	Permission Gate (Destructive)
+echo x | tee -a ~/.profile	Permission Gate (Destructive)
+tee ~/.ssh/authorized_keys	Permission Gate (Destructive)
+> /etc/passwd	Permission Gate (Destructive)
+echo x > /usr/local/bin/run	Permission Gate (Destructive)
+# S4: accepted false-positive lock-in — quoted prose "then rm" hits the
+# \bthen\b command-position anchor; documented tolerance (spec §5.1/§8), no fix
+echo "backup done, then rm -rf canary"	Permission Gate (Destructive)
