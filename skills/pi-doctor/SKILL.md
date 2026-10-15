@@ -7,6 +7,7 @@ description: >
   diagnose the harness, is my setup ok, after cloning the harness on a new
   machine, or when pidx/session-audit misbehaves. NOT for skill authoring
   (skill-manager) or session cost audits (session-audit).
+disable-model-invocation: true
 ---
 
 # Pidoctor
