@@ -3252,6 +3252,121 @@ const cases = [
       return write(pi, f, "final\n", { apply: true });
     },
   ],
+
+  // Step 6 (families 6–7): D4 multi-match lock-ins + policy-order
+  // regressions (spec §5.4, §9.6–7) — lock-ins only, no rule change
+  [
+    "S5 D4: mixed exact+fuzzy call drops coverage (binding side lock-in)",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-d4-mixed.ts");
+      writeFileSync(f, "aaa\nbbb \nccc\n"); // trailing space on line 2
+      await read(pi, f, {}, { outputLines: 3, totalLines: 3 });
+      // edit[0] exact "aaa" (region covered); edit[1] exact-miss → fuzzy hit
+      const e = await edit(pi, f, [
+        { oldText: "aaa", newText: "A" },
+        { oldText: "bbb\nccc", newText: "B" },
+      ]);
+      if (e.blocked) return e;
+      // any fuzzy anchor in the call → tool_result drops the path's coverage
+      // (existing behavior): the re-read of any window must be allowed
+      return read(pi, f, { offset: 1, limit: 3 }, { outputLines: 3 });
+    },
+  ],
+  [
+    "S5 D4: exact anchor with a fuzzy-only twin elsewhere is allowed",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-d4-twin.ts");
+      // exact "dup\nmid" once; near-twin differs only by trailing ws —
+      // blocking exact matches that merely have fuzzy twins adds friction
+      // for no demonstrated failure (spec §5.4 YAGNI decision)
+      writeFileSync(f, "dup\nmid\ndup \n");
+      await read(pi, f, {}, { outputLines: 3, totalLines: 3 });
+      return edit(pi, f, [{ oldText: "dup\nmid", newText: "D\nmid" }]);
+    },
+  ],
+  [
+    "S5 D4: exact multi-match still blocks with line numbers",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-d4-multi.ts");
+      writeFileSync(f, "same\nx\nsame\n");
+      await read(pi, f);
+      const r = await edit(pi, f, [{ oldText: "same", newText: "S" }]);
+      return r.blocked && r.reason.includes("lines 1, 3")
+        ? r
+        : { blocked: false, reason: `lines: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 policy: protected-path edit confirms through H2 before binding blocks",
+    "blocked",
+    async (pi) => {
+      const fakeHome = join(tmp, "fake-home-s5a");
+      mkdirSync(join(fakeHome, ".ssh"), { recursive: true });
+      writeFileSync(join(fakeHome, ".ssh", "authorized_keys"), "key\n");
+      rmSync(join(tmp, "ssh-link-s5a"), { force: true });
+      symlinkSync(join(fakeHome, ".ssh"), join(tmp, "ssh-link-s5a"));
+      process.env.HOME = fakeHome;
+      try {
+        // never-read target with a valid anchor: Unread would fire — the H2
+        // policy ladder must fire FIRST (headless → destructive block)
+        const block = await pi.invoke(
+          "tool_call",
+          {
+            type: "tool_call",
+            toolName: "edit",
+            toolCallId: `tc${++seqId}`,
+            input: {
+              path: join(tmp, "ssh-link-s5a", "authorized_keys"),
+              edits: [{ oldText: "key", newText: "evil" }],
+            },
+          },
+          { hasUI: false },
+        );
+        return block && block.reason.startsWith("Permission Gate (Destructive)")
+          ? block
+          : { blocked: false, reason: `order: ${block?.reason ?? "(pass)"}` };
+      } finally {
+        delete process.env.HOME;
+      }
+    },
+  ],
+  [
+    "S5 policy: binding block on an approved protected path still fires",
+    "blocked",
+    async (pi) => {
+      const fakeHome = join(tmp, "fake-home-s5b");
+      mkdirSync(join(fakeHome, ".ssh"), { recursive: true });
+      writeFileSync(join(fakeHome, ".ssh", "authorized_keys"), "key\n");
+      rmSync(join(tmp, "ssh-link-s5b"), { force: true });
+      symlinkSync(join(fakeHome, ".ssh"), join(tmp, "ssh-link-s5b"));
+      process.env.HOME = fakeHome;
+      try {
+        // user approves H2 — the Unread binding block must still engage
+        // (both layers, neither skipped)
+        const block = await pi.invoke(
+          "tool_call",
+          {
+            type: "tool_call",
+            toolName: "edit",
+            toolCallId: `tc${++seqId}`,
+            input: {
+              path: join(tmp, "ssh-link-s5b", "authorized_keys"),
+              edits: [{ oldText: "key", newText: "evil" }],
+            },
+          },
+          approveUi(),
+        );
+        return block && block.reason.startsWith("Anchor Guard (Unread):")
+          ? block
+          : { blocked: false, reason: `both layers: ${block?.reason ?? "(pass)"}` };
+      } finally {
+        delete process.env.HOME;
+      }
+    },
+  ],
 ];
 
 // ---- runner: each case replays its preamble on a fresh gate, then the probe ----

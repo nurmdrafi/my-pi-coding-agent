@@ -31,7 +31,7 @@ Apply when "polish" touches data flow, not just styles:
 - Conditional columns/panels: verify DEFAULT state of every span/collapse condition (panel hidden at `span=0` unless nav expanded ships invisible).
 
 ## Scoring
-Rate UI 0–10 on principles below. State score + specific fixes to reach 10.
+Rate UI 0–10 on principles below. State score + specific fixes to reach 10. Deliver in chat only — do NOT write an audit-reports/ file for this skill.
 
 ## 1. Hierarchy — not everything can be important
 - Three levers: **size, weight, color**. Combine, don't stack — primary = large OR bold OR dark, not all three.
