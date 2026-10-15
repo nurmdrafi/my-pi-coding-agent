@@ -1,0 +1,6 @@
+{
+  "id": "feature/t2",
+  "class": "feature",
+  "title": "Add a slugify module",
+  "prompt": "src/text.js already provides wordCount (its tests are green). Add the missing module src/slug.js exporting slugify(s): lowercase, collapse every run of non-alphanumerics into a single hyphen, trim leading/trailing hyphens. Make every test in src/slug.test.js pass while keeping src/text.test.js green. Do not modify any test files."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "feature/t1",
+  "class": "feature",
+  "title": "Add the --upper flag to the greeting CLI",
+  "prompt": "This mini-CLI greets a name: src/greet.js has greet(name), and src/cli-core.js has run(argv) which already handles the no-name usage error. Add the missing --upper flag: when present, run(argv) must return the greeting uppercased. Make every test in src/cli-core.test.js pass (the --upper cases are currently red). Do not modify any test files."
+}

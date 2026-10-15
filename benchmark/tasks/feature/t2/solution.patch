@@ -1,0 +1,10 @@
+diff --git a/src/slug.js b/src/slug.js
+new file mode 100644
+index 0000000..52c8c7d
+--- /dev/null
++++ b/src/slug.js
+@@ -0,0 +1,4 @@
++/** URL-friendly slug: lowercase, non-alphanumerics collapsed to single hyphens, trimmed. */
++export function slugify(s) {
++  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
++}

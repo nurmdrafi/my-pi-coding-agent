@@ -1,0 +1,16 @@
+diff --git a/src/cli-core.js b/src/cli-core.js
+index 05fe63e..a3c4786 100644
+--- a/src/cli-core.js
++++ b/src/cli-core.js
+@@ -1,6 +1,10 @@
++import { greet } from './greet.js';
++
+ /** Testable CLI core for `node src/cli.js [--upper] <name>`. */
+ export function run(argv) {
++  const upper = argv.includes('--upper');
+   const name = argv.find((a) => !a.startsWith('--'));
+   if (!name) return { text: 'usage: cli [--upper] <name>', exit: 1 };
+-  return { text: `Hello, ${name}.`, exit: 0 };
++  const text = greet(name);
++  return { text: upper ? text.toUpperCase() : text, exit: 0 };
+ }
