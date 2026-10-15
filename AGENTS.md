@@ -44,7 +44,7 @@ Loaded every session. Task rule sets in `docs/` — follow link when task touche
 ### Tooling defaults
 - Search: `rg`. Fallback `grep` only when rg is missing or errors.
 - Find files: `fd`. Fallback `find` only when fd is missing or errors.
-- Text file reads: `piread` first — `~/.pi/agent/bin/piread --path <P> [--offset <N>] [--limit <N>]` via bash, take `.content`. Fallback built-in `read` when piread is missing or fails. Images always built-in `read` (piread is text-only).
+- Text file reads: use the `piread` tool — `piread {path, offset, limit}` take `.content` (fallback: `~/.pi/agent/bin/piread --path <P> [--offset <N>] [--limit <N>]` via bash). Images always built-in `read` (piread is text-only). Enforced by permission-gate rule P1: a built-in `read` on a text file is blocked. piread falls back to the built-in reader on its own (missing binary, binary/image content), so no manual fallback is needed.
 
 ## Scoped rule sets
 - [docs/change-discipline.md](docs/change-discipline.md) — surgical scope, ponytail ladder, root-cause fixes

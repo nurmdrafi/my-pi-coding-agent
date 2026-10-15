@@ -326,18 +326,18 @@ const GATE_CTX = { hasUI: true, mode: "tui", ui: { confirm: async () => true } }
 let gateSeq = 0;
 /** tool_call → wrapped execute → tool_result, feeding the wrapped result's
  * content/details to the gate exactly as the harness would. */
-async function gateReadFlow(pi, tool, path, offset, limit) {
+async function gateReadFlow(pi, tool, path, offset, limit, name = "piread") {
   const toolCallId = `g${++gateSeq}`;
   const input = offset === undefined ? { path } : { path, offset, limit };
-  const block = await pi.invoke("tool_call", { type: "tool_call", toolName: "read", toolCallId, input }, GATE_CTX);
+  const block = await pi.invoke("tool_call", { type: "tool_call", toolName: name, toolCallId, input }, GATE_CTX);
   if (block) return { blocked: true, reason: block.reason };
   const result = await tool.execute(toolCallId, input);
-  await pi.invoke("tool_result", { type: "tool_result", toolName: "read", toolCallId, input, content: result.content, isError: false, details: result.details }, GATE_CTX);
+  await pi.invoke("tool_result", { type: "tool_result", toolName: name, toolCallId, input, content: result.content, isError: false, details: result.details }, GATE_CTX);
   return { blocked: false };
 }
-async function gateReadProbe(pi, path, offset, limit) {
+async function gateReadProbe(pi, path, offset, limit, name = "piread") {
   const input = offset === undefined ? { path } : { path, offset, limit };
-  const block = await pi.invoke("tool_call", { type: "tool_call", toolName: "read", toolCallId: `g${++gateSeq}`, input }, GATE_CTX);
+  const block = await pi.invoke("tool_call", { type: "tool_call", toolName: name, toolCallId: `g${++gateSeq}`, input }, GATE_CTX);
   return block ? { blocked: true, reason: block.reason } : { blocked: false };
 }
 async function gateEditProbe(pi, path, edits) {

@@ -430,7 +430,8 @@ add("gate: read→piedit wins the region requirement", async () => {
   // Negative control: the same edit with no prior read must block.
   const unread = await gateEditProbe(freshGate(), "piedit", path, [{ oldText: "L3", newText: "L3-edited" }]);
   assert.ok(unread, "negative control: unread piedit edit must block");
-  // Read the region through the built-in read tool so the gate certifies it.
+  // Read the region through the piread tool so the gate certifies it
+  // (P1, 2026-10-15: built-in `read` on text files is blocked piread-first).
   const { createReadTool } = await import(
     join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js")
   );
@@ -439,14 +440,14 @@ add("gate: read→piedit wins the region requirement", async () => {
   const readInput = { path, offset: 1, limit: 5 };
   const readBlock = await pi.invoke(
     "tool_call",
-    { type: "tool_call", toolName: "read", toolCallId: readId, input: readInput },
+    { type: "tool_call", toolName: "piread", toolCallId: readId, input: readInput },
     GATE_CTX,
   );
   assert.ok(!readBlock, readBlock?.reason ?? "read must not block");
   const readResult = await readTool.execute(readId, readInput);
   await pi.invoke(
     "tool_result",
-    { type: "tool_result", toolName: "read", toolCallId: readId, input: readInput, content: readResult.content, isError: false, details: readResult.details },
+    { type: "tool_result", toolName: "piread", toolCallId: readId, input: readInput, content: readResult.content, isError: false, details: readResult.details },
     GATE_CTX,
   );
   // An anchor inside the certified region now passes the region requirement.

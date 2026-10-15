@@ -9,6 +9,7 @@
  * | AG  | Anchor Guard                  | edit oldText: existence (exact+fuzzy), uniqueness, no intra-call overlap; snippet on a miss |
  * | R1  | Token Economy (Re-read)       | no read whose window is fully covered by in-context spans (reads/edits/writes/@file injections); stat-mismatch invalidation |
  * | R1b | Token Economy (Big read)      | first whole-file-ish (>=500-line window) read of a >24KB file blocked with a targeted-window fix |
+ * | P1  | Token Economy (Piread-first)  | built-in read of a text file blocked — use the piread tool; images keep `read` (piread delegates them internally) |
  * | H1  | output cap (non-blocking)     | bash output capped at 100 lines / 4KB UTF-8; oversized first line head+tail; tail spilled to $TMPDIR/pgate-spill; errors capped too |
  * | H2  | Permission Gate (Destructive) | destructive commands need approval: chat yes / UI confirm; fail closed headless; re-send re-prompts |
  * | R9  | Commitlint                    | conventional-commit headers, subject case, body line length (incl. heredoc bodies), pre-hook |
@@ -80,6 +81,11 @@ import { nodeModulesPath, searchCheck } from "./search-guard.ts";
 const BIG_READ_BYTES = 24_000;
 /** a requested window at least this wide counts as whole-file-ish */
 const BIG_READ_WIN = 500;
+/** Built-in read is authoritative for images (piread is text-only and
+ * delegates them internally). Any other extension goes through piread first
+ * (2026-10-15 audit: the last session read 69 text files via built-in `read`
+ * while piread existed). */
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
 /** cadence nudge thresholds, counted like AGENTS.md Token Economy does:
  * user turns (~200) or estimated context tokens (~150K) before proposing a
  * compaction/fresh-session hop (2026-10-10: 354/303-turn marathons re-billed
@@ -516,6 +522,21 @@ export default function (pi: ExtensionAPI) {
       // path was read straight through the read tool; ask user first (@earendil-works exempt)
       const nm = nodeModulesPath(display);
       if (nm) return blockCall(nm);
+      // P1 (2026-10-15 audit): piread-first. Built-in `read` on a text file is
+      // blocked so the native pipeline (same schema, same coverage) is used;
+      // images stay on `read`. piread itself falls back to the built-in reader
+      // for images/binary/missing-binary, so no manual fallback is needed.
+      // Skipped when the piread extension is opted out (PI_NATIVE_READ=0) —
+      // then `piread` does not exist and blocking `read` would strand the agent.
+      if (
+        isToolCallEventType("read", event) &&
+        process.env.PI_NATIVE_READ !== "0" &&
+        !IMAGE_EXTENSIONS.some((ext) => display.toLowerCase().endsWith(ext))
+      ) {
+        return blockCall(
+          `Token Economy (Piread-first): '${shown}' is a text file — use the piread tool (piread {path, offset, limit}) instead of read. Images use the read tool.`,
+        );
+      }
       const start = Math.max(
         1,
         typeof event.input.offset === "number" ? event.input.offset : 1,
@@ -537,7 +558,7 @@ export default function (pi: ExtensionAPI) {
         const snap = await snapshot(path);
         if (snap && snap.size > BIG_READ_BYTES) {
           return blockCall(
-            `Token Economy (Big read): '${shown}' is ~${Math.round(snap.size / 1024)}KB — target it (rg the symbol, then offset/limit ≤${BIG_READ_WIN} lines).`,
+            `Token Economy (Big read): '${shown}' is ~${Math.round(snap.size / 1024)}KB — target it with the piread tool (rg the symbol, then piread {path, offset, limit} ≤${BIG_READ_WIN} lines).`,
           );
         }
       }
@@ -563,7 +584,7 @@ export default function (pi: ExtensionAPI) {
           const hi = sp.end;
           return blockCall(
             `Token Economy (Re-read): ${lo === hi ? `line ${lo}` : `lines ${lo}–${hi === Infinity ? "EOF" : hi}`} of '${shown}' are already in context ` +
-              `(${prior.kind}, file unchanged). Read a different window (offset/limit) or act on what is there.`,
+              `(${prior.kind}, file unchanged). Read another window via piread or act on what is there.`,
           );
         }
         coverage.delete(path); // changed on disk (or no baseline) — the read is legitimate

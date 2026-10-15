@@ -94,12 +94,27 @@ const lineText = (n) =>
 
 /** read via the gate; default result = untruncated full read of `n` lines */
 async function read(pi, path, opts = {}, result = {}) {
+  // P6 (2026-10-15): the gate blocks built-in `read` on text files
+  // (piread-first). Coverage tests certify text through `piread`; probes that
+  // must exercise the built-in `read` tool pass { tool: "read" }, and images
+  // stay on `read` automatically.
+  const toolName = result.tool ?? (result.image ? "read" : "piread");
+  return readVia(pi, toolName, path, opts, result);
+}
+
+// P6 (2026-10-15): the gate blocks built-in `read` on text files (piread-first).
+// Text-file certification in tests goes through `piread`; images keep `read`.
+async function piread(pi, path, opts = {}, result = {}) {
+  return readVia(pi, "piread", path, opts, result);
+}
+
+async function readVia(pi, toolName, path, opts = {}, result = {}) {
   const n = result.outputLines ?? 100;
   const input = { path, ...opts };
   const toolCallId = `tc${++seqId}`;
   const block = await pi.invoke("tool_call", {
     type: "tool_call",
-    toolName: "read",
+    toolName,
     toolCallId,
     input,
   });
@@ -108,7 +123,7 @@ async function read(pi, path, opts = {}, result = {}) {
   const tail = result.note ? `${body}\n\n[${result.note}]` : body;
   await pi.invoke("tool_result", {
     type: "tool_result",
-    toolName: "read",
+    toolName,
     toolCallId,
     input,
     content: result.image
@@ -603,7 +618,7 @@ const cases = [
   [
     "any window after an image read is blocked",
     "blocked",
-    async (pi) => read(pi, fileA, { offset: 5, limit: 5 }, { outputLines: 5 }),
+    async (pi) => read(pi, fileA, { offset: 5, limit: 5 }, { outputLines: 5, tool: "read" }),
   ],
   [
     "relative-path re-read of an absolute-read file is blocked",
@@ -2467,6 +2482,53 @@ const cases = [
       return r.blocked && !r.reason.startsWith("Search (node_modules)")
         ? { blocked: false, reason: `wrong family: ${r.reason.slice(0, 60)}` }
         : r;
+    },
+  ],
+
+  // ---- P1 (2026-10-15 audit): piread-first for text files ----
+  [
+    "P1: built-in read of a text file is blocked (piread-first)",
+    "blocked",
+    async (pi) => {
+      const r = await read(
+        pi,
+        fileA,
+        { offset: 1, limit: 5 },
+        { outputLines: 5, tool: "read" },
+      );
+      return r.blocked && r.reason.startsWith("Token Economy (Piread-first)")
+        ? r
+        : { blocked: false, reason: `wrong family: ${String(r.reason).slice(0, 70)}` };
+    },
+  ],
+  [
+    "P1: built-in read of an image passes",
+    "pass",
+    async (pi) =>
+      read(pi, join(tmp, "shot.png"), {}, { image: true, tool: "read" }),
+  ],
+  [
+    "P1: piread of a text file passes",
+    "pass",
+    async (pi) => piread(pi, fileA, { offset: 1, limit: 5 }, { outputLines: 5 }),
+  ],
+  [
+    "P1: piread of an image path passes (delegates internally)",
+    "pass",
+    async (pi) => piread(pi, join(tmp, "shot.png"), {}, { outputLines: 3, totalLines: 3 }),
+  ],
+  [
+    "P1: built-in read passes when piread is opted out (PI_NATIVE_READ=0)",
+    "pass",
+    async (pi) => {
+      const prev = process.env.PI_NATIVE_READ;
+      process.env.PI_NATIVE_READ = "0";
+      try {
+        return await read(pi, fileA, { offset: 1, limit: 5 }, { outputLines: 5, tool: "read" });
+      } finally {
+        if (prev === undefined) delete process.env.PI_NATIVE_READ;
+        else process.env.PI_NATIVE_READ = prev;
+      }
     },
   ],
 

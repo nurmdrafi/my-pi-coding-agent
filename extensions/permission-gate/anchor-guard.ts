@@ -133,7 +133,7 @@ export async function validateEditAnchors(
     const shown = display.length > 57 ? `…${display.slice(-56)}` : display;
     return {
       block: true,
-      reason: `Anchor Guard (Stale): '${shown}' changed on disk since your last read (mtime/size) — re-read the region (offset/limit), then re-send the edit.`,
+      reason: `Anchor Guard (Stale): '${shown}' changed on disk since your last read (mtime/size) — re-read the region with the piread tool (path/offset/limit), then re-send the edit.`,
     };
   }
 
@@ -150,7 +150,7 @@ export async function validateEditAnchors(
     return {
       block: true,
       stale: true,
-      reason: `Anchor Guard (Stale): '${shown}' changed without mtime/size change (fast write / restored mtime) — re-read before editing.`,
+      reason: `Anchor Guard (Stale): '${shown}' changed without mtime/size change (fast write / restored mtime) — re-read with the piread tool before editing.`,
     };
   }
 
@@ -173,7 +173,7 @@ export async function validateEditAnchors(
       const frag = findClosestFragment(fuzzyContent, oldText);
       const near = frag
         ? `Its ${frag.end} lines occur at line ${lineOf(fuzzyContent, frag.index)}; the inferred lines around them are wrong:\n${snippetAround(content, lineOf(fuzzyContent, frag.index), frag.lines)}\nUse these exact lines (incl. whitespace) as oldText.`
-        : `No part exists — rebuild oldText from the window already in context; read (offset/limit) only a region not yet in context.`;
+        : `No part exists — rebuild oldText from the window already in context; use the piread tool (path/offset/limit) only for a region not yet in context.`;
       return {
         block: true,
         reason: `Anchor Guard: edits[${i}].oldText not found in ${String(input.path)} (exact+fuzzy). ${near}`,
@@ -265,8 +265,8 @@ export async function validateEditAnchors(
         reason:
           `Anchor Guard (Unread): '${shown}' not read this session — ` +
           (first
-            ? `read lines ${first.start}–${first.end} (offset/limit) first.`
-            : "read it (offset/limit) first."),
+            ? `read lines ${first.start}–${first.end} with the piread tool (piread {path:'${String(input.path)}', offset:${first.start}, limit:${first.end - first.start + 1}}) first.`
+            : `read it with the piread tool (piread {path:'${String(input.path)}'}) first.`),
       };
     }
     for (const os of origSpans) {
@@ -279,7 +279,8 @@ export async function validateEditAnchors(
           reason:
             `Anchor Guard (Unread): '${shown}' edits[${os.i}] targets lines ` +
             `${os.start}–${os.end}, not in certified context — read lines ` +
-            `${os.start}–${os.end} (offset/limit) first.`,
+            `${os.start}–${os.end} with the piread tool ` +
+            `(piread {path:'${String(input.path)}', offset:${os.start}, limit:${os.end - os.start + 1}}) first.`,
         };
       }
     }
