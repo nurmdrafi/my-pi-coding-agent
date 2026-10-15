@@ -236,6 +236,78 @@ add("fallback: garbage stdout → oracle result + stderr line", async () => {
   }
 });
 
+// ---- gate compatibility (Step 4): real permission-gate through stubbed events ----
+// The gate intercepts by tool NAME (read/edit) and event type — it must stay
+// agnostic to who executes. Lock-ins: R1 coverage certification from a
+// piread-wrapped result, S5 M2 region-read requirement satisfied by piread
+// output, and a protected-path (node_modules) read blocked at tool_call
+// before any execution.
+
+const { freshGate } = await import("./lib/gate-stub.mjs");
+const GATE_CTX = { hasUI: true, mode: "tui", ui: { confirm: async () => true } };
+
+let gateSeq = 0;
+/** tool_call → wrapped execute → tool_result, feeding the wrapped result's
+ * content/details to the gate exactly as the harness would. */
+async function gateReadFlow(pi, tool, path, offset, limit) {
+  const toolCallId = `g${++gateSeq}`;
+  const input = offset === undefined ? { path } : { path, offset, limit };
+  const block = await pi.invoke("tool_call", { type: "tool_call", toolName: "read", toolCallId, input }, GATE_CTX);
+  if (block) return { blocked: true, reason: block.reason };
+  const result = await tool.execute(toolCallId, input);
+  await pi.invoke("tool_result", { type: "tool_result", toolName: "read", toolCallId, input, content: result.content, isError: false, details: result.details }, GATE_CTX);
+  return { blocked: false };
+}
+async function gateReadProbe(pi, path, offset, limit) {
+  const input = offset === undefined ? { path } : { path, offset, limit };
+  const block = await pi.invoke("tool_call", { type: "tool_call", toolName: "read", toolCallId: `g${++gateSeq}`, input }, GATE_CTX);
+  return block ? { blocked: true, reason: block.reason } : { blocked: false };
+}
+async function gateEditProbe(pi, path, edits) {
+  const block = await pi.invoke("tool_call", { type: "tool_call", toolName: "edit", toolCallId: `g${++gateSeq}`, input: { path, edits } }, GATE_CTX);
+  return block ? { blocked: true, reason: block.reason } : { blocked: false };
+}
+
+add("gate R1: piread-wrapped read result certifies coverage (dup read blocked)", async () => {
+  const pi = freshGate();
+  const path = join(dir, "mid30");
+  const first = await gateReadFlow(pi, wrapped, path, 10, 5);
+  assert.ok(!first.blocked, first.reason ?? "first read must not block");
+  const dup = await gateReadProbe(pi, path, 12, 2); // sub-window of certified lines 10–14
+  assert.ok(dup.blocked, "re-read of a piread-certified window must block");
+  assert.match(dup.reason, /^Token Economy \(Re-read\)/, `reason was: ${dup.reason}`);
+});
+add("gate S5 M2: edit-after-piread-read passes region requirement", async () => {
+  const path = join(dir, "mid30");
+  // negative control: the same edit with no prior read must block (proves the
+  // gate is armed — the pass below is not vacuous)
+  const control = freshGate();
+  const unread = await gateEditProbe(control, path, [{ oldText: "L11", newText: "L11-edited" }]);
+  assert.ok(unread.blocked, "negative control: unread edit must block");
+  assert.match(unread.reason, /^Anchor Guard \(Unread\)/, `reason was: ${unread.reason}`);
+  const pi = freshGate();
+  const first = await gateReadFlow(pi, wrapped, path, 10, 5);
+  assert.ok(!first.blocked, first.reason ?? "read must not block");
+  const edit = await gateEditProbe(pi, path, [{ oldText: "L11", newText: "L11-edited" }]);
+  assert.ok(!edit.blocked, edit.reason ?? "edit within the piread-certified region must pass");
+});
+add("gate: protected-path read (node_modules) blocks at tool_call before execution", async () => {
+  const nmDir = join(dir, "node_modules", "left-pad");
+  mkdirSync(nmDir, { recursive: true });
+  const nmPath = join(nmDir, "index.js");
+  writeFileSync(nmPath, "module.exports = 42;\n");
+  const pi = freshGate();
+  const shadowPi = loadExtension("1");
+  const tool = shadowPi.tools.get("read");
+  let executions = 0;
+  const orig = tool.execute;
+  tool.execute = (...a) => { executions++; return orig(...a); };
+  const block = await pi.invoke("tool_call", { type: "tool_call", toolName: "read", toolCallId: "g-nm", input: { path: nmPath } }, GATE_CTX);
+  assert.ok(block, "node_modules read must block at tool_call");
+  assert.match(block.reason, /^Search \(node_modules\)/, `reason was: ${block.reason}`);
+  assert.equal(executions, 0, "blocked read must never reach execute");
+});
+
 // ---- runner ----
 
 let failed = 0;
