@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.39.1] - 15-10-2026
 
+### Added
+
+- **`npm run doc:check` — doc-consistency validator (S3)** — `skills/harness-engineer/scripts/mdcmdcheck.mjs` promoted to `scripts/doc-check.mjs` (move verified byte-identical: same 526-file scan, same findings, exit 0) and extended with three repo-derived families: skills-inventory (README skills table ↔ `skills/*/SKILL.md`), extensions-inventory (README Extensions section ↔ `extensions/*` dirs with `.ts`), env-vars (`PI_*` in `extensions/**/*.ts`, `scripts/*.mjs`, `skills/*/scripts/**` ↔ README + extensions READMEs, bidirectional, inline allowlist for parent→child plumbing). No hardcoded counts or inventories — adding a skill or env var never edits the validator. Tests: `tests/doc-check.test.mjs` (21 cases, temp-tree fixtures). One-time README pass ships with it: count-free badges/prose (`skills-22`, `extensions-2`, "All 22 skills", "all 20 manual" gone), tree `tools/` → `native/` plus missing tracked dirs, "Zero environment variables" → "zero env vars required for setup", env-var doc ghosts fixed (`PI_AGENT_DIR`/`PI_TEST_MODEL`/`PI_TIMEOUT` documented vars that don't exist in code; real test knob is `PI_TEST_TIMEOUT`, upstream `PI_CODING_AGENT_DIR` now named accurately). Not wired into release CI (user decision — local gate only); env-var doc set includes `extensions/*/README.md` so extension-local knobs count as documented.
+
 ### Changed
 
 - **`skills/llm-instruction-formatter` → `skills/llm-format-checker`** — name now reads as a check/fix tool; invocation `/skill:llm-format-checker`; README roster row and the `skill-manager` auto-apply reference updated. Behavior unchanged.

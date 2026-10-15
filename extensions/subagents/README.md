@@ -78,5 +78,5 @@ npm run typecheck
 ```
 
 Integration (real pi + real model inside tmux):
-`tests/subagents/integration/` — `PI_TEST_MODEL` / `PI_TIMEOUT` knobs; the
-harness injects `PI_SUBAGENTS=1`.
+`tests/subagents/integration/` — model/timeout knobs (defined in the harness
+there); the harness injects `PI_SUBAGENTS=1`.

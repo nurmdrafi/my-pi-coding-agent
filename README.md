@@ -10,16 +10,16 @@
 [![language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white&labelColor=24292f&style=flat-square)](#extensions)
 [![rust](https://img.shields.io/badge/rust-optional-DEA584?logo=rust&logoColor=white&labelColor=24292f&style=flat-square)](#requirements)
 [![tmux](https://img.shields.io/badge/tmux-optional-6e7681?logo=tmux&logoColor=1BB91F&labelColor=24292f&style=flat-square)](#subagents)
-[![skills](https://img.shields.io/badge/skills-22-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
-[![extensions](https://img.shields.io/badge/extensions-2-2563eb?labelColor=24292f&style=flat-square)](#extensions)
+[![skills](https://img.shields.io/badge/skills-manual-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
+[![extensions](https://img.shields.io/badge/extensions-ts-2563eb?labelColor=24292f&style=flat-square)](#extensions)
 [![token floor](https://img.shields.io/badge/token_floor-%E2%89%88_0.5K-2ea44f?labelColor=24292f&style=flat-square)](#always-on-token-budget)
 
 A portable, git-synced configuration for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent) — one `~/.pi/agent/` directory that turns any macOS or Linux machine into a fully configured coding-agent workstation in minutes.
 
-**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, 22 progressive-disclosure skills, an always-on extension that enforces discipline at the tool-call level, and a measured token budget (~0.5K tokens permanent floor) so every session starts cheap.
+**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config itself as an engineered product: a lean behavioral core, progressive-disclosure skills, always-on extensions that enforce discipline at the tool-call level, and a measured token budget (~0.5K tokens permanent floor) so every session starts cheap.
 
 - **One directory, one repo** — `git clone` is the entire install; git is the only sync mechanism.
-- **Zero environment variables, zero absolute paths** — everything works from the default `~/.pi/agent` location.
+- **Zero env vars required for setup, zero absolute paths** — everything works from the default `~/.pi/agent` location; optional knobs are documented where relevant, never required.
 - **Measured, not guessed** — every harness change ships with a before/after number.
 
 ## Table of contents
@@ -99,11 +99,14 @@ That's it — no env vars to export, no paths to fix.
 ├── models-store.json         # Catalog cache (machine-local, auto-regenerated)
 │
 ├── skills/                   # one dir per skill: SKILL.md + scripts/ references/ assets/
-├── extensions/               # Always-on TS extensions (permission-gate)
+├── extensions/               # Always-on TS extensions (permission-gate, subagents, handoff)
 ├── agents/                   # Subagent definitions (scout/researcher/worker/reviewer)
-├── tools/                    # Native helper crates (pidx — session-log indexer)
+├── native/                   # Native helper crates (pidx — session-log indexer)
+├── benchmark/                # Model-graded benchmark tasks + validators
+├── codemode/                 # Codemode scripts (non-LLM helpers)
+├── scripts/                  # Repo tooling (doc-check, agents-lint, gate-eval)
 ├── prompts/                  # /command prompt templates (/issue, /ship, /update-changelog)
-├── tests/                    # Node test runner suite (permission-gate)
+├── tests/                    # Node test runner suite (permission-gate, doc-check)
 ├── .github/workflows/        # Release CI/CD
 ├── package.json              # husky + commitlint (conventional commits)
 │
@@ -118,7 +121,7 @@ That's it — no env vars to export, no paths to fix.
 
 ## Skills
 
-All 22 skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
+All skills are **manual** — invoke with `/skill:<name>`; none auto-load on task match. `/ship` (commit+push with scoped review) is not a skill — it is a prompt template in [`prompts/`](#whats-inside): zero context cost until invoked. Skill bodies never enter context until invoked.
 
 | Skill                     | Purpose                                                                                                 | Invocation                          |
 | ------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------- |
@@ -169,7 +172,7 @@ Owned first-party code at `extensions/subagents/` (`subagent` / `subagent_messag
 
 Subagent sessions always register active (the child's `--tools` sandbox governs). Activation appends the tool set before the next model request (one-time cached-prefix invalidation possible). Upstream updates are manual: fetch any clone, `git diff c3e8b53..<new> -- pi-extension`, apply into `extensions/subagents/`.
 
-**Tests** — `node --test tests/subagents/test.ts` (unit, mock-based; also `node tests/subagents/system-prompt-mode.test.ts`). Integration under `tests/subagents/integration/`: real pi + real model inside tmux — `PI_TEST_MODEL` / `PI_TIMEOUT` knobs; the harness injects `PI_SUBAGENTS=1` so test sessions start with the tools active.
+**Tests** — `node --test tests/subagents/test.ts` (unit, mock-based; also `node tests/subagents/system-prompt-mode.test.ts`). Integration under `tests/subagents/integration/`: real pi + real model inside tmux — model/timeout knobs (defined in `tests/subagents/integration/harness.ts`); the harness injects `PI_SUBAGENTS=1` so test sessions start with the tools active.
 
 **tmux is agents-only** (local patch — upstream requires pi inside tmux). The main terminal runs pi plain. When a subagent spawns and pi is not inside tmux, panes appear in a detached session `pi-agents` — attach with `tmux attach -t pi-agents`, detach with `Ctrl+b d`. The tmux binary is required either way.
 
@@ -188,7 +191,7 @@ No `model` pin — sub-agents inherit the harness default from `settings.json`; 
 
 ## Extensions
 
-Always-on TypeScript modules in `extensions/` — loaded by pi, never in the model prefix. Two always-on, plus the gated `subagents/` tool set above: **`permission-gate/`**, a `tool_call` interceptor providing:
+Always-on TypeScript modules in `extensions/` — loaded by pi, never in the model prefix. Always-on modules, plus the gated `subagents/` tool set above: **`permission-gate/`**, a `tool_call` interceptor providing:
 
 - edit-anchor pre-validation (oldText must match a region actually read)
 - reading/output economy rules (in-context re-read guard, capped bash output)
@@ -226,14 +229,14 @@ The permanent prefix costs ~0.5K tokens per session (AGENTS.md 2,249 bytes ≈ 0
 | Component           | Target                                      | Notes                                                       |
 | ------------------- | ------------------------------------------- | ----------------------------------------------------------- |
 | AGENTS.md           | as small as possible (behavioral core only) | no stack essays, no skill lists                             |
-| Skill descriptions  | short; delete dead skills                   | all 20 manual — zero per-session cost                       |
+| Skill descriptions  | short; delete dead skills                   | all manual — zero per-session cost                       |
 | **Total always-on** | ≤ ~1K tok                                   | AGENTS.md only; no auto-skill catalog, no package tool defs |
 
 Thinking is `off` by default (token economy); bump per-task with `--thinking high`.
 
 ## Portability
 
-Goal: one self-contained config that works on any macOS or Linux machine by replacing `~/.pi/agent/`. No environment variables, no absolute user paths.
+Goal: one self-contained config that works on any macOS or Linux machine by replacing `~/.pi/agent/`. No env vars required for setup, no absolute user paths.
 
 ### Sync workflow (git is the only sync)
 
@@ -267,9 +270,9 @@ Both keys are identical across machines and live only in `auth.json`. pi also ac
 | `models.json`                           | Custom model definitions                                                                                |
 | `agents/`                               | Subagent definitions (scout/researcher/worker/reviewer)                                                 |
 | `prompts/`                              | Prompt templates (`/issue`: in-context validate→propose→fix; `/ship`: commit+push; `/update-changelog`) |
-| `skills/`                             | All 22 skills (manual, `/skill:name`)                                                                 |
-| `extensions/`                           | Always-on extensions (`permission-gate`)                                                                |
-| `tests/`                                | permission-gate unit suite + gate-eval audits (`npm run gate:eval`)                                                           |
+| `skills/`                             | All skills (manual, `/skill:name`)                                                                 |
+| `extensions/`                           | Always-on extensions (permission-gate, subagents, handoff)                                                                |
+| `tests/`                                | permission-gate + doc-check suites, gate-eval audits (`npm run gate:eval`)                                                           |
 | `.github/workflows/`                    | Release CI/CD (version from CHANGELOG, on push to main)                                                 |
 | `package.json` / `commitlint.config.js` | husky + commitlint: conventional-commit enforcement                                                     |
 | `README.md` / `CHANGELOG.md`            | This file + change log                                                                                  |
@@ -296,7 +299,7 @@ Both keys are identical across machines and live only in `auth.json`. pi also ac
 - No `/Users/...` or `/home/...` literals in any shipped file (only `~` / `$HOME`).
 - Shell helpers are POSIX (`#!/usr/bin/env sh`) or bash-portable.
 - No unguarded OS-only commands (`/proc` reads fall back to `ps`; server script picks `xdg-open` on Linux vs `open` on macOS).
-- No pi env vars (`PI_AGENT_DIR`, …) — config relies on the default `~/.pi/agent`.
+- No pi env vars required for setup — config relies on the default `~/.pi/agent` (the vendored extension respects upstream `PI_CODING_AGENT_DIR` where set).
 
 ## Design rules
 
