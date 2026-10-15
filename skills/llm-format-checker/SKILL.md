@@ -1,10 +1,10 @@
 ---
-name: llm-instruction-formatter
-description: Markdown formatting discipline for LLM rule/instruction files only — AGENTS.md/CLAUDE.md, system prompts, prompt templates, SKILL.md bodies, agent rule-set docs. Optimizes bold, headings, and list structure for LLM adherence and token economy. Formatting-only, preserves wording. Explicit invocation only. NOT for prose docs, READMEs, or changelogs (use documentation-writer); NOT for skill authoring guidance (use skill-creator).
+name: llm-format-checker
+description: Markdown format checker for LLM rule/instruction files only — AGENTS.md/CLAUDE.md, system prompts, prompt templates, SKILL.md bodies, agent rule-set docs. Checks and fixes bold, headings, and list structure for LLM adherence and token economy. Formatting-only, preserves wording. Explicit invocation only. NOT for prose docs, READMEs, or changelogs (use documentation-writer); NOT for skill authoring guidance (use skill-creator).
 disable-model-invocation: true
 ---
 
-# LLM Instruction Formatter
+# LLM Format Checker
 
 Target: files carrying LLM rules/instructions — AGENTS.md/CLAUDE.md, system prompts, prompt templates, SKILL.md bodies, agent rule-set docs. Never prose docs, READMEs, changelogs.
 
