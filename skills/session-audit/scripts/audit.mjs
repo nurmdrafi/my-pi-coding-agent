@@ -14,11 +14,12 @@
  */
 import { mkdirSync, appendFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
-import { discoverSessions, findSession } from './discover.mjs';
+import { discoverSessions, findSession, DEFAULT_SESSIONS_DIR } from './discover.mjs';
 import {
   parseSessionFile, apiTurns, toolCalls, toolResults, totalContext,
-  compactionCount, loadedSkillName, isAssistant, isUser, isToolResult, isoTs,
+  compactionCount, loadedSkillName, isAssistant, isUser, isToolResult, isoTs, tsMs,
 } from './parser.mjs';
 import { deriveRates, sessionRate } from './pricing.mjs';
 import { THRESHOLDS, runRules } from './rules.mjs';
@@ -51,18 +52,71 @@ function batchingOf(entries) {
   return t;
 }
 
+/** batchingOf over pidx extract calls. Identical for rid-bearing turns; a
+ * null-rid multi-call entry counts per call (approx — pi always sends rid). */
+function batchingFromCalls(calls) {
+  const groups = new Map();
+  for (const c of calls) groups.set(c.rid ?? `#${c.id}`, (groups.get(c.rid ?? `#${c.id}`) ?? 0) + 1);
+  const t = { turnsWithCalls: groups.size, calls: calls.length, one: 0, two: 0, multi: 0 };
+  for (const n of groups.values()) { if (n === 1) t.one++; else if (n === 2) t.two++; else t.multi++; }
+  return t;
+}
+
+/** pidx fast path (Rust incremental indexer, ~/.pi/agent/bin/pidx): same
+ * extracts as the Node parser (parity-gated 370/370) at O(changes) cost.
+ * Returns null on any failure — caller falls back to Node parsing.
+ * Extract calls carry a precomputed paramHash (ph) + the path/cmd fields
+ * rules.mjs needs, so raw arguments never cross the boundary. */
+function pidxFastPath(maxSessions) {
+  const bin = process.env.PIDX_BIN ?? 'pidx';
+  try {
+    const args = ['--sessions-dir', DEFAULT_SESSIONS_DIR];
+    if (Number.isFinite(maxSessions)) args.push('--max', String(maxSessions));
+    const r = spawnSync(bin, args, { encoding: 'utf8', maxBuffer: 1 << 28 });
+    if (r.error || r.status !== 0 || !r.stdout?.trim()) return null;
+    const out = [];
+    for (const line of r.stdout.split('\n')) {
+      if (!line) continue;
+      let ex;
+      try { ex = JSON.parse(line); } catch { return null; }
+      if (ex.v !== 1) return null;
+      const gapEvents = [];
+      for (const c of ex.calls) if (c.ts) gapEvents.push({ role: 'assistant', t: tsMs(c.ts) });
+      for (const x of ex.results) if (x.ts) gapEvents.push({ role: 'toolResult', t: tsMs(x.ts) });
+      for (const u of ex.uts ?? []) gapEvents.push({ role: 'user', t: u });
+      out.push({
+        d: { sessionId: ex.sessionId, project: ex.project, path: ex.path },
+        entries: undefined,
+        turns: ex.turns.map((t) => ({ requestId: t.rid, timestamp: t.ts, model: t.model, usage: t.usage })),
+        calls: ex.calls.map((c) => ({ id: c.id, name: c.name, timestamp: c.ts, rid: c.rid ?? null, ph: c.ph, path: c.path, cmd: c.cmd })),
+        results: ex.results.map((x) => ({ toolUseId: x.id, isError: x.err, bytes: x.bytes, timestamp: x.ts })),
+        compactions: ex.compactions,
+        skillsMap: ex.skills ?? {},
+        gapEvents,
+      });
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------- run (L0/L1)
 
 function cmdRun(opts) {
   mkdirSync(workdir, { recursive: true });
   const { sessions: discovered, excludedActive } = discoverSessions({ maxSessions: opts.max ?? Infinity });
 
-  // parse once; rates derive over ALL sessions before per-session pricing
-  const parsed = [];
-  for (const d of discovered) {
-    let entries;
-    try { entries = parseSessionFile(d.path); } catch { continue; }
-    parsed.push({ d, entries, turns: apiTurns(entries) });
+  // parse once; rates derive over ALL sessions before per-session pricing.
+  // pidx (Rust, incremental) first; Node parser as fallback.
+  let parsed = pidxFastPath(opts.max ?? Infinity);
+  if (!parsed) {
+    parsed = [];
+    for (const d of discovered) {
+      let entries;
+      try { entries = parseSessionFile(d.path); } catch { continue; }
+      parsed.push({ d, entries, turns: apiTurns(entries) });
+    }
   }
   const rates = deriveRates(parsed.map((p) => p.turns));
 
@@ -72,8 +126,12 @@ function cmdRun(opts) {
   const gapBuckets = {};
   const findings = [];
 
-  for (const { d, entries, turns } of parsed) {
-    const sessionFindings = runRules({ sessionId: d.sessionId, entries }, THRESHOLDS);
+  for (const p of parsed) {
+    const { d, turns } = p;
+    const fast = p.calls !== undefined;
+    const sessionFindings = runRules(fast
+      ? { sessionId: d.sessionId, entries: null, turns, calls: p.calls, results: p.results, gapEvents: p.gapEvents }
+      : { sessionId: d.sessionId, entries: p.entries }, THRESHOLDS);
     for (const f of sessionFindings) findings.push({ ...f, project: d.project });
 
     let cacheRead = 0, cacheWrite = 0, peak = 0;
@@ -91,8 +149,8 @@ function cmdRun(opts) {
     for (const f of sessionFindings) findingsByRule[f.rule] = (findingsByRule[f.rule] ?? 0) + 1;
 
     // tools: calls / errors / bytes per name (result joined by toolCall id)
-    const calls = toolCalls(entries);
-    const results = new Map(toolResults(entries).map((r) => [r.toolUseId, r]));
+    const calls = p.calls ?? toolCalls(p.entries);
+    const results = new Map((p.results ?? toolResults(p.entries)).map((r) => [r.toolUseId, r]));
     for (const c of calls) {
       const t = (tools[c.name] ??= { calls: 0, errors: 0, resultBytes: 0 });
       t.calls++;
@@ -100,7 +158,13 @@ function cmdRun(opts) {
       if (r) { t.resultBytes += r.bytes; if (r.isError) t.errors++; }
     }
 
-    for (const e of entries) {
+    if (p.skillsMap) {
+      for (const [name, uses] of Object.entries(p.skillsMap)) {
+        skills[name] ??= { uses: 0, sessions: new Set() };
+        skills[name].uses += uses;
+        skills[name].sessions.add(d.sessionId);
+      }
+    } else for (const e of p.entries) {
       const s = loadedSkillName(e);
       if (s) { skills[s] ??= { uses: 0, sessions: new Set() }; skills[s].uses++; skills[s].sessions.add(d.sessionId); }
     }
@@ -122,7 +186,7 @@ function cmdRun(opts) {
       project: d.project,
       date: turns[0]?.timestamp?.slice(0, 10) ?? 'unknown',
       apiTurns: turns.length,
-      compactions: compactionCount(entries),
+      compactions: p.compactions ?? compactionCount(p.entries),
       cacheRead, cacheWrite,
       cacheHitRatio: cacheRead + cacheWrite ? cacheRead / (cacheRead + cacheWrite) : 0,
       peakContext: peak,
@@ -131,7 +195,7 @@ function cmdRun(opts) {
       wasteUsd: rate === null ? 0 : wasteTokens * rate,
       pricedShare, unpricedModels: unpriced, models,
       findingsByRule,
-      batch: batchingOf(entries),
+      batch: fast ? batchingFromCalls(p.calls) : batchingOf(p.entries),
     });
   }
 
@@ -169,7 +233,8 @@ function cmdRun(opts) {
   }), { turnsWithCalls: 0, calls: 0, one: 0, two: 0, multi: 0 });
 
   const skillsOut = {};
-  for (const [name, v] of Object.entries(skills)) skillsOut[name] = { uses: v.uses, sessions: v.sessions.size };
+  for (const name of Object.keys(skills).sort())
+    skillsOut[name] = { uses: skills[name].uses, sessions: skills[name].sessions.size };
 
   const pricedWaste = sessions.filter((s) => s.usdPerMTok !== null).reduce((a, s) => a + s.wasteTokens, 0);
   const totalWaste = sessions.reduce((a, s) => a + s.wasteTokens, 0);

@@ -46,15 +46,14 @@ function persistenceWeight(ts, turns, price) {
   return price.write + price.read * remaining;
 }
 
-/**
- * Classify the dominant time gap between two api-turn timestamps by walking
- * the raw entries: if the largest inter-entry delta ends at a toolResult
- * message, the wait was tool runtime, not user idle.
- */
-function classifyGap(entries, fromTs, toTs) {
+/** Classify the dominant time gap between two api-turn timestamps by walking
+ * the raw entries (or precomputed gapEvents from the pidx fast path): if the
+ * largest inter-entry delta ends at a toolResult message, the wait was tool
+ * runtime, not user idle. */
+function classifyGap(session, fromTs, toTs) {
   const from = tsMs(fromTs), to = tsMs(toTs);
-  const within = entries
-    .map((e) => ({ role: e?.message?.role, t: tsMs(e?.message?.timestamp ?? e?.timestamp) }))
+  const within = (session.gapEvents ?? session.entries
+      .map((e) => ({ role: e?.message?.role, t: tsMs(e?.message?.timestamp ?? e?.timestamp) })))
     .filter((x) => Number.isFinite(x.t) && x.t >= from && x.t <= to)
     .sort((a, b) => a.t - b.t);
   let best = 0, kind = 'user_idle';
@@ -69,7 +68,7 @@ function classifyGap(entries, fromTs, toTs) {
 
 /** gap > TTL followed by a cacheWrite spike = full prefix rewrite (CACHE_TTL_EXPIRY). */
 export function cacheTtlExpiry(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIERS) {
-  const turns = apiTurns(session.entries).filter((x) => x.timestamp);
+  const turns = (session.turns ?? apiTurns(session.entries)).filter((x) => x.timestamp);
   const out = [];
   for (let i = 1; i < turns.length; i++) {
     const gap = secs(turns[i - 1].timestamp, turns[i].timestamp);
@@ -77,7 +76,7 @@ export function cacheTtlExpiry(session, t = THRESHOLDS, price = DEFAULT_MULTIPLI
     const creation = u.cacheWrite ?? 0;
     const read = u.cacheRead ?? 0;
     if (!(gap > t.ttlGapSeconds && creation >= t.ttlMinCreation && creation > read)) continue;
-    const gapKind = classifyGap(session.entries, turns[i - 1].timestamp, turns[i].timestamp);
+    const gapKind = classifyGap(session, turns[i - 1].timestamp, turns[i].timestamp);
     // counterfactual: unexpired prefix would have been read cheaply instead
     // of rewritten expensively → waste = creation × (write − read).
     // Tool-runtime gaps are not a habit issue: report at low severity, zero waste.
@@ -100,28 +99,29 @@ const MUTATORS = new Set(['write', 'edit']);
  * used by bigToolOutput to avoid double-counting.
  */
 export function dupToolCall(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIERS) {
-  const calls = toolCalls(session.entries); // file order ≈ chronological
-  const results = new Map(toolResults(session.entries).map((r) => [r.toolUseId, r]));
-  const turns = apiTurns(session.entries);
+  const calls = session.calls ?? toolCalls(session.entries); // file order ≈ chronological
+  const results = new Map((session.results ?? toolResults(session.entries)).map((r) => [r.toolUseId, r]));
+  const turns = session.turns ?? apiTurns(session.entries);
   const generation = new Map(); // path → generation counter
   const groups = new Map();
 
   const bump = (path) => generation.set(path, (generation.get(path) ?? 0) + 1);
 
   for (const c of calls) {
-    if (MUTATORS.has(c.name) && c.input?.path) bump(c.input.path);
+    const cPath = c.path ?? c.input?.path;
+    const cCmd = c.cmd ?? c.input?.command ?? '';
+    if (MUTATORS.has(c.name) && cPath) bump(cPath);
     if (c.name === 'bash') {
-      const cmd = c.input?.command ?? '';
-      for (const path of generation.keys()) if (cmd.includes(path)) bump(path);
+      for (const path of generation.keys()) if (cCmd.includes(path)) bump(path);
       // also invalidate any previously-read path mentioned in the command
       for (const key of groups.keys()) {
         const p = key.split('\u0000')[2];
-        if (p && cmd.includes(p)) bump(p);
+        if (p && cCmd.includes(p)) bump(p);
       }
     }
-    const path = c.name === 'read' ? (c.input?.path ?? '') : '';
+    const path = c.name === 'read' ? (cPath ?? '') : '';
     const gen = path ? (generation.get(path) ?? 0) : 0;
-    const key = `${paramHash(c.name, c.input)}\u0000${gen}\u0000${path}`;
+    const key = `${c.ph ?? paramHash(c.name, c.input)}\u0000${gen}\u0000${path}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(c);
   }
@@ -154,9 +154,9 @@ export function dupToolCall(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIERS
  * Results already claimed by DUP_TOOL_CALL are skipped.
  */
 export function bigToolOutput(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIERS, claimedIds = new Set()) {
-  const names = new Map(toolCalls(session.entries).map((c) => [c.id, c.name]));
-  const turns = apiTurns(session.entries);
-  return toolResults(session.entries)
+  const names = new Map((session.calls ?? toolCalls(session.entries)).map((c) => [c.id, c.name]));
+  const turns = session.turns ?? apiTurns(session.entries);
+  return (session.results ?? toolResults(session.entries))
     .filter((r) => r.bytes > t.bigOutputBytes && !claimedIds.has(r.toolUseId))
     .map((r) => {
       const excess = r.bytes - t.bigOutputBytes;
@@ -169,12 +169,12 @@ export function bigToolOutput(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIE
 
 /** ≥N errored calls of the same normalized invocation (RETRY_STORM). */
 export function retryStorm(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIERS) {
-  const results = new Map(toolResults(session.entries).map((r) => [r.toolUseId, r]));
-  const turns = apiTurns(session.entries);
+  const results = new Map((session.results ?? toolResults(session.entries)).map((r) => [r.toolUseId, r]));
+  const turns = session.turns ?? apiTurns(session.entries);
   const errorGroups = new Map();
-  for (const c of toolCalls(session.entries)) {
+  for (const c of (session.calls ?? toolCalls(session.entries))) {
     if (!results.get(c.id)?.isError) continue;
-    const key = paramHash(c.name, c.input);
+    const key = c.ph ?? paramHash(c.name, c.input);
     if (!errorGroups.has(key)) errorGroups.set(key, []);
     errorGroups.get(key).push(c);
   }
@@ -197,7 +197,7 @@ export function retryStorm(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIERS)
  * Denominator uses only trusted cache fields (invariant 3).
  */
 export function cacheMissRate(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIERS) {
-  const turns = apiTurns(session.entries);
+  const turns = session.turns ?? apiTurns(session.entries);
   if (turns.length < t.minTurnsForMissRate) return [];
   let read = 0, creation = 0;
   for (const { usage } of turns) {
@@ -217,7 +217,7 @@ export function cacheMissRate(session, t = THRESHOLDS, price = DEFAULT_MULTIPLIE
 
 /** Max context near the ceiling (CONTEXT_GROWTH). Amplifier — no direct waste. */
 export function contextGrowth(session, t = THRESHOLDS) {
-  const turns = apiTurns(session.entries);
+  const turns = session.turns ?? apiTurns(session.entries);
   let peak = 0, peakId = null;
   for (const turn of turns) {
     const total = totalContext(turn.usage);
