@@ -7,6 +7,17 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.0] - 15-10-2026
+
+### Added
+
+- **pidx warm fast path** — state store keeps a small byte-range header plus raw extract bytes; unchanged sessions replay to output without JSON re-parse or re-serialize. Warm run ~0.28s → ~0.01s, cold ~0.45s → ~0.22s, warm peak RSS ~290MB → ~17MB (`tools/pidx/`).
+- **Post-pull setup sync** — husky `post-merge`/`post-rewrite` hooks run `scripts/after-pull.sh`: refresh npm deps when the manifest moved, re-link host pi packages, recreate the `pidoc` shim, then `pidoc --fix` to rebuild stale `pidx` and report missing toolchains without installing them.
+
+### Changed
+
+- **README skill/extension roster** — skills 20 → 22 (`pi-doctor`, `rust-skills`); added a Rust badge; corrected `handoff.ts` behavior (no disk artifact); `extensions/README.md` table now lists `handoff.ts`.
+
 ## [1.38.0] - 14-10-2026
 
 ### Added
