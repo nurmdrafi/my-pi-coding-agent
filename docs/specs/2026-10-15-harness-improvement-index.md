@@ -40,6 +40,18 @@ Do not re-explore from scratch — this is what already exists:
 
 Priority within the feedback: measure before optimizing. A faster local tool is not necessarily a faster coding agent; the goal is same task, less wall-clock and token cost, no loss of correctness or security.
 
+## Session openers
+
+Paste per topic (each starts from the base, no re-exploration needed):
+
+- **S1**: `Read docs/specs/2026-10-15-harness-improvement-index.md and native/pidx/Feedback.md. Brainstorm S1 (session metrics extraction).` Seed question: extend pidx/session-audit vs. new `pidx metrics` subcommand — primary consumer is S2 benchmark comparisons.
+- **S2**: same prefix, `Brainstorm S2 (benchmark task suite).` Seed question: which task classes first (bug fix, refactor, feature, test-repair) and where tasks live in-repo.
+- **S3**: same prefix, `Brainstorm S3 (doc-consistency validator).` Seed question: what CI/check entrypoint runs it and what it verifies (skill counts, extension inventory, env-var claims).
+- **S4**: same prefix, `Brainstorm S4 (fail-closed security tests).` Seed question: pure unit fixtures vs. live-shell adversarial cases for permission-gate.
+- **S5**: same prefix, `Brainstorm S5 (edit-validation hardening).` Seed question: content-hash vs. version-counter for stale-read detection.
+- **S6**: same prefix, `Brainstorm S6 (Rust native tool prototype).` Seed question: candidate tool choice (feedback suggests `read`) and the compat interface contract.
+- **S7**: same prefix, `Brainstorm S7 (orchestration tuning).` Seed question: which single behavior to evaluate first (skill routing, batching, subagents) against the S2 baseline.
+
 ## Session protocol
 
 - One sub-project per session. Open the session with: this index + `native/pidx/Feedback.md` + the sub-project's spec (if written).
