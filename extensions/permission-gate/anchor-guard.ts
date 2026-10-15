@@ -94,6 +94,7 @@ export async function validateEditAnchors(
   | { block: true; reason: string; stale?: boolean }
   | {
       spans?: LineSpan[];
+      origSpans?: { i: number; start: number; end: number }[];
       firstEditedLine?: number;
       preStat?: { mtimeMs: number; size: number };
       fuzzy?: boolean;
@@ -226,6 +227,9 @@ export async function validateEditAnchors(
   // edit shifted and old spans there describe different content.
   const sorted = [...spans].sort((a, b) => a.start - b.start);
   const edited: LineSpan[] = [];
+  // S5 M2 (2026-10-16): ORIGINAL 1-based line span per exact anchor — the
+  // region whose certified presence in context M2 requires (spec §5.2)
+  const origSpans: { i: number; start: number; end: number }[] = [];
   let delta = 0;
   let firstEditedLine = Infinity;
   for (const s of sorted) {
@@ -236,14 +240,54 @@ export async function validateEditAnchors(
       "\n",
     ).length;
     const oStart = lineOf(content, s.start);
+    origSpans.push({ i: s.i, start: oStart, end: oStart + oldLines - 1 });
     if (oStart < firstEditedLine) firstEditedLine = oStart;
     const eStart = oStart + delta;
     edited.push({ start: eStart, end: eStart + newLines - 1 });
     delta += newLines - oldLines;
   }
 
+  // S5 M2 (2026-10-16): region-read requirement. An edit is bound to content
+  // the session actually certified: no coverage at all → the anchors came
+  // from assumption or bash output (the luck-match silent-corruption class);
+  // a region-intersect miss → the anchor's lines were never in context.
+  // Fuzzy anchors carry no original span (indices live in normalized space)
+  // — existence of coverage suffices for them (residual R3). Coordinate
+  // spaces align: M1/M3 just proved the file identical to the latest
+  // certification, and spans truncated at firstEditedLine kept only
+  // unshifted lines (spec §5.2 alignment argument).
+  {
+    const shown = display.length > 57 ? `…${display.slice(-56)}` : display;
+    if (!cov) {
+      const first = origSpans[0];
+      return {
+        block: true,
+        reason:
+          `Anchor Guard (Unread): '${shown}' not read this session — ` +
+          (first
+            ? `read lines ${first.start}–${first.end} (offset/limit) first.`
+            : "read it (offset/limit) first."),
+      };
+    }
+    for (const os of origSpans) {
+      const covered = cov.spans.some(
+        (cs) => cs.start <= os.end && os.start <= cs.end,
+      );
+      if (!covered) {
+        return {
+          block: true,
+          reason:
+            `Anchor Guard (Unread): '${shown}' edits[${os.i}] targets lines ` +
+            `${os.start}–${os.end}, not in certified context — read lines ` +
+            `${os.start}–${os.end} (offset/limit) first.`,
+        };
+      }
+    }
+  }
+
   return {
     spans: edited.length ? edited : undefined,
+    origSpans: origSpans.length ? origSpans : undefined,
     firstEditedLine:
       edited.length && firstEditedLine !== Infinity
         ? firstEditedLine

@@ -521,6 +521,7 @@ const cases = [
         f,
         Array.from({ length: 12 }, (_, i) => `L${i + 1}`).join("\n") + "\n",
       );
+      await read(pi, f, {}, { outputLines: 12, totalLines: 12 }); // S5 M2: certify the file first
       // edit[0] touches line 8-9 (2→1 lines); edit[1] touches line 2 (1→3 lines)
       const r = await edit(pi, f, [
         { oldText: "L8\nL9", newText: "M8" },
@@ -1215,6 +1216,7 @@ const cases = [
         content: textBlocks(blk.reason),
         isError: true,
       });
+      await read(pi, fileA); // S5 M2: certify before the edit
       const e = await edit(pi, fileA, [{ oldText: "b", newText: "x" }]);
       if (e.blocked) return { blocked: true, reason: "edit blocked" };
       return bash(pi, cmd); // R10 allows (mut changed) and Re-block must yield
@@ -2600,6 +2602,7 @@ const cases = [
     async (pi) => {
       const f = join(tmp, "plain-e.txt");
       writeFileSync(f, "a\n");
+      await read(pi, f, {}, { outputLines: 1, totalLines: 1 }); // S5 M2: certify first
       return edit(pi, f, [{ oldText: "a", newText: "b" }]);
     },
   ],
@@ -2881,13 +2884,14 @@ const cases = [
     },
   ],
   [
-    "S5 M1: back-to-back own edits still pass",
+    "S5 M1: back-to-back own edits in the certified region still pass",
     "pass",
     async (pi) => {
       const f = join(tmp, "s5-m1-own.ts");
       writeFileSync(f, "alpha\nbeta\n");
       await read(pi, f);
-      const e1 = await edit(pi, f, [{ oldText: "alpha", newText: "ALPHA" }]);
+      // edit 1 certifies its post-edit span (lines 1–2) — edit 2 anchors inside it
+      const e1 = await edit(pi, f, [{ oldText: "alpha\nbeta", newText: "ALPHA\nbeta" }]);
       if (e1.blocked) return e1;
       return edit(pi, f, [{ oldText: "beta", newText: "BETA" }]); // post-op stat re-certified by edit 1
     },
@@ -2983,10 +2987,11 @@ const cases = [
       const f = join(tmp, "s5-m3-crlf.ts");
       writeFileSync(f, "a\r\nb\r\n");
       await read(pi, f, { offset: 1, limit: 2 }, { outputLines: 2 });
-      // own edit stores hashFile(content) — must hash the SAME normalized view
-      // anchor-guard compares with (toLF + BOM strip), or every later edit
-      // on a CRLF file false-blocks as same-stat drift
-      const e1 = await editApplied(pi, f, "a", "z");
+      // own edit spanning both lines (post-span 1–2 keeps line 2 certified for
+      // M2); result stores hashFile(content) — must hash the SAME normalized
+      // view anchor-guard compares with (toLF + BOM strip), or every later
+      // edit on a CRLF file false-blocks as same-stat drift
+      const e1 = await edit(pi, f, [{ oldText: "a\nb", newText: "z\nb" }]);
       if (e1.blocked) return e1;
       return edit(pi, f, [{ oldText: "b", newText: "y" }]); // no drift: must pass
     },
@@ -3000,6 +3005,121 @@ const cases = [
       writeFileSync(f, "a\nb\nx\n"); // same-size silent change
       utimesSync(f, HYD_T, HYD_T); // stat identical — content unknowable: fail open (R4)
       return edit(pi, f, [{ oldText: "a", newText: "z" }]);
+    },
+  ],
+
+  // Step 4 (family 3): M2 region-read requirement for edit — spec §5.2
+  [
+    "S5 M2: never-read path with a valid anchor is blocked (Unread)",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-m2-unread.ts");
+      writeFileSync(f, "alpha\nbeta\ngamma\n"); // anchor exists & is unique — but never read
+      const r = await edit(pi, f, [{ oldText: "beta", newText: "BETA" }]);
+      return r.blocked && r.reason.startsWith("Anchor Guard (Unread):")
+        ? r
+        : { blocked: false, reason: `family: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 M2: never-read block names the anchor's line range",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-m2-range.ts");
+      writeFileSync(f, "l1\nl2\nl3\nl4\nl5\n");
+      const r = await edit(pi, f, [{ oldText: "l4", newText: "x" }]);
+      return r.blocked && r.reason.includes("lines 4–4")
+        ? r
+        : { blocked: false, reason: `range missing: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 M2: targeted read covering the anchor lets the edit pass",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-m2-cover.ts");
+      writeFileSync(f, Array.from({ length: 60 }, (_, i) => `l${i + 1}`).join("\n") + "\n");
+      await read(pi, f, { offset: 40, limit: 10 }, { outputLines: 10 }); // certifies 40–49
+      return edit(pi, f, [{ oldText: "l45", newText: "x" }]);
+    },
+  ],
+  [
+    "S5 M2: read window missing the anchor still blocks (naming its range)",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-m2-miss.ts");
+      writeFileSync(f, Array.from({ length: 60 }, (_, i) => `l${i + 1}`).join("\n") + "\n");
+      await read(pi, f, { offset: 1, limit: 10 }, { outputLines: 10 }); // certifies 1–10 only
+      const r = await edit(pi, f, [{ oldText: "l50", newText: "x" }]);
+      return r.blocked && r.reason.startsWith("Anchor Guard (Unread):") && r.reason.includes("lines 50")
+        ? r
+        : { blocked: false, reason: `family/range: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 M2: mixed anchors — the uncovered one is named by index and range",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-m2-mixed.ts");
+      // zero-padded names: every oldText must stay unique (m2 would match m20..)
+      writeFileSync(f, Array.from({ length: 60 }, (_, i) => `m${String(i + 1).padStart(2, "0")}`).join("\n") + "\n");
+      await read(pi, f, { offset: 1, limit: 5 }, { outputLines: 5 }); // 1–5
+      const r = await edit(pi, f, [
+        { oldText: "m02", newText: "x" }, // covered
+        { oldText: "m40", newText: "y" }, // not covered
+      ]);
+      return r.blocked && r.reason.includes("edits[1]") && r.reason.includes("lines 40")
+        ? r
+        : { blocked: false, reason: `idx/range: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 M2: ENOENT path passes through to the tool",
+    "pass",
+    async (pi) =>
+      edit(pi, join(tmp, "s5-m2-enoent.ts"), [{ oldText: "x", newText: "y" }]),
+  ],
+  [
+    "S5 M2: fuzzy anchor passes binding with any coverage (R3)",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-m2-fuzzy.ts");
+      writeFileSync(f, "aaa\nbbb \nccc\n"); // trailing space on line 2
+      await read(pi, f, { offset: 1, limit: 1 }, { outputLines: 1 }); // line 1 only — anchor region NOT covered
+      // oldText normalizes onto lines 1–3 (fuzzy) — region proof impossible in
+      // normalized space; any certified coverage suffices (spec R3)
+      return edit(pi, f, [{ oldText: "aaa\nbbb\nccc", newText: "q" }]);
+    },
+  ],
+  [
+    "S5 M2: post-compaction edit is blocked until re-read",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-m2-compact.ts");
+      writeFileSync(f, "alpha\nbeta\n");
+      await read(pi, f);
+      compact(pi); // compaction replaced the content — nothing is in context anymore
+      const r = await edit(pi, f, [{ oldText: "alpha", newText: "ALPHA" }]);
+      return r.blocked && r.reason.startsWith("Anchor Guard (Unread):")
+        ? r
+        : { blocked: false, reason: `family: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 M2: region below a prior edit's first line needs a re-read (B4)",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-m2-b4.ts");
+      writeFileSync(f, "aaa\nbbb\n");
+      await read(pi, f);
+      const e1 = await edit(pi, f, [{ oldText: "aaa", newText: "AAA" }]);
+      if (e1.blocked) return e1;
+      // B4 truncation dropped lines ≥1 at edit 1 — line 2 is no longer certified
+      const e2 = await edit(pi, f, [{ oldText: "bbb", newText: "BBB" }]);
+      if (!e2.blocked || !e2.reason.startsWith("Anchor Guard (Unread):"))
+        return { blocked: false, reason: `expected Unread: ${e2.reason ?? "(pass)"}` };
+      await read(pi, f, { offset: 2, limit: 1 }, { outputLines: 1 }); // targeted re-read
+      return edit(pi, f, [{ oldText: "bbb", newText: "BBB" }]);
     },
   ],
 ];
@@ -3052,6 +3172,7 @@ const preambles = {
   },
   "window over just-edited span is blocked": async () => {
     const pi = freshGate();
+    await read(pi, fileA); // S5 M2: certify before the edit
     const r = await edit(pi, fileA, [{ oldText: "b", newText: "x" }]);
     if (r.blocked)
       throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
@@ -3059,6 +3180,7 @@ const preambles = {
   },
   "window outside just-edited span passes": async () => {
     const pi = freshGate();
+    await read(pi, fileA); // S5 M2: certify before the edit
     const r = await edit(pi, fileA, [{ oldText: "b", newText: "x" }]);
     if (r.blocked)
       throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
@@ -3108,6 +3230,7 @@ const preambles = {
   "bash re-run after an intervening edit passes": async () => {
     const pi = freshGate();
     await runBash(pi, 'npx vitest run f.test.tsx 2>&1 | rg "Tests" | head -15');
+    await read(pi, fileA); // S5 M2: certify before the edit
     const r = await edit(pi, fileA, [{ oldText: "b", newText: "x" }]);
     if (r.blocked)
       throw new Error(`preamble edit unexpectedly blocked: ${r.reason}`);
