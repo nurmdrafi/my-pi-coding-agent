@@ -63,7 +63,7 @@ CLI: `piread --path <P> [--offset <1-based line>] [--limit <N>]` → exactly one
 Exit codes: 0 ok · 2 usage (stderr message, no JSON) · 3 I/O error (JSON on stdout). `--help`/`--version` supported.
 
 - Rendering parity: line numbering absent (built-in returns raw lines), tail notes on truncation — exact bytes pinned by the oracle suite, not re-specified here.
-- Streaming/caps: sequential scan, never buffer beyond cap + one lookahead line; `totalLines` counted by streaming (no full buffer); binary detect = NUL in first 8 KiB → `binary: true` + the built-in's refusal message as `content`.
+- Streaming/caps: sequential scan, never buffer beyond cap + one lookahead line; `totalLines` counted by streaming (no full buffer); binary detect = NUL in first 8 KiB → `binary: true` and `content` set to whatever the built-in returns for that same file (its binary-file behavior is oracle-pinned in §5.3, not re-specified here).
 - No `unsafe`; clippy `-D warnings`; in-crate unit tests for slicing, cap arithmetic (overflow-safe), binary detect, CRLF/no-EOL handling.
 - Cargo release profile mirrors pidx (opt-level 3, lto fat, codegen-units 1, panic abort, strip).
 
