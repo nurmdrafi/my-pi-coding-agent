@@ -1,0 +1,13 @@
+[package]
+name = "pidx"
+version = "0.1.0"
+edition = "2021"
+description = "Incremental index/extract for pi session logs — feeds session-audit L0 fast path"
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+sha1 = "0.10"
+
+[profile.release]
+opt-level = 3
+lto = true

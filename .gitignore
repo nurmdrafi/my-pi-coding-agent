@@ -36,3 +36,6 @@ tavily/session.json
 logs/
 # Autoresearch per-session scratch (workingDir pointer, rewritten each run)
 .auto/
+/tools/pidx/target/
+!tools/pidx/Cargo.lock
+.cache/

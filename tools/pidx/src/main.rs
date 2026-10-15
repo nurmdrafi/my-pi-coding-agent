@@ -1,0 +1,711 @@
+//! pidx — incremental index/extract for pi session logs.
+//!
+//! Parses `<sessions-dir>/<project>/<ISO-ts>_<uuid>.jsonl` transcripts into
+//! compact per-session extracts (turns, tool calls with param hashes, tool
+//! results, compactions, skill loads). Files are keyed by (size, mtime_ns);
+//! unchanged files reuse the cached extract from the state file, so runs are
+//! O(changes), not O(archive). OS-agnostic: std only + mtime, no watchers.
+//!
+//! Output: one JSON line per session (newest first) to --out (default
+//! stdout); a summary JSON line to stderr. Exit 0 on success even with
+//! individually unparseable files (they yield an extract with zero turns).
+//!
+//! Extract schema (consumed by session-audit's fast path; mirrors
+//! parser.mjs semantics exactly — see PARITY notes inline):
+//!   {v:1, sessionId, project, path, turns:[{rid,ts,model,usage}],
+//!    calls:[{id,name,ts,rid,ph,path,cmd}], results:[{id,ts,err,bytes}],
+//!    compactions, skills:{name:uses}}
+
+use serde_json::{json, Map, Value};
+use sha1::{Digest, Sha1};
+use std::collections::HashMap;
+use std::env;
+use std::error::Error;
+use std::fs;
+use std::io::{self, BufRead, Read, Write};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const ACTIVE_SESSION_MS: u128 = 5 * 60 * 1000; // parity: discover.mjs invariant 5
+const IMAGE_BYTES_ESTIMATE: u64 = 4_000;
+
+// ---------------------------------------------------------------- time
+
+/// tsMs parity (parser.mjs): number >1e12 as-is else ×1000; digit-strings
+/// same; ISO strings parsed; everything else None (JS NaN).
+fn ts_ms(v: &Value) -> Option<i64> {
+    match v {
+        Value::Number(n) => n.as_f64().and_then(|f| {
+            if f.is_finite() {
+                Some((if f > 1e12 { f } else { f * 1000.0 }) as i64)
+            } else {
+                None
+            }
+        }),
+        Value::String(s) => {
+            if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) {
+                let n: f64 = s.parse().ok()?;
+                Some((if n > 1e12 { n } else { n * 1000.0 }) as i64)
+            } else {
+                parse_iso_ms(s)
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Date.parse subset: YYYY-MM-DD[ T]HH:MM[:SS[.fff…]][Z|±HH(:MM|MM)|±HHMM].
+/// Date-only = UTC midnight (JS spec). Unhandled shapes → None (NaN).
+fn parse_iso_ms(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() < 10 || !b[..4].iter().all(u8::is_ascii_digit) || b[4] != b'-' {
+        return None;
+    }
+    let num = |r: std::ops::Range<usize>| -> Option<i64> {
+        let sl = s.get(r)?;
+        if sl.bytes().all(|c| c.is_ascii_digit()) && !sl.is_empty() {
+            sl.parse().ok()
+        } else {
+            None
+        }
+    };
+    let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let mut ms = days_from_civil(y, mo, d)? * 86_400_000;
+    if b.len() == 10 {
+        return Some(ms);
+    }
+    if b[10] != b'T' && b[10] != b't' && b[10] != b' ' {
+        return None;
+    }
+    let mut i = 11;
+    let need = |i: &mut usize, len: usize| -> Option<String> {
+        let start = *i;
+        if b.len() < start + len || !b[start..start + len].iter().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        *i += len;
+        s.get(start..start + len).map(|x| x.to_string())
+    };
+    let hh: i64 = need(&mut i, 2)?.parse().ok()?;
+    if b.get(i) != Some(&b':') {
+        return None;
+    }
+    i += 1;
+    let mi: i64 = need(&mut i, 2)?.parse().ok()?;
+    let mut sec = 0i64;
+    let mut frac = 0i64;
+    if b.get(i) == Some(&b':') {
+        i += 1;
+        sec = need(&mut i, 2)?.parse().ok()?;
+        if b.get(i) == Some(&b'.') {
+            i += 1;
+            let start = i;
+            while i < b.len() && b[i].is_ascii_digit() {
+                i += 1;
+            }
+            let digits = &s[start..i];
+            let take: String = digits.chars().take(3).collect();
+            frac = if take.is_empty() {
+                0
+            } else {
+                let v: i64 = take.parse().ok()?;
+                v * 10i64.pow(3 - take.len() as u32)
+            };
+        }
+    }
+    ms += ((hh * 60 + mi) * 60 + sec) * 1000 + frac;
+    // timezone
+    let mut off_min: i64 = 0;
+    match b.get(i) {
+        None => return None, // JS treats bare datetime w/o tz as local — sessions are always Z; NaN keeps parity honest
+        Some(b'Z') | Some(b'z') => {}
+        Some(b'+') | Some(b'-') => {
+            let sign = if b[i] == b'+' { -1 } else { 1 };
+            i += 1;
+            let oh: i64 = need(&mut i, 2)?.parse().ok()?;
+            let om = if b.get(i) == Some(&b':') {
+                i += 1;
+                need(&mut i, 2)?.parse().ok()?
+            } else if b.len() >= i + 2 && b[i..].len() == 2 {
+                need(&mut i, 2)?.parse().ok()?
+            } else {
+                0
+            };
+            off_min = sign * (oh * 60 + om);
+        }
+        _ => return None,
+    }
+    Some(ms + off_min * 60_000)
+}
+
+/// Days-from-civil (Howard Hinnant) — valid 1970±, no leap-year tables.
+fn days_from_civil(y: i64, m: i64, d: i64) -> Option<i64> {
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146_097 + doe - 719_468)
+}
+
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+fn iso_string(ms: i64) -> Option<String> {
+    let day = ms.div_euclid(86_400_000);
+    let rem = ms.rem_euclid(86_400_000);
+    let (y, mo, d) = civil_from_days(day);
+    if !(0..=9999).contains(&y) {
+        return None;
+    }
+    Some(format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+        y,
+        mo,
+        d,
+        rem / 3_600_000,
+        (rem / 60_000) % 60,
+        (rem / 1000) % 60,
+        rem % 1000
+    ))
+}
+
+fn iso_of(v: &Value) -> Option<String> {
+    iso_string(ts_ms(v)?)
+}
+
+// ---------------------------------------------------------------- extract
+
+/// contentBytes parity (parser.mjs): string → utf8 len; array → text bytes
+/// + flat 4000/image; anything else 0.
+fn content_bytes(v: &Value) -> u64 {
+    match v {
+        Value::String(s) => s.len() as u64,
+        Value::Array(a) => {
+            let mut n = 0u64;
+            for b in a {
+                if let Some(Value::String(t)) = b.get("text") {
+                    n += t.len() as u64;
+                } else if b.get("type").and_then(Value::as_str) == Some("image") {
+                    n += IMAGE_BYTES_ESTIMATE;
+                }
+            }
+            n
+        }
+        _ => 0,
+    }
+}
+
+fn js_stringify(v: &Value) -> String {
+    // serde_json compact output matches JS JSON.stringify for shared shapes
+    // (preserve_order keeps object key insertion order; ryu shortest == JS
+    // shortest round-trip floats).
+    match v {
+        Value::Null => "null".into(),
+        other => other.to_string(),
+    }
+}
+
+/// paramHash parity (parser.mjs NORMALIZERS): identical hash = mechanically
+/// duplicate invocation.
+fn param_hash(name: &str, input: &Value) -> String {
+    let norm: String = match name {
+        "read" => {
+            let g = |k: &str, d: &str| match input.get(k) {
+                Some(Value::String(s)) => s.clone(),
+                Some(Value::Number(n)) => n.to_string(),
+                _ => d.to_string(),
+            };
+            format!("{}\u{0}{}\u{0}{}", g("path", ""), g("offset", "1"), g("limit", "\u{221e}"))
+        }
+        "bash" => input
+            .get("command")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        "edit" => format!(
+            "{}\u{0}{}",
+            input.get("path").and_then(Value::as_str).unwrap_or(""),
+            js_stringify(input.get("edits").unwrap_or(&Value::String(String::new())))
+        ),
+        "write" => format!(
+            "{}\u{0}{}",
+            input.get("path").and_then(Value::as_str).unwrap_or(""),
+            js_stringify(input.get("content").unwrap_or(&Value::String(String::new())))
+        ),
+        _ => {
+            let empty = json!({});
+            js_stringify(if input.is_null() { &empty } else { input })
+        }
+    };
+    let mut h = Sha1::new();
+    h.update(format!("{name}{norm}").as_bytes());
+    let dig = h.finalize();
+    let mut out = String::with_capacity(12);
+    for b in dig.iter().take(6) {
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
+}
+
+/// Parse one transcript into an extract Value. Tolerant: any line may fail.
+fn extract_file(path: &Path, project_fallback: &str) -> Value {
+    let f = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return empty_extract(path, project_fallback),
+    };
+    let mut reader = io::BufReader::new(f);
+    let mut cwd: Option<String> = None;
+
+    // turns: dedupe by rid, LAST occurrence wins (apiTurns parity); entries
+    // without responseId never dedupe (JS Symbol per entry).
+    let mut turns: Vec<(Option<String>, Value)> = Vec::new();
+    let mut rid_seen: HashMap<String, usize> = HashMap::new();
+    let mut calls: Vec<Value> = Vec::new();
+    let mut call_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut results: Vec<Value> = Vec::new();
+    let mut result_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut compactions = 0u64;
+    let mut skills: HashMap<String, u64> = HashMap::new();
+    let mut uts: Vec<i64> = Vec::new(); // user-entry timestamps (ms) — classifyGap parity
+
+    let mut line = String::new();
+    loop {
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(_) => break,
+        }
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let e: Value = match serde_json::from_str(t) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if e.get("type").and_then(Value::as_str) == Some("session") {
+            if let Some(c) = e.get("cwd").and_then(Value::as_str) {
+                cwd = Some(c.to_string());
+            }
+            continue;
+        }
+        if e.get("type").and_then(Value::as_str) == Some("compaction") {
+            compactions += 1;
+            continue;
+        }
+        if e.get("type") != Some(&Value::String("message".into())) {
+            continue;
+        }
+        let msg = match e.get("message") {
+            Some(m) => m,
+            None => continue,
+        };
+        let role = msg.get("role").and_then(Value::as_str);
+        match role {
+            Some("assistant") => {
+                let usage = msg.get("usage");
+                if usage.map(|u| !u.is_null()).unwrap_or(false) {
+                    let rid = msg.get("responseId").and_then(Value::as_str).map(String::from);
+                    let ts = iso_of(msg.get("timestamp").unwrap_or(&Value::Null));
+                    let model = msg
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .map(String::from);
+                    let turn = json!({
+                        "rid": rid,
+                        "ts": ts,
+                        "model": model,
+                        "usage": usage,
+                    });
+                    match &turn["rid"] {
+                        Value::String(r) => {
+                            if let Some(i) = rid_seen.get(r) {
+                                turns[*i] = (Some(r.clone()), turn);
+                            } else {
+                                rid_seen.insert(r.clone(), turns.len());
+                                turns.push((Some(r.clone()), turn));
+                            }
+                        }
+                        _ => turns.push((None, turn)),
+                    }
+                }
+                if let Some(Value::Array(blocks)) = msg.get("content") {
+                    let ts = iso_of(msg.get("timestamp").unwrap_or(&Value::Null));
+                    let rid = msg.get("responseId").and_then(Value::as_str).map(String::from);
+                    for b in blocks {
+                        if b.get("type").and_then(Value::as_str) != Some("toolCall") {
+                            continue;
+                        }
+                        let id = match b.get("id").and_then(Value::as_str) {
+                            Some(i) => i.to_string(),
+                            None => continue, // parity: no id → skipped
+                        };
+                        if !call_ids.insert(id.clone()) {
+                            continue;
+                        }
+                        let name = b.get("name").and_then(Value::as_str).unwrap_or("?").to_string();
+                        let input = b.get("arguments").cloned().unwrap_or(json!({}));
+                        let ph = param_hash(&name, &input);
+                        let path_ = input.get("path").and_then(Value::as_str).map(String::from);
+                        let cmd = input.get("command").and_then(Value::as_str).map(String::from);
+                        calls.push(json!({
+                            "id": id, "name": name, "ts": ts, "rid": rid,
+                            "ph": ph, "path": path_, "cmd": cmd,
+                        }));
+                    }
+                }
+            }
+            Some("user") => {
+                if let Some(ms) = ts_ms(msg.get("timestamp").unwrap_or(&Value::Null)) {
+                    uts.push(ms);
+                }
+                // skill loads: user text starting `<skill name="…"`
+                let text = match msg.get("content") {
+                    Some(Value::String(s)) => Some(s.clone()),
+                    Some(Value::Array(a)) => Some(
+                        a.iter()
+                            .filter_map(|b| b.get("text").and_then(Value::as_str))
+                            .collect::<Vec<_>>()
+                            .join(""),
+                    ),
+                    _ => None,
+                };
+                if let Some(t) = text {
+                    if let Some(rest) = t.strip_prefix("<skill ") {
+                        if let Some(q1) = rest.find("name=\"") {
+                            let after = &rest[q1 + 6..];
+                            if let Some(end) = after.find('"') {
+                                *skills.entry(after[..end].to_string()).or_insert(0) += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            Some("toolResult") => {
+                let id = match msg.get("toolCallId").and_then(Value::as_str) {
+                    Some(i) => i.to_string(),
+                    None => continue,
+                };
+                if !result_ids.insert(id.clone()) {
+                    continue;
+                }
+                let bytes = content_bytes(msg.get("content").unwrap_or(&Value::Null));
+                results.push(json!({
+                    "id": id,
+                    "ts": iso_of(msg.get("timestamp").unwrap_or(&Value::Null)),
+                    "err": msg.get("isError") == Some(&Value::Bool(true)),
+                    "bytes": bytes,
+                }));
+            }
+            _ => {}
+        }
+    }
+
+    // sort turns by tsMs stable (NaN → 0 parity: `tsMs(a) || 0`)
+    turns.sort_by_key(|(_, t)| {
+        t.get("ts")
+            .and_then(Value::as_str)
+            .and_then(|s| ts_ms(&Value::String(s.to_string())))
+            .unwrap_or(0)
+    });
+    let turns_v: Vec<Value> = turns.into_iter().map(|(_, t)| t).collect();
+    let mut skills_map: std::collections::BTreeMap<String, Value> = std::collections::BTreeMap::new();
+    for (k, v) in skills {
+        skills_map.insert(k, json!(v));
+    }
+
+    json!({
+        "v": 1,
+        // discover.mjs parity: session id is filename-derived (uuid after
+        // first '_'), never the header id — l1_findings keys on it.
+        "sessionId": fallback_session_id(path),
+        "project": cwd.unwrap_or_else(|| project_fallback.to_string()),
+        "path": path.to_string_lossy(),
+        "turns": turns_v,
+        "calls": calls,
+        "results": results,
+        "compactions": compactions,
+        "uts": uts,
+        "skills": skills_map,
+    })
+}
+
+fn empty_extract(path: &Path, project_fallback: &str) -> Value {
+    json!({
+        "v": 1,
+        "sessionId": fallback_session_id(path),
+        "project": project_fallback,
+        "path": path.to_string_lossy(),
+        "turns": [], "calls": [], "results": [],
+        "compactions": 0, "skills": {},
+    })
+}
+
+fn fallback_session_id(path: &Path) -> String {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+    // filename: <ISO-ts>_<uuid> → session id is everything after first '_'
+    match stem.find('_') {
+        Some(i) => stem[i + 1..].to_string(),
+        None => stem.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------- state
+
+#[derive(Clone, Copy, PartialEq)]
+struct FileId {
+    size: u64,
+    mtime_ns: i64,
+}
+
+fn stat_id(p: &Path) -> Option<FileId> {
+    let md = fs::metadata(p).ok()?;
+    let ns = md
+        .modified()
+        .ok()?
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_nanos() as i64;
+    Some(FileId { size: md.len(), mtime_ns: ns })
+}
+
+// ---------------------------------------------------------------- walk
+
+fn discover(sessions_dir: &Path, now_ms: u128) -> (Vec<(PathBuf, String, u128)>, Vec<String>) {
+    let mut found = Vec::new();
+    let mut excluded = Vec::new();
+    let Ok(rd) = fs::read_dir(sessions_dir) else {
+        return (found, excluded);
+    };
+    for proj in rd.flatten() {
+        let ppath = proj.path();
+        if !ppath.is_dir() {
+            continue;
+        }
+        let pname = proj.file_name().to_string_lossy().to_string();
+        let Ok(files) = fs::read_dir(&ppath) else { continue };
+        for f in files.flatten() {
+            let fpath = f.path();
+            if fpath.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let Ok(md) = f.metadata() else { continue };
+            let mtime = md
+                .modified()
+                .ok()
+                .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_millis())
+                .unwrap_or(0);
+            let sid = fallback_session_id(&fpath);
+            if now_ms.saturating_sub(mtime) < ACTIVE_SESSION_MS {
+                excluded.push(sid);
+                continue;
+            }
+            found.push((fpath, pname.clone(), mtime));
+        }
+    }
+    found.sort_by(|a, b| b.2.cmp(&a.2)); // newest first (discover.mjs parity)
+    (found, excluded)
+}
+
+// ---------------------------------------------------------------- main
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let mut args = env::args().skip(1);
+    let mut sessions_dir = dirs_sessions_default();
+    let mut state_path: Option<PathBuf> = None;
+    let mut out_path: Option<PathBuf> = None;
+    let mut max: usize = usize::MAX;
+    let mut force = false;
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--sessions-dir" => sessions_dir = PathBuf::from(args.next().ok_err("--sessions-dir needs a value")?),
+            "--state" => state_path = Some(PathBuf::from(args.next().ok_err("--state needs a value")?)),
+            "--out" => out_path = Some(PathBuf::from(args.next().ok_err("--out needs a value")?)),
+            "--max" => max = args.next().ok_err("--max needs a value")?.parse()?,
+            "--force" => force = true,
+            "--help" | "-h" => {
+                println!("usage: pidx [--sessions-dir DIR] [--state PATH] [--out PATH] [--max N] [--force]");
+                return Ok(());
+            }
+            other => return Err(format!("unknown arg: {other}").into()),
+        }
+    }
+    let state_path = state_path.unwrap_or_else(|| {
+        dirs_state_default()
+    });
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let t0 = std::time::Instant::now();
+
+    let mut state: Map<String, Value> = fs::read_to_string(&state_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|v| v.get("files").and_then(Value::as_object).cloned())
+        .unwrap_or_default();
+
+    let (found, excluded) = discover(&sessions_dir, now_ms);
+    let found: Vec<(PathBuf, String, u128)> = found.into_iter().take(max).collect();
+    let selected: std::collections::HashSet<String> =
+        found.iter().map(|(p, _, _)| p.to_string_lossy().to_string()).collect();
+
+    // classify: reuse vs parse
+    let mut to_parse: Vec<(PathBuf, String)> = Vec::new();
+    let mut reused = 0usize;
+    for (path, proj, _) in &found {
+        let key = path.to_string_lossy().to_string();
+        let id = stat_id(path);
+        let cached = if force { None } else { state.get(&key) };
+        let fresh = id
+            .zip(cached)
+            .filter(|(fid, c)| {
+                c.get("size") == Some(&json!(fid.size)) && c.get("mtime_ns") == Some(&json!(fid.mtime_ns))
+            })
+            .map(|(_, c)| c);
+        match fresh {
+            Some(c) => {
+                reused += 1;
+                state.insert(key, c.clone());
+            }
+            None => to_parse.push((path.clone(), proj.clone())),
+        }
+    }
+
+    // parse changed files on N threads
+    let chunks: Vec<Vec<(PathBuf, String)>> = split_chunks(to_parse, std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4));
+    let mut parsed: Vec<(String, FileId, Value)> = Vec::new();
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = chunks
+            .into_iter()
+            .map(|chunk| {
+                scope.spawn(move || {
+                    chunk
+                        .into_iter()
+                        .filter_map(|(path, proj)| {
+                            let key = path.to_string_lossy().to_string();
+                            let id = stat_id(&path)?;
+                            let extract = extract_file(&path, &proj);
+                            Some((key, id, extract))
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        for h in handles {
+            parsed.extend(h.join().unwrap_or_default());
+        }
+    });
+    parsed.sort_by(|a, b| found.iter().position(|(p, _, _)| p.to_string_lossy() == a.0).unwrap_or(usize::MAX)
+        .cmp(&found.iter().position(|(p, _, _)| p.to_string_lossy() == b.0).unwrap_or(usize::MAX)));
+
+    // emit + update state in newest-first order
+    let mut out_writer: Box<dyn Write> = match &out_path {
+        Some(p) => Box::new(io::BufWriter::new(fs::File::create(p)?)),
+        None => Box::new(io::BufWriter::new(io::stdout().lock())),
+    };
+    let parsed_map: HashMap<String, (FileId, Value)> = parsed
+        .into_iter()
+        .map(|(k, i, v)| (k, (i, v)))
+        .collect();
+    let mut emitted = 0usize;
+    for (path, _, _) in &found {
+        let key = path.to_string_lossy().to_string();
+        if let Some((id, extract)) = parsed_map.get(&key) {
+            state.insert(
+                key.clone(),
+                json!({"size": id.size, "mtime_ns": id.mtime_ns, "session": extract}),
+            );
+        }
+        let line = state
+            .get(&key)
+            .and_then(|c| c.get("session").cloned());
+        if let Some(ex) = line {
+            serde_json::to_writer(&mut out_writer, &ex)?;
+            out_writer.write_all(b"\n")?;
+            emitted += 1;
+        }
+    }
+    out_writer.flush()?;
+
+    // prune deleted/unsampled paths, persist state atomically
+    state.retain(|k, _| selected.contains(k));
+    let state_dir = state_path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+    fs::create_dir_all(&state_dir)?;
+    let tmp = state_dir.join(format!(
+        ".{}.tmp",
+        state_path.file_name().and_then(|n| n.to_str()).unwrap_or("pidx-state")
+    ));
+    fs::write(&tmp, serde_json::to_string(&json!({"version": 1, "files": state}))?)?;
+    fs::rename(&tmp, &state_path)?;
+
+    let summary = json!({
+        "sessions": emitted,
+        "parsed": emitted - reused,
+        "reused": reused,
+        "excludedActive": excluded.len(),
+        "elapsedMs": t0.elapsed().as_millis() as u64,
+    });
+    eprintln!("{summary}");
+    let _ = io::stderr().flush();
+    Ok(())
+}
+
+trait OkErr {
+    fn ok_err(self, msg: &str) -> Result<String, Box<dyn Error>>;
+}
+impl OkErr for Option<String> {
+    fn ok_err(self, msg: &str) -> Result<String, Box<dyn Error>> {
+        self.ok_or_else(|| -> Box<dyn Error> { msg.to_string().into() })
+    }
+}
+
+fn split_chunks<T>(v: Vec<T>, n: usize) -> Vec<Vec<T>> {
+    if v.is_empty() {
+        return vec![];
+    }
+    let n = n.max(1);
+    let mut out: Vec<Vec<T>> = (0..n).map(|_| Vec::new()).collect();
+    for (i, item) in v.into_iter().enumerate() {
+        out[i % n].push(item);
+    }
+    out.retain(|c| !c.is_empty());
+    out
+}
+
+fn dirs_sessions_default() -> PathBuf {
+    if let Ok(p) = env::var("PI_SESSIONS_DIR") {
+        return PathBuf::from(p);
+    }
+    let home = env::var("HOME").unwrap_or_else(|_| ".".into());
+    PathBuf::from(home).join(".pi").join("agent").join("sessions")
+}
+
+fn dirs_state_default() -> PathBuf {
+    if let Ok(p) = env::var("PIDX_STATE") {
+        return PathBuf::from(p);
+    }
+    let home = env::var("HOME").unwrap_or_else(|_| ".".into());
+    PathBuf::from(home).join(".pi").join("agent").join(".cache").join("pidx-state.json")
+}
