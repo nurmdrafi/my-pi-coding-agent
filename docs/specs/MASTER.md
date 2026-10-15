@@ -113,7 +113,7 @@ S1 gap analysis vs. existing L0/L1: tool latency percentiles (timestamps exist i
 
 | ID  | Name                          | Scope (one sentence)                                                                       | Deps     | Status | Spec |
 | --- | ----------------------------- | ------------------------------------------------------------------------------------------ | -------- | ------ | ---- |
-| S1  | Session metrics extraction    | Extend pidx/session-audit with per-task metrics: tool p50/p95 latency, edit-failure rate, repeated-read rate, model calls per task | —        | spec'd | [2026-10-15-s1-metrics-design.md](2026-10-15-s1-metrics-design.md) |
+| S1  | Session metrics extraction    | Extend pidx/session-audit with per-task metrics: tool p50/p95 latency, edit-failure rate, repeated-read rate, model calls per task | —        | done | [2026-10-15-s1-metrics-design.md](2026-10-15-s1-metrics-design.md) |
 | S2  | Benchmark task suite          | Versioned, repo-owned task sets + repeatable runs; consumes S1 metrics for comparisons       | S1       | planned | —    |
 | S3  | Doc-consistency validator     | Automated check: skill counts, extension inventory, env-var claims vs. reality              | —        | planned | —    |
 | S4  | Fail-closed security tests    | Adversarial suite for permission-gate: shell chaining, redirects, env expansion, symlinks, TOCTOU, missing handlers | —        | planned | —    |
@@ -155,3 +155,5 @@ Paste per topic (each starts from the master, no re-exploration needed):
 ## 7. Outcome log
 
 _(append one line per completed sub-project: ID, date, one-sentence result)_
+
+- S1, 2026-10-15 — `s1-metrics/1` per-session emitter shipped (`skills/session-audit/scripts/metrics.mjs`): latency p50/p95, edit-failure structure, repeat-read rate, token/cost/batch aggregates; parser↔extract parity-gated; 25 tests green.

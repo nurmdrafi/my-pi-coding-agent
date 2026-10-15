@@ -1,0 +1,268 @@
+{
+  "v": 1,
+  "sessionId": "golden",
+  "project": "/home/user/proj",
+  "path": "/home/nurmdrafi/.pi/agent/tests/fixtures/session-metrics/golden.jsonl",
+  "turns": [
+    {
+      "rid": "r1",
+      "ts": "2026-10-15T10:00:00.000Z",
+      "model": "m-a",
+      "usage": {
+        "input": 100,
+        "output": 50,
+        "cacheRead": 1000,
+        "cacheWrite": 500,
+        "cost": {
+          "input": 0.005,
+          "output": 0.005,
+          "total": 0.01
+        }
+      }
+    },
+    {
+      "rid": "r2",
+      "ts": "2026-10-15T10:00:30.000Z",
+      "model": "m-a",
+      "usage": {
+        "input": 90,
+        "output": 40,
+        "cacheRead": 2000,
+        "cacheWrite": 300,
+        "cost": {
+          "input": 0.01,
+          "output": 0.01,
+          "total": 0.02
+        }
+      }
+    },
+    {
+      "rid": "r3",
+      "ts": "2026-10-15T10:00:40.000Z",
+      "model": "m-a",
+      "usage": {
+        "input": 80,
+        "output": 30
+      }
+    },
+    {
+      "rid": "r4",
+      "ts": "2026-10-15T10:01:00.000Z",
+      "model": "m-a",
+      "usage": {
+        "input": 70,
+        "output": 20,
+        "cacheRead": 500,
+        "cacheWrite": 100,
+        "cost": {
+          "input": 0.015,
+          "output": 0.015,
+          "total": 0.03
+        }
+      }
+    },
+    {
+      "rid": "r5",
+      "ts": "2026-10-15T10:01:10.000Z",
+      "model": "m-a",
+      "usage": {
+        "input": 70,
+        "output": 25,
+        "cacheRead": 600,
+        "cacheWrite": 100,
+        "cost": {
+          "input": 0.015,
+          "output": 0.015,
+          "total": 0.03
+        }
+      }
+    }
+  ],
+  "calls": [
+    {
+      "id": "c1",
+      "name": "read",
+      "ts": "2026-10-15T10:00:00.000Z",
+      "rid": "r1",
+      "ph": "d89701cce86a",
+      "path": "/p/a.txt",
+      "cmd": null
+    },
+    {
+      "id": "c2",
+      "name": "read",
+      "ts": "2026-10-15T10:00:00.000Z",
+      "rid": "r1",
+      "ph": "5c89e536d351",
+      "path": "/p/b.txt",
+      "cmd": null
+    },
+    {
+      "id": "c3",
+      "name": "read",
+      "ts": "2026-10-15T10:00:30.000Z",
+      "rid": "r2",
+      "ph": "d89701cce86a",
+      "path": "/p/a.txt",
+      "cmd": null
+    },
+    {
+      "id": "c4",
+      "name": "read",
+      "ts": "2026-10-15T10:00:30.000Z",
+      "rid": "r2",
+      "ph": "fe3ef0db767d",
+      "path": "/p/a.txt",
+      "cmd": null
+    },
+    {
+      "id": "c5",
+      "name": "write",
+      "ts": "2026-10-15T10:00:40.000Z",
+      "rid": "r3",
+      "ph": "91ebc575da21",
+      "path": "/p/a.txt",
+      "cmd": null
+    },
+    {
+      "id": "c6",
+      "name": "read",
+      "ts": "2026-10-15T10:00:40.000Z",
+      "rid": "r3",
+      "ph": "d89701cce86a",
+      "path": "/p/a.txt",
+      "cmd": null
+    },
+    {
+      "id": "c7",
+      "name": "bash",
+      "ts": "2026-10-15T10:01:00.000Z",
+      "rid": "r4",
+      "ph": "5b33ab73c4af",
+      "path": null,
+      "cmd": "cat /p/a.txt >/dev/null"
+    },
+    {
+      "id": "c9",
+      "name": "edit",
+      "ts": "2026-10-15T10:01:10.000Z",
+      "rid": "r5",
+      "ph": "8db897bd5f6d",
+      "path": "/p/e.txt",
+      "cmd": null
+    },
+    {
+      "id": "c10",
+      "name": "edit",
+      "ts": "2026-10-15T10:01:10.000Z",
+      "rid": "r5",
+      "ph": "8db897bd5f6d",
+      "path": "/p/e.txt",
+      "cmd": null
+    },
+    {
+      "id": "c11",
+      "name": "edit",
+      "ts": "2026-10-15T10:01:10.000Z",
+      "rid": "r5",
+      "ph": "31993bb2b4f1",
+      "path": "/p/f.txt",
+      "cmd": null
+    },
+    {
+      "id": "c12",
+      "name": "edit",
+      "ts": "2026-10-15T10:01:10.000Z",
+      "rid": "r5",
+      "ph": "31993bb2b4f1",
+      "path": "/p/f.txt",
+      "cmd": null
+    },
+    {
+      "id": "c13",
+      "name": "read",
+      "ts": "2026-10-15T10:01:10.000Z",
+      "rid": "r5",
+      "ph": "77295b6740a7",
+      "path": "/p/g.txt",
+      "cmd": null
+    }
+  ],
+  "results": [
+    {
+      "id": "c1",
+      "err": false,
+      "bytes": 1407,
+      "ts": "2026-10-15T10:00:10.000Z"
+    },
+    {
+      "id": "c2",
+      "err": false,
+      "bytes": 3580,
+      "ts": "2026-10-15T10:00:25.000Z"
+    },
+    {
+      "id": "c3",
+      "err": false,
+      "bytes": 3076,
+      "ts": "2026-10-15T10:00:35.000Z"
+    },
+    {
+      "id": "c4",
+      "err": false,
+      "bytes": 3260,
+      "ts": "2026-10-15T10:00:36.000Z"
+    },
+    {
+      "id": "c5",
+      "err": false,
+      "bytes": 2,
+      "ts": "2026-10-15T10:00:50.000Z"
+    },
+    {
+      "id": "c6",
+      "err": false,
+      "bytes": 500,
+      "ts": null
+    },
+    {
+      "id": "c7",
+      "err": false,
+      "bytes": 0,
+      "ts": "2026-10-15T10:00:58.000Z"
+    },
+    {
+      "id": "c9",
+      "err": true,
+      "bytes": 12,
+      "ts": "2026-10-15T10:01:12.000Z"
+    },
+    {
+      "id": "c10",
+      "err": false,
+      "bytes": 2,
+      "ts": "2026-10-15T10:01:15.000Z"
+    },
+    {
+      "id": "c11",
+      "err": true,
+      "bytes": 12,
+      "ts": "2026-10-15T10:01:16.000Z"
+    },
+    {
+      "id": "c12",
+      "err": true,
+      "bytes": 12,
+      "ts": "2026-10-15T10:01:18.000Z"
+    }
+  ],
+  "compactions": 1,
+  "skills": {
+    "test-skill": 1
+  },
+  "uts": [
+    1792058400000,
+    1792058510000,
+    1792058520000
+  ]
+}
