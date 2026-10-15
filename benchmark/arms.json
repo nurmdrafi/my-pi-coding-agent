@@ -1,0 +1,14 @@
+[
+  {
+    "name": "baseline",
+    "description": "Reference arm: the harness's documented default configuration.",
+    "config": "Run the agent with the default configuration documented in the repo README — no extra extensions, no PI_* toggles, no skills auto-loaded. Verify with: ls extensions && echo \"PI_SUBAGENTS is '${PI_SUBAGENTS:-unset}'\" (expect unset).",
+    "baseline": true
+  },
+  {
+    "name": "candidate",
+    "description": "Placeholder for the arm under evaluation — fill in when a real comparison starts.",
+    "config": "TODO: replace with the candidate's exact configuration (extensions enabled, env vars, flags, model settings) before running. Until then do not use this arm.",
+    "baseline": false
+  }
+]

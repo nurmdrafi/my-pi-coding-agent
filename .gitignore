@@ -39,3 +39,6 @@ logs/
 /tools/pidx/target/
 !tools/pidx/Cargo.lock
 .cache/
+
+# S2 benchmark live workdirs
+benchmark/runs/
