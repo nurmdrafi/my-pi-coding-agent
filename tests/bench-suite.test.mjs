@@ -388,7 +388,7 @@ test('aggregate: empty input → no cells', () => {
 });
 
 test('aggregate: metricValues maps a record to the report metric list', () => {
-  const v = metricValues(mkRec());
+  const v = metricValues(mkRec().metrics);
   assert.equal(v.durationMs, 1000);
   assert.equal(v.tokensInput, 100);
   assert.equal(v.tokensOutput, 50);
