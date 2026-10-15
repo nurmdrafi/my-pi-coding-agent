@@ -37,7 +37,7 @@ import {
   renameSync,
   writeFileSync,
 } from "fs";
-import { readFile } from "fs/promises";
+import { readFile, lstat } from "fs/promises";
 import { basename, dirname, join } from "path";
 
 import { toLF, validateEditAnchors } from "./anchor-guard.ts";
@@ -577,6 +577,51 @@ export default function (pi: ExtensionAPI) {
       if (prot) {
         const r = await confirmDestructive(`write:${path}`, prot, ctx);
         if (r) return blockCall(r);
+      }
+      // S5 M1+M3+M2 (2026-10-16): write binding (spec §5.1–§5.3). A blind
+      // full overwrite silently reverts external changes — the worst failure
+      // class — so writes to EXISTING files bind like edits: stat drift since
+      // the last certified read blocks Stale; same-stat content drift blocks
+      // through the hash chain (drop coverage on that block, or R1 would
+      // block the corrective re-read); a never-read existing file blocks
+      // Unread (one targeted read is the cheap recovery). New/deleted files
+      // pass — nothing to bind; missing stat/hash fails open throughout.
+      {
+        const display = String(event.input.path ?? "");
+        const shown = display.length > 57 ? `…${display.slice(-56)}` : display;
+        const prior = coverage.get(path);
+        if (prior) {
+          const now = await snapshot(path);
+          if (
+            prior.stat &&
+            now &&
+            (prior.stat.mtimeMs !== now.mtimeMs || prior.stat.size !== now.size)
+          )
+            return blockCall(
+              `Anchor Guard (Stale): '${shown}' changed on disk since your last read (mtime/size) — re-read it, then re-send the write.`,
+            );
+          if (prior.stat && now && prior.hash) {
+            const h = await hashFile(path);
+            if (h && h !== prior.hash) {
+              coverage.delete(path); // disproven spans/stat — let the re-read through
+              return blockCall(
+                `Anchor Guard (Stale): '${shown}' changed without mtime/size change (fast write / restored mtime) — re-read before overwriting.`,
+              );
+            }
+          }
+        } else {
+          let exists = false;
+          try {
+            await lstat(path);
+            exists = true;
+          } catch {
+            /* ENOENT: creating a new file — nothing to bind */
+          }
+          if (exists)
+            return blockCall(
+              `Anchor Guard (Unread): '${shown}' exists but was never read this session — read it before overwriting.`,
+            );
+        }
       }
       // whole file content is in context after a write — every window overlaps it
       pendingEdits.set(event.toolCallId, {

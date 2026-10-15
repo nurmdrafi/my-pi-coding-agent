@@ -234,6 +234,32 @@ async function nestedBash(pi, command, { error = false } = {}) {
   return { blocked: false };
 }
 
+/** write via the gate; optional apply writes content to disk between call
+ * and result (the real tool writes before its result fires), T pins a round
+ * restorable stat (S5) */
+async function write(pi, path, content, { apply = false, T } = {}) {
+  const toolCallId = `tc${++seqId}`;
+  const input = { path, content };
+  const block = await pi.invoke("tool_call", {
+    type: "tool_call",
+    toolName: "write",
+    toolCallId,
+    input,
+  });
+  if (block) return { blocked: true, reason: block.reason };
+  if (apply) writeFileSync(path, content);
+  if (T) utimesSync(path, T, T);
+  await pi.invoke("tool_result", {
+    type: "tool_result",
+    toolName: "write",
+    toolCallId,
+    input,
+    content: textBlocks("ok"),
+    isError: false,
+  });
+  return { blocked: false };
+}
+
 const approveUi = () => ({
   hasUI: true,
   mode: "tui",
@@ -3120,6 +3146,110 @@ const cases = [
         return { blocked: false, reason: `expected Unread: ${e2.reason ?? "(pass)"}` };
       await read(pi, f, { offset: 2, limit: 1 }, { outputLines: 1 }); // targeted re-read
       return edit(pi, f, [{ oldText: "bbb", newText: "BBB" }]);
+    },
+  ],
+
+  // Step 5 (families 2+4): binding for the write tool — spec §5.1–§5.3.
+  // A blind full overwrite silently reverts external changes — the worst
+  // failure class — so writes to EXISTING files bind like edits.
+  [
+    "S5 W: external write since last read blocks the write (Stale)",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-w-stale.ts");
+      writeFileSync(f, "a\nb\n");
+      await read(pi, f);
+      writeFileSync(f, "a\nb\nc\n"); // external change (stat)
+      const r = await write(pi, f, "overwritten\n");
+      return r.blocked && r.reason.startsWith("Anchor Guard (Stale):")
+        ? r
+        : { blocked: false, reason: `family: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 W: re-read clears the stale block for write",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-w-reread.ts");
+      writeFileSync(f, "a\nb\n");
+      await read(pi, f);
+      writeFileSync(f, "a\nb\nc\n");
+      const b1 = await write(pi, f, "overwritten\n");
+      if (!b1.blocked) return { blocked: false, reason: "precondition: stale block missing" };
+      await read(pi, f);
+      return write(pi, f, "overwritten\n", { apply: true });
+    },
+  ],
+  [
+    "S5 W: never-read existing file blocks the write (Unread)",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-w-unread.ts");
+      writeFileSync(f, "existing content\n");
+      const r = await write(pi, f, "blind overwrite\n");
+      return r.blocked && r.reason.startsWith("Anchor Guard (Unread):") && r.reason.includes("never read")
+        ? r
+        : { blocked: false, reason: `family: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 W: new file (ENOENT) passes",
+    "pass",
+    async (pi) => write(pi, join(tmp, "s5-w-new.ts"), "fresh\n"),
+  ],
+  [
+    "S5 W: externally deleted file passes (create-new)",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-w-deleted.ts");
+      writeFileSync(f, "a\n");
+      await read(pi, f);
+      rmSync(f);
+      return write(pi, f, "recreated\n", { apply: true });
+    },
+  ],
+  [
+    "S5 W: plain read stays stat-only for write too (R2)",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-w-r2.ts");
+      const T = new Date(Math.floor(Date.now() / 1000) * 1000);
+      writeFileSync(f, "a\nb\n");
+      utimesSync(f, T, T);
+      await read(pi, f);
+      writeFileSync(f, "x\nb\n"); // same-size silent change, stat restored
+      utimesSync(f, T, T);
+      return write(pi, f, "overwritten\n", { apply: true });
+    },
+  ],
+  [
+    "S5 W: own prior write chains the hash — same-stat drift blocks (M3)",
+    "blocked",
+    async (pi) => {
+      const f = join(tmp, "s5-w-hash.ts");
+      writeFileSync(f, "a\nb\n");
+      await read(pi, f);
+      const T = new Date(Math.floor(Date.now() / 1000) * 1000 + 60_000);
+      const w1 = await write(pi, f, "n1\nn2\n", { apply: true, T }); // stores post-op stat+hash
+      if (w1.blocked) return w1;
+      writeFileSync(f, "n1\nn3\n"); // same-size silent change
+      utimesSync(f, T, T); // stat identical to the post-write snapshot
+      const r = await write(pi, f, "overwritten\n");
+      return r.blocked && r.reason.includes("without mtime/size change")
+        ? r
+        : { blocked: false, reason: `family: ${r.reason ?? "(pass)"}` };
+    },
+  ],
+  [
+    "S5 W: own prior write — a later write with no drift passes",
+    "pass",
+    async (pi) => {
+      const f = join(tmp, "s5-w-own.ts");
+      writeFileSync(f, "a\nb\n");
+      await read(pi, f);
+      const w1 = await write(pi, f, "n1\nn2\n", { apply: true });
+      if (w1.blocked) return w1;
+      return write(pi, f, "final\n", { apply: true });
     },
   ],
 ];
