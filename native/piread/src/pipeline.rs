@@ -97,7 +97,7 @@ pub fn read_text(
     let first_line_len = truncator.first_line_len();
     let content = render(
         truncation.as_ref(),
-        &prefix,
+        prefix,
         raw_path,
         start_line,
         file_total_lines,
@@ -161,12 +161,16 @@ fn render(
 
 /// Streaming `truncateHead`: fed the selection's lines in order; stops
 /// buffering once the byte/line cut is certain, mirroring the JS loop's
-/// `lineBytes = byteLength(line) + (i > 0 ? 1 : 0)` accounting.
+/// `lineBytes = byteLength(line) + (i > 0 ? 1 : 0)` accounting. The joined
+/// prefix is built in place (`out`), so buffering costs one copy per line —
+/// no per-line allocation, no join pass.
 struct HeadTruncator {
     max_lines: u64,
     max_bytes: u64,
-    out_lines: Vec<String>,
-    out_bytes: u64, // join length of out_lines so far
+    /// Buffered selection prefix, `join("\n")`-identical; `out.len()` is
+    /// the loop's `bytes` accumulator (separator included).
+    out: String,
+    buffered_lines: u64,
     lines_seen: u64, // selection lines pushed (counted past the cut)
     byte_break: bool,
     first_line_exceeds: bool,
@@ -179,8 +183,11 @@ impl HeadTruncator {
         Self {
             max_lines,
             max_bytes,
-            out_lines: Vec::new(),
-            out_bytes: 0,
+            // The prefix never exceeds `max_bytes`; presizing to it (capped)
+            // makes the common capped case a single allocation with no
+            // re-growth.
+            out: String::with_capacity(max_bytes.min(64 * 1024) as usize),
+            buffered_lines: 0,
             lines_seen: 0,
             byte_break: false,
             first_line_exceeds: false,
@@ -208,13 +215,16 @@ impl HeadTruncator {
             return;
         }
         let line_bytes = line.len() as u64 + u64::from(i > 0);
-        if self.out_bytes.saturating_add(line_bytes) > self.max_bytes {
+        if (self.out.len() as u64).saturating_add(line_bytes) > self.max_bytes {
             self.byte_break = true; // loop breaks on the byte limit
             self.buffering = false;
             return;
         }
-        self.out_lines.push(line.to_string());
-        self.out_bytes += line_bytes;
+        if i > 0 {
+            self.out.push('\n');
+        }
+        self.out.push_str(line);
+        self.buffered_lines += 1;
     }
 
     /// `None` when the selection fits both caps (JS returns truncated:false
@@ -235,11 +245,11 @@ impl HeadTruncator {
         let content = if self.first_line_exceeds {
             String::new()
         } else {
-            self.out_lines.join("\n")
+            self.out.clone()
         };
         let output_bytes = content.len() as u64;
         Some(Truncation {
-            output_lines: self.out_lines.len() as u64,
+            output_lines: self.buffered_lines,
             content,
             truncated: true,
             truncated_by: Some(truncated_by),
@@ -254,8 +264,8 @@ impl HeadTruncator {
     }
 
     /// The buffered selection prefix — the full selection when untruncated.
-    fn selection_prefix(&self) -> String {
-        self.out_lines.join("\n")
+    fn selection_prefix(&self) -> &str {
+        &self.out
     }
 
     fn first_line_len(&self) -> u64 {

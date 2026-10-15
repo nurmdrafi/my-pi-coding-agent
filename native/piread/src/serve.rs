@@ -19,7 +19,7 @@ use std::process::ExitCode;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::envelope::{fail_envelope_with_id, success_envelope_with_id, ErrorKind};
+use crate::envelope::{write_fail_with_id, write_success_with_id, ErrorKind};
 use crate::pipeline;
 use crate::ToolError;
 
@@ -41,37 +41,43 @@ pub fn serve() -> ExitCode {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut out = stdout.lock();
+    // One response buffer reused across requests (capacity ratchets to the
+    // largest response seen): serialize in place, append the newline, emit
+    // with a single write — no per-response String, no re-growth.
+    let mut buf = Vec::with_capacity(16 * 1024);
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break }; // unreadable stdin: treat as EOF
         if line.trim().is_empty() {
             continue;
         }
-        let response = respond(&line);
-        if writeln!(out, "{response}").and_then(|_| out.flush()).is_err() {
+        buf.clear();
+        respond_into(&line, &mut buf);
+        buf.push(b'\n');
+        if out.write_all(&buf).and_then(|_| out.flush()).is_err() {
             break; // stdout closed: parent went away, same as EOF
         }
     }
     ExitCode::SUCCESS
 }
 
-/// Parse one request line into a response line.
-fn respond(line: &str) -> String {
+/// Parse one request line into a response written to `buf`.
+fn respond_into(line: &str, buf: &mut Vec<u8>) {
     // Two-stage parse so malformed requests can still echo their id back.
     let value: Value = match serde_json::from_str(line) {
         Ok(v) => v,
-        Err(err) => return protocol_error(None, &format!("not JSON: {err}")),
+        Err(err) => return protocol_error(None, &format!("not JSON: {err}"), buf),
     };
     let id = value.get("id").cloned();
     match serde_json::from_value::<Request>(value) {
-        Ok(req) => handle(&req),
-        Err(err) => protocol_error(id.as_ref(), &format!("bad request: {err}")),
+        Ok(req) => handle_into(&req, buf),
+        Err(err) => protocol_error(id.as_ref(), &format!("bad request: {err}"), buf),
     }
 }
 
 /// Run one well-formed request through the same pipeline as one-shot mode.
-fn handle(req: &Request) -> String {
+fn handle_into(req: &Request, buf: &mut Vec<u8>) {
     if let Some(err) = validate(req) {
-        return fail_envelope_with_id(Some(&req.id), &err);
+        return write_fail_with_id(buf, Some(&req.id), &err);
     }
     let base = req.cwd.clone().unwrap_or_else(|| {
         std::env::current_dir()
@@ -81,14 +87,15 @@ fn handle(req: &Request) -> String {
     });
     let resolved = pipeline::resolve_path_against(&req.path, &base);
     match pipeline::read_text(&resolved, &req.path, req.offset, req.limit) {
-        Ok(out) => success_envelope_with_id(
+        Ok(out) => write_success_with_id(
+            buf,
             Some(&req.id),
             &out.content,
             out.truncation.as_ref(),
             out.binary,
             out.total_bytes,
         ),
-        Err(err) => fail_envelope_with_id(Some(&req.id), &err),
+        Err(err) => write_fail_with_id(buf, Some(&req.id), &err),
     }
 }
 
@@ -107,8 +114,9 @@ fn validate(req: &Request) -> Option<ToolError> {
     None
 }
 
-fn protocol_error(id: Option<&Value>, message: &str) -> String {
-    fail_envelope_with_id(
+fn protocol_error(id: Option<&Value>, message: &str, buf: &mut Vec<u8>) {
+    write_fail_with_id(
+        buf,
         id,
         &ToolError {
             kind: ErrorKind::Protocol,

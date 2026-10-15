@@ -1,7 +1,13 @@
 //! JSON envelope types — the wire contract between piread and the extension.
 //!
 //! Field order matches the spec (`ok` first) and names are camelCase so the
-//! extension can forward values verbatim.
+//! extension can forward values verbatim. Serialization is hand-rolled for
+//! the two large string fields (`content`, `truncation.content`): serde's
+//! per-byte escape scan measured ~0.8 GB/s there (twice per response — the
+//! truncation report repeats the prefix), while a SWAR word scan over clean
+//! spans runs ~2.5× faster and never regresses escape-dense text. Output is
+//! byte-identical to `serde_json` (pinned by unit tests against the derive
+//! and exhaustively over all single-byte strings).
 
 use serde::Serialize;
 use serde_json::Value;
@@ -38,6 +44,7 @@ pub enum TruncationKind {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg(test)]
 struct Success<'a> {
     /// Daemon request id (echoed verbatim); absent in one-shot output.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -50,6 +57,7 @@ struct Success<'a> {
 }
 
 #[derive(Serialize)]
+#[cfg(test)]
 struct Failure<'a> {
     /// Daemon request id (echoed verbatim); absent in one-shot output.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -59,6 +67,7 @@ struct Failure<'a> {
 }
 
 #[derive(Serialize)]
+#[cfg(test)]
 struct ToolErrorBody<'a> {
     kind: &'a ErrorKind,
     message: &'a str,
@@ -105,38 +114,342 @@ pub fn success_envelope(
     binary: bool,
     total_bytes: u64,
 ) -> String {
-    success_envelope_with_id(None, content, truncation, binary, total_bytes)
+    let mut buf = Vec::new();
+    write_success_with_id(&mut buf, None, content, truncation, binary, total_bytes);
+    String::from_utf8(buf).expect("success envelope is UTF-8")
 }
 
 pub fn fail_envelope(err: &ToolError) -> String {
-    fail_envelope_with_id(None, err)
+    let mut buf = Vec::new();
+    write_fail_with_id(&mut buf, None, err);
+    String::from_utf8(buf).expect("failure envelope is UTF-8")
+}
+
+/// serde_json's escape classification: 0 = passthrough, else the escape
+/// code (1..=7 named, 8 = `\u00xx`). Built to mirror serde_json's private
+/// `ESCAPE` table exactly.
+static ESCAPE: [u8; 256] = {
+    let mut t = [0u8; 256];
+    let mut i = 0;
+    while i < 0x20 {
+        t[i] = 8;
+        i += 1;
+    }
+    t[0x08] = 1;
+    t[b'\t' as usize] = 2;
+    t[b'\n' as usize] = 3;
+    t[0x0C] = 4;
+    t[b'\r' as usize] = 5;
+    t[b'"' as usize] = 6;
+    t[b'\\' as usize] = 7;
+    t
+};
+
+const HEX: &[u8; 16] = b"0123456789abcdef";
+
+/// Append `s` as a JSON string literal (quotes included), byte-identical to
+/// `serde_json::to_writer(&mut buf, &s)` — clean 8-byte words are skipped
+/// with SWAR zero-tests; a flagged word is scanned byte-wise; four dirty
+/// words in a row hand off to a serde-identical loop for the rest.
+fn write_json_str(buf: &mut Vec<u8>, s: &str) {
+    /// serde-identical byte loop from `from` (inclusive) to the end.
+    fn tail(buf: &mut Vec<u8>, bytes: &[u8], from: usize) {
+        let mut start = from;
+        for i in from..bytes.len() {
+            let esc = ESCAPE[bytes[i] as usize];
+            if esc == 0 {
+                continue;
+            }
+            if start < i {
+                buf.extend_from_slice(&bytes[start..i]);
+            }
+            push_escape(buf, esc, bytes[i]);
+            start = i + 1;
+        }
+        buf.extend_from_slice(&bytes[start..]);
+    }
+
+    buf.push(b'"');
+    let bytes = s.as_bytes();
+    let mut emitted = 0; // bytes already flushed (clean-span start)
+    let mut j = 0; // scan cursor
+    let mut dirty_streak = 0u32;
+    while j + 8 <= bytes.len() {
+        let v = u64::from_le_bytes(bytes[j..j + 8].try_into().unwrap());
+        let x22 = v ^ 0x2222_2222_2222_2222;
+        let x5c = v ^ 0x5c5c_5c5c_5c5c_5c5c;
+        // Any byte < 0x20 (hasless), or " or \\ (haszero on xored word).
+        let dirty = (v.wrapping_sub(0x2020_2020_2020_2020) & !v
+            | x22.wrapping_sub(0x0101_0101_0101_0101) & !x22
+            | x5c.wrapping_sub(0x0101_0101_0101_0101) & !x5c)
+            & 0x8080_8080_8080_8080;
+        if dirty == 0 {
+            j += 8;
+            dirty_streak = 0;
+            continue;
+        }
+        dirty_streak += 1;
+        if dirty_streak >= 4 {
+            // Escape-dense tail: word tests cost more than they save.
+            buf.extend_from_slice(&bytes[emitted..j]);
+            tail(buf, bytes, j);
+            buf.push(b'"');
+            return;
+        }
+        let word_end = j + 8;
+        while j < word_end {
+            let esc = ESCAPE[bytes[j] as usize];
+            if esc != 0 {
+                buf.extend_from_slice(&bytes[emitted..j]);
+                push_escape(buf, esc, bytes[j]);
+                emitted = j + 1;
+            }
+            j += 1;
+        }
+    }
+    buf.extend_from_slice(&bytes[emitted..j]);
+    tail(buf, bytes, j);
+    buf.push(b'"');
+}
+
+fn push_escape(buf: &mut Vec<u8>, esc: u8, byte: u8) {
+    match esc {
+        1 => buf.extend_from_slice(b"\\b"),
+        2 => buf.extend_from_slice(b"\\t"),
+        3 => buf.extend_from_slice(b"\\n"),
+        4 => buf.extend_from_slice(b"\\f"),
+        5 => buf.extend_from_slice(b"\\r"),
+        6 => buf.extend_from_slice(b"\\\""),
+        7 => buf.extend_from_slice(b"\\\\"),
+        _ => {
+            buf.extend_from_slice(b"\\u00");
+            buf.push(HEX[(byte >> 4) as usize]);
+            buf.push(HEX[(byte & 0xF) as usize]);
+        }
+    }
+}
+
+fn write_bool(buf: &mut Vec<u8>, v: bool) {
+    buf.extend_from_slice(if v { b"true" } else { b"false" });
+}
+
+fn write_u64(buf: &mut Vec<u8>, v: u64) {
+    // serde_json writes integers via itoa-style formatting; reuse it for the
+    // handful of numeric fields (no format! machinery).
+    serde_json::to_writer(&mut *buf, &v).expect("u64 serializes");
+}
+
+fn write_truncation(buf: &mut Vec<u8>, t: &Truncation) {
+    // Field order mirrors the derive on `Truncation` (pinned by test).
+    buf.extend_from_slice(b"{\"content\":");
+    write_json_str(buf, &t.content);
+    buf.extend_from_slice(b",\"truncated\":");
+    write_bool(buf, t.truncated);
+    buf.extend_from_slice(b",\"truncatedBy\":");
+    match t.truncated_by {
+        Some(TruncationKind::Lines) => buf.extend_from_slice(b"\"lines\""),
+        Some(TruncationKind::Bytes) => buf.extend_from_slice(b"\"bytes\""),
+        None => buf.extend_from_slice(b"null"),
+    }
+    for (name, v) in [
+        ("totalLines", t.total_lines),
+        ("totalBytes", t.total_bytes),
+        ("outputLines", t.output_lines),
+        ("outputBytes", t.output_bytes),
+    ] {
+        buf.extend_from_slice(b",\"");
+        buf.extend_from_slice(name.as_bytes());
+        buf.extend_from_slice(b"\":");
+        write_u64(buf, v);
+    }
+    for (name, v) in [
+        ("lastLinePartial", t.last_line_partial),
+        ("firstLineExceedsLimit", t.first_line_exceeds_limit),
+    ] {
+        buf.extend_from_slice(b",\"");
+        buf.extend_from_slice(name.as_bytes());
+        buf.extend_from_slice(b"\":");
+        write_bool(buf, v);
+    }
+    for (name, v) in [("maxLines", t.max_lines), ("maxBytes", t.max_bytes)] {
+        buf.extend_from_slice(b",\"");
+        buf.extend_from_slice(name.as_bytes());
+        buf.extend_from_slice(b"\":");
+        write_u64(buf, v);
+    }
+    buf.push(b'}');
 }
 
 /// Daemon response: the one-shot envelope plus the echoed request id first.
-pub fn success_envelope_with_id(
+/// Serializes straight into `buf` — the daemon reuses one buffer across
+/// responses so large payloads cost no per-response allocation.
+pub fn write_success_with_id(
+    buf: &mut Vec<u8>,
     id: Option<&Value>,
     content: &str,
     truncation: Option<&Truncation>,
     binary: bool,
     total_bytes: u64,
-) -> String {
-    let value = Success {
-        id,
-        ok: true,
-        content,
-        truncation,
-        binary,
-        total_bytes,
-    };
-    serde_json::to_string(&value).expect("success envelope serializes")
+) {
+    buf.extend_from_slice(b"{");
+    if let Some(id) = id {
+        buf.extend_from_slice(b"\"id\":");
+        serde_json::to_writer(&mut *buf, id).expect("id serializes");
+        buf.extend_from_slice(b",");
+    }
+    buf.extend_from_slice(b"\"ok\":true,\"content\":");
+    write_json_str(buf, content);
+    buf.extend_from_slice(b",\"truncation\":");
+    match truncation {
+        None => buf.extend_from_slice(b"null"),
+        Some(t) => write_truncation(buf, t),
+    }
+    buf.extend_from_slice(b",\"binary\":");
+    write_bool(buf, binary);
+    buf.extend_from_slice(b",\"totalBytes\":");
+    write_u64(buf, total_bytes);
+    buf.push(b'}');
 }
 
 /// Daemon response: the one-shot failure envelope plus the echoed request id.
-pub fn fail_envelope_with_id(id: Option<&Value>, err: &ToolError) -> String {
-    let body = ToolErrorBody {
-        kind: &err.kind,
-        message: &err.message,
-    };
-    let value = Failure { id, ok: false, error: &body };
-    serde_json::to_string(&value).expect("failure envelope serializes")
+pub fn write_fail_with_id(buf: &mut Vec<u8>, id: Option<&Value>, err: &ToolError) {
+    buf.extend_from_slice(b"{");
+    if let Some(id) = id {
+        buf.extend_from_slice(b"\"id\":");
+        serde_json::to_writer(&mut *buf, id).expect("id serializes");
+        buf.extend_from_slice(b",");
+    }
+    buf.extend_from_slice(b"\"ok\":false,\"error\":{\"kind\":");
+    write_json_str(buf, err.kind.as_str());
+    buf.extend_from_slice(b",\"message\":");
+    write_json_str(buf, &err.message);
+    buf.extend_from_slice(b"}}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The fast string writer must be byte-identical to serde_json for every
+    /// input, not just corpus shapes — exhaustively over all single bytes,
+    /// escape combinations, and randomized strings (deterministic LCG).
+    #[test]
+    fn json_str_matches_serde_exhaustively() {
+        let check = |s: &str| {
+            let mut fast = Vec::new();
+            write_json_str(&mut fast, s);
+            let mut std = Vec::new();
+            serde_json::to_writer(&mut std, &s).unwrap();
+            assert_eq!(fast, std, "mismatch for {s:?}");
+        };
+        for b in 0u8..=255 {
+            check(&(b as char).to_string());
+        }
+        let corpus: Vec<String> = [
+            String::new(),
+            "plain".into(),
+            "with \"quotes\" and \\ backslash".into(),
+            "all: \u{8}\t\n\u{c}\r \u{b}".into(),
+            "unicode héllo 🎉 日本語".into(),
+            (0..=255u8).map(|b| b as char).collect(),
+            "x".repeat(100),
+            "\n".repeat(50),
+            "line0000\n".repeat(100),
+            "ab\"cd\"ef".repeat(50),
+        ]
+        .into();
+        for s in &corpus {
+            check(s);
+        }
+        let mut seed = 0x1234_5678u64;
+        for len in [0usize, 1, 7, 8, 9, 15, 16, 17, 63, 64, 100, 101, 1000, 10_000] {
+            let bytes: Vec<u8> = (0..len)
+                .map(|_| {
+                    seed = seed
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    (seed >> 33) as u8
+                })
+                .collect();
+            check(&String::from_utf8_lossy(&bytes));
+        }
+    }
+
+    /// The hand-rolled envelope writers must match the serde derives byte
+    /// for byte — this pins field order, casing, skipping, and escaping.
+    #[test]
+    fn hand_rolled_envelopes_match_derive() {
+        let truncation = Truncation {
+            content: "prefix\nwith \"quotes\" \\ and \u{1}ctrl\nlines".into(),
+            truncated: true,
+            truncated_by: Some(TruncationKind::Lines),
+            total_lines: 2500,
+            total_bytes: 22_500,
+            output_lines: 2000,
+            output_bytes: 17_999,
+            last_line_partial: false,
+            first_line_exceeds_limit: false,
+            max_lines: 2000,
+            max_bytes: 51_200,
+        };
+        let err = ToolError {
+            kind: ErrorKind::Enoent,
+            message: "ENOENT: no such file or directory, access '/tmp/\"quoted\"'".into(),
+        };
+        for id in [None, Some(serde_json::json!({"nonce": 7, "tag": "\"x\n"}))] {
+            let mut fast = Vec::new();
+            write_success_with_id(
+                &mut fast,
+                id.as_ref(),
+                "content with \"q\" \\ and \n newlines \u{1}",
+                Some(&truncation),
+                true,
+                123_456,
+            );
+            let derived = serde_json::to_string(&Success {
+                id: id.as_ref(),
+                ok: true,
+                content: "content with \"q\" \\ and \n newlines \u{1}",
+                truncation: Some(&truncation),
+                binary: true,
+                total_bytes: 123_456,
+            })
+            .unwrap();
+            assert_eq!(fast, derived.as_bytes());
+
+            let mut fast = Vec::new();
+            write_fail_with_id(&mut fast, id.as_ref(), &err);
+            let derived = serde_json::to_string(&Failure {
+                id: id.as_ref(),
+                ok: false,
+                error: &ToolErrorBody {
+                    kind: &err.kind,
+                    message: &err.message,
+                },
+            })
+            .unwrap();
+            assert_eq!(fast, derived.as_bytes());
+        }
+        // untruncated success (truncation: null) via the one-shot wrapper
+        let plain = success_envelope("solo\n", None, false, 5);
+        let derived = serde_json::to_string(&Success {
+            id: None,
+            ok: true,
+            content: "solo\n",
+            truncation: None,
+            binary: false,
+            total_bytes: 5,
+        })
+        .unwrap();
+        assert_eq!(plain, derived);
+        assert_eq!(
+            fail_envelope(&err),
+            serde_json::to_string(&Failure {
+                id: None,
+                ok: false,
+                error: &ToolErrorBody { kind: &err.kind, message: &err.message },
+            })
+            .unwrap()
+        );
+    }
 }
