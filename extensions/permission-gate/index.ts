@@ -564,7 +564,7 @@ export default function (pi: ExtensionAPI) {
     ) {
       return blockCall(
         `Token Economy (Re-run): '${base.slice(0, 60)}' ran ${Math.round((Date.now() - prior.ts) / 1000)}s ago, no ` +
-          `edit/write since — output already in context. Re-run only after a change. Poll: 'sleep N && cmd'.`,
+          `edit/write since — output already in context. Re-run only after a change. Poll: 'sleep N && cmd'. Batch independent calls in one turn.`,
       );
     }
     pendingBash.set(event.toolCallId, base);

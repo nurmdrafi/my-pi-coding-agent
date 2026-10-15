@@ -134,7 +134,7 @@ export async function validateEditAnchors(
       const frag = findClosestFragment(fuzzyContent, oldText);
       const near = frag
         ? `Its ${frag.end} lines occur at line ${lineOf(fuzzyContent, frag.index)}; the inferred lines around them are wrong:\n${snippetAround(content, lineOf(fuzzyContent, frag.index), frag.lines)}\nUse these exact lines (incl. whitespace) as oldText.`
-        : `No part exists — read the region (offset/limit) and rebuild oldText from actual content.`;
+        : `No part exists — rebuild oldText from the window already in context; read (offset/limit) only a region not yet in context.`;
       return {
         block: true,
         reason: `Anchor Guard: edits[${i}].oldText not found in ${String(input.path)} (exact+fuzzy). ${near}`,
