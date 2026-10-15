@@ -1,0 +1,6 @@
+{
+  "id": "bugfix/task-syn",
+  "class": "bugfix",
+  "title": "Synthetic: fix double() off-by-one",
+  "prompt": "In this repository, `double(n)` in failing.js returns one more than twice the input. Fix the function so `double(n)` returns exactly `n * 2`, making the tests in failing.test.js pass. Do not modify any test files."
+}

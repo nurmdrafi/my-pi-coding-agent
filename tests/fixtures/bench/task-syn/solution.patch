@@ -1,0 +1,12 @@
+diff --git a/failing.js b/failing.js
+index 6c3375b..b7d1e86 100644
+--- a/failing.js
++++ b/failing.js
+@@ -1,6 +1,6 @@
+ /** Trivially wrong module: double() is off by one; half() is correct. */
+ export function double(n) {
+-  return n * 2 + 1;
++  return n * 2;
+ }
+ 
+ export function half(n) {

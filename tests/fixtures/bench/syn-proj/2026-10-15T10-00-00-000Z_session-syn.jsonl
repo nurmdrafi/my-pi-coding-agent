@@ -1,0 +1,7 @@
+{"type":"session","version":3,"id":"session-syn","timestamp":"2026-10-15T10:00:00.000Z","cwd":"/home/user/syn"}
+{"type":"message","id":"u1","message":{"role":"user","content":"fix double()","timestamp":"2026-10-15T10:00:00.000Z"}}
+{"type":"message","id":"a1","message":{"role":"assistant","timestamp":"2026-10-15T10:00:05.000Z","responseId":"r1","model":"m-a","usage":{"input":200,"output":40,"cacheRead":1000,"cacheWrite":200,"cost":{"input":0.002,"output":0.002,"total":0.004}},"content":[{"type":"toolCall","id":"c1","name":"read","arguments":{"path":"/syn/failing.js","offset":1,"limit":20}}]}}
+{"type":"message","id":"t1","message":{"role":"toolResult","toolCallId":"c1","isError":false,"content":"export function double(n) { return n * 2 + 1; }","timestamp":"2026-10-15T10:00:06.000Z"}}
+{"type":"message","id":"a2","message":{"role":"assistant","timestamp":"2026-10-15T10:00:10.000Z","responseId":"r2","model":"m-a","usage":{"input":300,"output":30,"cacheRead":1500,"cacheWrite":100,"cost":{"input":0.003,"output":0.003,"total":0.006}},"content":[{"type":"toolCall","id":"c2","name":"edit","arguments":{"path":"/syn/failing.js","edits":[{"oldText":"return n * 2 + 1;","newText":"return n * 2;"}]}}]}}
+{"type":"message","id":"t2","message":{"role":"toolResult","toolCallId":"c2","isError":false,"content":"ok","timestamp":"2026-10-15T10:00:12.000Z"}}
+{"type":"message","id":"u2","message":{"role":"user","content":"thanks","timestamp":"2026-10-15T10:00:30.000Z"}}
