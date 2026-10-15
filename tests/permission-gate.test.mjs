@@ -3326,7 +3326,7 @@ const cases = [
           { hasUI: false },
         );
         return block && block.reason.startsWith("Permission Gate (Destructive)")
-          ? block
+          ? { blocked: true, reason: block.reason }
           : { blocked: false, reason: `order: ${block?.reason ?? "(pass)"}` };
       } finally {
         delete process.env.HOME;
@@ -3360,7 +3360,7 @@ const cases = [
           approveUi(),
         );
         return block && block.reason.startsWith("Anchor Guard (Unread):")
-          ? block
+          ? { blocked: true, reason: block.reason }
           : { blocked: false, reason: `both layers: ${block?.reason ?? "(pass)"}` };
       } finally {
         delete process.env.HOME;
