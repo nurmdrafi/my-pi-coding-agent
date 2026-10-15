@@ -12,6 +12,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadArms, getArm, discoverTasks, getTask } from '../benchmark/lib/manifests.mjs';
+import { newRunId, prepareWorkdir } from '../benchmark/lib/workdir.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BENCH = join(HERE, '..', 'benchmark');
@@ -89,4 +90,39 @@ test('manifests: getTask unknown id rejected; traversal rejected', () => {
 test('scaffolding: .gitignore covers benchmark/runs/', () => {
   const gi = readFileSync(join(HERE, '..', '.gitignore'), 'utf8');
   assert.ok(/(^|\n)benchmark\/runs\/(\n|$)/.test(gi));
+});
+
+// ---------------------------------------------------------------- workdir prep (Step 3)
+
+const SYN = join(FIX, 'task-syn');
+
+test('workdir: prepareWorkdir copies fixture, git-inits, and commits (spec §7.1)', () => {
+  const runsRoot = tmp();
+  const { runId, runDir, workDir } = prepareWorkdir(SYN, runsRoot);
+  assert.match(runId, /^\d{8}T\d{6}-bugfix-task-syn$/);
+  assert.equal(runDir, join(runsRoot, runId));
+  assert.equal(workDir, join(runDir, 'work'));
+  assert.ok(existsSync(join(workDir, '.git')));
+  assert.equal(readFileSync(join(workDir, 'failing.js'), 'utf8'),
+    readFileSync(join(SYN, 'fixture', 'failing.js'), 'utf8'));
+  const log = spawnSync('git', ['-C', workDir, 'log', '--oneline'], { encoding: 'utf8' });
+  assert.equal(log.status, 0);
+  assert.ok(log.stdout.trim().length > 0, 'initial commit exists');
+  // source fixture untouched
+  assert.ok(!existsSync(join(SYN, 'fixture', '.git')));
+  rmSync(runsRoot, { recursive: true, force: true });
+});
+
+test('workdir: runId collisions within the same second get a -2 suffix', () => {
+  const runsRoot = tmp();
+  const a = prepareWorkdir(SYN, runsRoot);
+  const b = prepareWorkdir(SYN, runsRoot);
+  assert.notEqual(a.runId, b.runId);
+  assert.ok(b.runId.startsWith(a.runId.replace(/(-\d+)?$/, '')));
+  assert.ok(existsSync(join(b.workDir, 'failing.js')));
+  rmSync(runsRoot, { recursive: true, force: true });
+});
+
+test('workdir: missing fixture dir throws', () => {
+  assert.throws(() => prepareWorkdir(join(FIX, 'no-such'), tmp()), /fixture/);
 });
