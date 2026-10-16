@@ -228,7 +228,7 @@ Raw events (tool errors, guard blocks) land in pi's native `sessions/**/*.jsonl`
 
 ### Native tool performance
 
-Every number below is measured, not guessed — methodology and raw runs live in `benchmark/runs/piread-microbench-*.md` and `CHANGELOG.md`.
+Every number below is measured, not guessed — methodology and raw runs live in `benchmark/runs/*-microbench-*.md` and `CHANGELOG.md`.
 
 **`pidx` — session-log indexing** (Rust vs the prior Node parser; this repo's archive, 474 sessions / 85 MB of transcripts, verified 2026-10-18):
 
@@ -254,18 +254,18 @@ Warm runs are O(changes), not O(archive): the state store replays unchanged sess
 
 The 60 KB single-blob class sits at parity (residual Δ ≤ +0.07 ms ≈ noise floor; the earlier regression is closed). The persistent daemon removes the **3.4–3.6 ms per-call spawn floor** the one-shot CLI arm pays (3.1–5.7 ms); daemon RSS is 2 MB. Structural floor: ~0.083 ms round-trip scheduling + ~0.10 ms Node-side `JSON.parse` of large envelopes — pinned by result parity with the built-in.
 
-**`piedit` — text-file edits** (daemon dispatch vs the built-in `edit`; linux x64, node v24, N=100/arm, p50 ms, two runs agreeing within noise, `benchmark/runs/piedit-microbench-2026-10-15.md`):
+**`piedit` — text-file edits** (daemon dispatch vs the built-in `edit`; linux x64, node v24, N=100/arm, p50 ms, three runs agreeing within noise — confirmation run shown — `benchmark/runs/piedit-microbench-2026-10-16.md`, after the perf pass `b34e7ba`):
 
 | Corpus class | Bytes | Built-in `edit` | Rust `piedit` (daemon) | Δ p50 | One-shot spawn |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Small exact | 17 | 0.527 | 0.335 | **−0.19 ms** | 3.340 |
-| Small fuzzy (trailing ws) | 30 | 0.499 | 0.326 | **−0.17 ms** | 3.230 |
-| Mid exact (1 of 200) | 1.8 KB | 0.745 | 0.774 | +0.03 ms | 3.511 |
-| Mid multi (2 of 200) | 1.8 KB | 0.793 | 0.688 | **−0.10 ms** | 3.307 |
-| Multiline block | 18.9 KB | 2.665 | 2.688 | +0.02 ms | 4.205 |
-| Large (1 MiB) | 589 KB | 89.373 | 120.304 | +30.9 ms | 37.667 |
+| Small exact | 17 | 0.405 | 0.321 | **−0.08 ms** | 3.242 |
+| Small fuzzy (trailing ws) | 30 | 0.474 | 0.311 | **−0.16 ms** | 3.295 |
+| Mid exact (1 of 200) | 1.8 KB | 0.913 | 0.657 | **−0.26 ms** | 3.336 |
+| Mid multi (2 of 200) | 1.8 KB | 0.787 | 0.560 | **−0.23 ms** | 3.260 |
+| Multiline block | 18.9 KB | 2.602 | 2.177 | **−0.42 ms** | 3.626 |
+| Large (~1 MiB) | 589 KB | 88.118 | 90.014 | ~+1.9 ms (parity) | 34.993 |
 
-On the common small/mid edits the daemon arm is **at or slightly below** the built-in (the win is the Rust match/apply pipeline once the ~4.3 ms spawn floor is amortized); the one-shot column shows why a daemon was needed at all. The **large (>1 MiB)** class is the one regression: `baseContent` + `newContent` cross the IPC boundary as JSON and diff/patch rendering stays on the TypeScript helpers (spec D2), so the envelope round-trip outweighs the native match win — the honest guidance there is to let the built-in handle very large files (size-based routing is the documented follow-up).
+Every class is at or below the built-in. The wins come from the 2026-10-16 perf pass: one shared `FuzzyView` (the JS semantics re-normalize the whole content **per edit** — matching pre-pass, replacement base, and every occurrence count; the Rust side builds the fuzzy view lazily once, observably identical because the function is deterministic and idempotent), NFKC skipped entirely for pure-ASCII input with no per-line allocations, `Cow` LF/BOM normalization, and Buffer-based line scanning in both Node clients (the previous `setEncoding` string path re-flattened the rope on every pipe chunk — O(n²) on MiB-scale envelopes). The large class sits at parity (Δ ≤ +1.9 ms on an ~88 ms total): ~74 ms of it is the TypeScript `generateDiffString` + `generateUnifiedPatch` pair, which spec D2 pins to the shared helpers — the built-in pays the identical cost — while the isolated native read→match→write round-trip (one-shot arm) completes in ~31–35 ms. The earlier +30.9 ms regression and the size-based-routing follow-up are retired. Parity held throughout: crate 25/25, `tests/piedit-parity.test.mjs` 40/40, clippy `-D warnings` clean.
 
 ## Context layers
 
