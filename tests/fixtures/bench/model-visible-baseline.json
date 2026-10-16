@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-10-16T20:49:40.571Z",
+  "generatedAt": "2026-10-16T20:52:18.675Z",
   "rows": [
     {
       "name": "read small (4ln)",
       "tool": "piread",
       "native": {
-        "bytes": 39,
-        "tokens": 10,
-        "words": 6,
+        "bytes": 23,
+        "tokens": 6,
+        "words": 4,
         "rejected": false
       },
       "builtin": {
@@ -21,9 +21,9 @@
       "name": "read mid200 (full)",
       "tool": "piread",
       "native": {
-        "bytes": 6596,
-        "tokens": 1649,
-        "words": 1402,
+        "bytes": 6580,
+        "tokens": 1645,
+        "words": 1400,
         "rejected": false
       },
       "builtin": {
@@ -37,9 +37,9 @@
       "name": "read mid200 (offset/limit)",
       "tool": "piread",
       "native": {
-        "bytes": 709,
-        "tokens": 178,
-        "words": 151,
+        "bytes": 693,
+        "tokens": 174,
+        "words": 149,
         "rejected": false
       },
       "builtin": {
@@ -66,82 +66,82 @@
       }
     },
     {
-      "name": "read repo ~100ln",
+      "name": "read ~100ln",
       "tool": "piread",
       "native": {
-        "bytes": 3908,
-        "tokens": 977,
-        "words": 496,
+        "bytes": 4435,
+        "tokens": 1109,
+        "words": 614,
         "rejected": false
       },
       "builtin": {
-        "bytes": 3892,
-        "tokens": 973,
-        "words": 494,
+        "bytes": 4435,
+        "tokens": 1109,
+        "words": 614,
         "rejected": false
       }
     },
     {
-      "name": "read repo ~300ln",
+      "name": "read ~300ln",
       "tool": "piread",
       "native": {
-        "bytes": 11831,
-        "tokens": 2958,
-        "words": 1574,
+        "bytes": 12343,
+        "tokens": 3086,
+        "words": 1701,
         "rejected": false
       },
       "builtin": {
-        "bytes": 11815,
-        "tokens": 2954,
-        "words": 1572,
+        "bytes": 12343,
+        "tokens": 3086,
+        "words": 1701,
         "rejected": false
       }
     },
     {
-      "name": "read repo ~1000ln",
+      "name": "read ~1000ln",
       "tool": "piread",
       "native": {
-        "bytes": 36324,
-        "tokens": 9081,
-        "words": 4099,
+        "bytes": 41275,
+        "tokens": 10319,
+        "words": 5688,
         "rejected": false
       },
       "builtin": {
-        "bytes": 36308,
-        "tokens": 9077,
-        "words": 4097,
+        "bytes": 41275,
+        "tokens": 10319,
+        "words": 5688,
         "rejected": false
       }
     },
     {
-      "name": "read repo ~1922ln (largest)",
+      "name": "read ~1922ln",
       "tool": "piread",
       "native": {
-        "bytes": 50574,
-        "tokens": 12644,
-        "words": 6521,
+        "bytes": 51188,
+        "tokens": 12797,
+        "words": 7052,
         "rejected": false
       },
       "builtin": {
-        "bytes": 50558,
-        "tokens": 12640,
-        "words": 6519,
+        "bytes": 51188,
+        "tokens": 12797,
+        "words": 7052,
         "rejected": false
       }
     },
     {
-      "name": "read repo ~1000ln (repeat)",
+      "name": "read ~1000ln (repeat)",
       "tool": "piread",
       "native": {
-        "bytes": 36324,
-        "tokens": 9081,
-        "words": 4099,
+        "bytes": 41275,
+        "tokens": 10319,
+        "words": 5688,
         "rejected": false
       },
       "builtin": {
-        "bytes": 36308,
-        "tokens": 9077,
-        "words": 4097,
+        "bytes": 41275,
+        "tokens": 10319,
+        "words": 5688,
         "rejected": false
       }
     },
@@ -451,14 +451,14 @@
   ],
   "totals": {
     "native": {
-      "bytes": 150159,
-      "tokens": 37547,
-      "words": 19079
+      "bytes": 161666,
+      "tokens": 40424,
+      "words": 23027
     },
     "builtin": {
-      "bytes": 261237,
-      "tokens": 65316,
-      "words": 36741
+      "bytes": 272872,
+      "tokens": 68225,
+      "words": 40705
     }
   }
 }

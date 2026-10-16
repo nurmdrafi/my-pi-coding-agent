@@ -42,8 +42,13 @@ import { Text } from "@earendil-works/pi-tui";
 
 const execFileAsync = promisify(execFile);
 
-/** TUI/model-visible marker appended to native-served content. */
-const NATIVE_MARKER = "\n[piread native]";
+    // TUI/model-visible marker: retired. The rung is now carried on
+    // `details.via` (observability) instead of appending text to content,
+    // which cost ~4 model tokens per read for no semantic value.
+
+/** Rung that served a call, surfaced in `details.via` (TUI/observability only;
+ * never enters model-visible content). */
+type Via = "daemon" | "oneshot" | "builtin";
 
 /** Transport-level daemon failure — the call moves to the one-shot rung. */
 class DaemonUnavailableError extends Error {
@@ -147,7 +152,7 @@ type ReadParams = { path: string; offset?: number; limit?: number };
 /** Structural shape of the built-in read result — the only contract piread rebuilds. */
 type ReadResult = {
   content: { type: "text"; text: string }[];
-  details?: { truncation?: unknown } | undefined;
+  details?: { truncation?: unknown; via?: Via } | undefined;
   structuredContent?: unknown;
 };
 
@@ -405,7 +410,9 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     // Observability: one line per fallback (spec §5.2) + violation log.
     process.stderr.write(`piread: fallback (${reason}) path=${params.path}\n`);
     logViolation(reason, params.path);
-    return builtinExecute(toolCallId, params, signal, onUpdate, ctx);
+    const result = await builtinExecute(toolCallId, params, signal, onUpdate, ctx);
+    // Tag the rung for observability without touching model-visible content.
+    return { ...result, details: { ...(result.details ?? {}), via: "builtin" as Via } };
   };
 
   const execute = async (
@@ -431,7 +438,10 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     }
     const lower = path.toLowerCase();
     if (IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
-      return builtinExecute(toolCallId, params, signal, onUpdate, ctx);
+      // Images are always served by the built-in instance; tag the rung for
+      // observability (details.via never enters model-visible content).
+      const result = await builtinExecute(toolCallId, params, signal, onUpdate, ctx);
+      return { ...result, details: { ...(result.details ?? {}), via: "builtin" as Via } };
     }
 
     const spawnCwd = (ctx as { cwd?: string } | undefined)?.cwd || process.cwd();
@@ -445,12 +455,14 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     // to the one-shot rung; only the terminal failure emits the fallback
     // line — exactly one per call.
     let envelope: PireadEnvelope;
+    let via: Via = "daemon";
     try {
       envelope = await daemonRequest(resolvedPath, offset, limit, spawnCwd, signal);
     } catch (err) {
       if (isAbort(err, signal)) throw new Error("Operation aborted");
       try {
         envelope = await oneshotDispatch(resolvedPath, offset, limit, spawnCwd, signal);
+        via = "oneshot";
       } catch (err2) {
         if (isAbort(err2, signal)) throw new Error("Operation aborted");
         const reason = err2 instanceof OneshotError ? err2.reason : `spawn ${String(err2)}`;
@@ -472,8 +484,8 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     }
 
     return {
-      content: [{ type: "text", text: envelope.content + NATIVE_MARKER }],
-      details: envelope.truncation ? { truncation: envelope.truncation } : undefined,
+      content: [{ type: "text", text: envelope.content }],
+      details: { via, ...(envelope.truncation ? { truncation: envelope.truncation } : {}) },
       structuredContent: envelope.content,
     };
   };

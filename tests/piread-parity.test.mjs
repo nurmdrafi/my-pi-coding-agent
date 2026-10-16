@@ -128,11 +128,20 @@ async function armResult(tool, params, ctx) {
 async function parityCase(params, ctx) {
   const a = await armResult(wrapped, params, ctx);
   const b = await armResult(oracle, params, ctx);
-  // piread appends a "[piread native]" marker line to TUI-visible text
-  // (observability by design); strip it before the byte-parity compare.
-  const MARKER = "\n[piread native]";
-  if (!a.rejected && a.value?.content?.[0]?.text?.endsWith(MARKER)) {
-    a.value.content[0].text = a.value.content[0].text.slice(0, -MARKER.length);
+  // The rung is now carried on details.via (TUI/observability) instead of a
+  // "[piread native]" content marker. Assert the rung explicitly, then drop
+  // `via` before the byte-parity compare, whose oracle has no such field.
+  if (!a.rejected && !b.rejected) {
+    assert.ok(
+      a.value?.details?.via === "daemon" || a.value?.details?.via === "oneshot" || a.value?.details?.via === "builtin",
+      `piread result missing details.via (got ${a.value?.details?.via})`,
+    );
+  }
+  if (!a.rejected && a.value?.details) {
+    delete a.value.details.via;
+    // Match the oracle's own-property `details: undefined` (deepStrictEqual
+    // distinguishes an absent key from one explicitly set to undefined).
+    if (Object.keys(a.value.details).length === 0) a.value.details = undefined;
   }
   try {
     assert.deepStrictEqual(a, b);
@@ -279,11 +288,12 @@ add("daemon: concurrent dispatches keep responses matched", async () => {
       limit: i === 3 ? 2 : undefined,
     });
     try {
-      // Strip the "[piread native]" marker (observability) before compare.
-      const MARKER = "\n[piread native]";
+      // Drop details.via before the structural compare (oracle has no such
+      // field); the rung itself is asserted by the primary parity cases.
       const a = wrappedResults[i];
-      if (!a.rejected && a.value?.content?.[0]?.text?.endsWith(MARKER)) {
-        a.value.content[0].text = a.value.content[0].text.slice(0, -MARKER.length);
+      if (!a.rejected && a.value?.details) {
+        delete a.value.details.via;
+        if (Object.keys(a.value.details).length === 0) a.value.details = undefined;
       }
       assert.deepStrictEqual(a, b);
     } catch (e) {

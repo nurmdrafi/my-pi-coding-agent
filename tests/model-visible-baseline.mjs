@@ -120,16 +120,21 @@ const mkDupFixtures = () => ({
   oracle: mkFile("dup.oracle.ts", DUP_BODY),
 });
 
-// real repo files at increasing sizes (source: repo itself, deterministic).
-const repoFile = (rel, targetLines) => {
-  const src = readFileSync(join(ROOT, rel), "utf8").split("\n");
-  const body = src.slice(0, targetLines).join("\n") + "\n";
-  return mkFile(`repo-${targetLines}-${rel.replaceAll("/", "_")}`, body);
+// Read corpus at increasing sizes. Deterministic REGARDLESS of live repo
+// edits: each file is a fixed, seeded sample of N lines drawn from a real
+// source snapshot committed alongside this harness (tests/fixtures/bench/
+// read-corpus.txt), repeated/truncated to the exact line count. Slicing live
+// sources would make the baseline drift whenever those sources change.
+const CORPUS_SRC = join(ROOT, "tests", "fixtures", "bench", "read-corpus.txt");
+const corpusLines = readFileSync(CORPUS_SRC, "utf8").split("\n");
+const corpusFile = (targetLines) => {
+  const body = Array.from({ length: targetLines }, (_, i) => corpusLines[i % corpusLines.length]).join("\n") + "\n";
+  return mkFile(`read-${targetLines}.txt`, body);
 };
-const repo100 = repoFile("docs/custom-tools-architecture.md", 100);
-const repo300 = repoFile("extensions/piread/index.ts", 300);
-const repo1000 = repoFile("custom-tools/pibash/src/compress.rs", 1000);
-const repo5000 = repoFile("CHANGELOG.md", 1922); // CHANGELOG is the largest tracked text file
+const repo100 = corpusFile(100);
+const repo300 = corpusFile(300);
+const repo1000 = corpusFile(1000);
+const repo1922 = corpusFile(1922);
 
 // The built-in bash tool reads ctx.sessionManager for PI_SESSION_ID; the native
 // tools tolerate its absence. Supply a minimal stub so both arms run.
@@ -146,11 +151,11 @@ const readCases = [
   ["read mid200 (full)", { path: F("mid200.txt") }],
   ["read mid200 (offset/limit)", { path: F("mid200.txt"), offset: 50, limit: 20 }],
   ["read missing", { path: F("nope.txt") }],
-  ["read repo ~100ln", { path: repo100 }],
-  ["read repo ~300ln", { path: repo300 }],
-  ["read repo ~1000ln", { path: repo1000 }],
-  ["read repo ~1922ln (largest)", { path: repo5000 }],
-  ["read repo ~1000ln (repeat)", { path: repo1000 }], // sizes dedupe potential
+  ["read ~100ln", { path: repo100 }],
+  ["read ~300ln", { path: repo300 }],
+  ["read ~1000ln", { path: repo1000 }],
+  ["read ~1922ln", { path: repo1922 }],
+  ["read ~1000ln (repeat)", { path: repo1000 }], // sizes dedupe potential
 ];
 
 const bashCases = [

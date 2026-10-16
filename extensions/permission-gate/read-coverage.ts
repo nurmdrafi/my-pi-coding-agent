@@ -139,11 +139,9 @@ export function countTextLines(content: unknown[]): {
     .join("\n");
   if (!text) return { lines: 0, truncated: false };
   const lines = text.split("\n");
-  // piread results append a "[piread native]" marker line (see
-  // extensions/piread) — strip it before counting so certified spans line
-  // up with the built-in read's line numbering (fallback-rung results carry
-  // no marker and are unaffected)
-  if (lines[lines.length - 1] === "[piread native]") lines.pop();
+  // (piread no longer appends a "[piread native]" marker line: the rung is now
+  // carried on details.via, which never enters content, so line numbering here
+  // matches the built-in read directly.)
   // strip the read tool's trailing truncation note ("[N more lines in file…]"
   // or "[Showing lines A-B of N…]") and the blank separator line before it —
   // the note is separated by "\n\n", so without this every windowed read

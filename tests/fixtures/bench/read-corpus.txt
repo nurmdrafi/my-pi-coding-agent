@@ -1,0 +1,60 @@
+//! Deterministic, command-aware tool-output compression.
+//!
+//! No LLM, no timestamps, no thread/iteration nondeterminism: the same command
+//! and the same bytes always produce the same output, byte-for-byte. The
+//! classifier picks a [`CommandKind`] from the command string; the formatters
+//! turn oversized output into a head-tail or error-priority view that always
+//! preserves UTF-8 boundaries, always carries an explicit omission marker with
+//! an omitted-size count, and never drops actionable lines (errors, warnings,
+//! failures, panics, assertions, stack frames, file/line refs, final summary).
+//!
+//! This module is pure: it never touches the filesystem. The spill file — the
+//! lossless copy of the full output — is owned by [`crate::accumulator`] and is
+//! only read from, never written or extended here.
+
+use crate::truncate::{
+    js_byte_length, split_lines, truncate_string_to_bytes_from_end,
+    truncate_string_to_bytes_from_start,
+};
+
+/// The compression target: the model-visible budget enforced by the
+/// permission-gate H1 cap (40 lines / 2 KB, `extensions/permission-gate/`
+/// `bash-cap.ts`). Tier-1 prunes to THIS budget so `error_priority` / `head_tail`
+/// windows form inside the envelope the model actually sees, and the gate can
+/// pass the result through without re-cutting rescued diagnostics.
+///
+/// Distinct from the accumulator's `DEFAULT_MAX_LINES` / `DEFAULT_MAX_BYTES`
+/// (2000 / 50 KB), which remain the spill + parity-envelope cap matching the
+/// built-in oracle.
+pub const COMPRESS_MAX_LINES: usize = 40;
+pub const COMPRESS_MAX_BYTES: usize = 2048;
+
+/// True when `text` carries a Tier-1 omission marker, i.e. this tool already
+/// compressed it. The permission gate uses the same signal to skip H1; exposed
+/// for tests and consumers that verify the wire contract.
+#[must_use]
+#[allow(dead_code)]
+pub fn has_omission_marker(text: &str) -> bool {
+    text.contains(OMISSION_TAG)
+}
+
+/// Command family inferred from the command string.
+///
+/// Deterministic first-match-wins over shell-separated segments, so
+/// `rg foo && cargo test` classifies as [`CommandKind::Test`] (the first
+/// recognized segment), not Search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandKind {
+    Test,
+    Build,
+    Git,
+    Search,
+    Log,
+    Generic,
+}
+
+/// Which formatter produced the visible text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Strategy {
+    /// Output fit the inline budget: verbatim, no omission.
+    None,
