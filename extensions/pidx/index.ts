@@ -10,11 +10,19 @@
  * needed). Failures throw — the model sees a failed tool result and can
  * fall back to the Node parser (session-audit slow path).
  *
+ * Context discipline (token economy): extracts are written to a file by
+ * default and ONLY a compact pointer line enters the model context. The raw
+ * JSONL listing (one long line per session) is never dumped inline unless the
+ * caller opts in with `stdout: true`, and even then it is hard-capped.
+ * PI_PIDX_MAX_INLINE toggles that cap (default 2000 chars).
+ *
  * Load guard: default on; PI_NATIVE_PIDX=0 opts out.
  */
 import { execFile } from "node:child_process";
-import { resolve, dirname } from "node:path";
+import { mkdirSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 import { promisify } from "node:util";
 // pi-ai ships nested under pi-coding-agent (not a top-level dependency here);
 // deep import avoids adding a dependency entry for one TypeBox schema builder.
@@ -32,19 +40,28 @@ const extDir = dirname(fileURLToPath(import.meta.url));
 /** Machine-local build output (scripts/bootstrap.sh), no absolute user paths. */
 const PIDX_BIN = resolve(extDir, "../../bin/pidx");
 
+/** Where default extracts go — beside the pidx cache, never in the repo. */
+const CACHE_DIR = join(homedir(), ".pi", "agent", ".cache");
+const DEFAULT_OUT = join(CACHE_DIR, "pidx-extracts.jsonl");
+
+/** Hard cap for the opt-in inline path, so a stray dump cannot blow context. */
+const MAX_INLINE_CHARS = Number(process.env.PI_PIDX_MAX_INLINE ?? 2000);
+
 type PidxParams = {
   sessionsDir?: string;
   state?: string;
   out?: string;
   max?: number;
   force?: boolean;
+  /** Opt in to returning raw extracts in context (hard-capped). Default false. */
+  stdout?: boolean;
 };
 
 const pidxTool = defineTool({
   name: "pidx",
   label: "pidx",
   description:
-    "Index pi session logs into compact per-session extracts (turns, tool calls with param hashes, tool results, compactions, skill loads) via the native Rust indexer. Incremental: unchanged files reuse the cached extract, so warm runs only process changes. Returns one JSON line per session (newest first) plus a summary line. Use this as the fast path for session-audit and session-history analysis.",
+    "Index pi session logs into compact per-session extracts (turns, tool calls with param hashes, tool results, compactions, skill loads) via the native Rust indexer. Incremental: unchanged files reuse the cached extract, so warm runs only process changes. Extracts are written to a file (default .cache/pidx-extracts.jsonl) and only a short pointer plus summary enters context — read or query that file for details. Pass stdout:true only when the listing itself is needed (hard-capped). Use this as the fast path for session-audit and session-history analysis.",
   parameters: Type.Object({
     sessionsDir: Type.Optional(
       Type.String({ description: "Sessions directory to scan (default: pi default sessions dir)" }),
@@ -53,18 +70,29 @@ const pidxTool = defineTool({
       Type.String({ description: "Cache/state file path (default: repo .pidx-state.bin)" }),
     ),
     out: Type.Optional(
-      Type.String({ description: "Write extracts to this path instead of returning them (default: stdout)" }),
+      Type.String({ description: "Path for the extracts JSONL (default: <home>/.pi/agent/.cache/pidx-extracts.jsonl). Never dumped inline." }),
     ),
     max: Type.Optional(Type.Number({ description: "Limit number of sessions in output" })),
     force: Type.Optional(Type.Boolean({ description: "Re-index everything, ignoring the cache" })),
+    stdout: Type.Optional(
+      Type.Boolean({ description: "Return the raw extracts in context instead of only a pointer (hard-capped; default false)" }),
+    ),
   }),
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 
   async execute(_toolCallId, params: PidxParams, signal) {
+    // Token economy: extracts go to a file unless the caller explicitly opts
+    // into the (capped) inline path. This keeps the per-call context cost at
+    // one short line instead of a full JSONL dump of every session.
+    const inline = params.stdout === true;
+    const outPath = params.out ?? (inline ? undefined : DEFAULT_OUT);
+
+    if (outPath) mkdirSync(dirname(outPath), { recursive: true });
+
     const args: string[] = [];
     if (params.sessionsDir) args.push("--sessions-dir", params.sessionsDir);
     if (params.state) args.push("--state", params.state);
-    if (params.out) args.push("--out", params.out);
+    if (outPath) args.push("--out", outPath);
     if (params.max !== undefined) args.push("--max", String(params.max));
     if (params.force) args.push("--force");
 
@@ -82,11 +110,32 @@ const pidxTool = defineTool({
       summary = stderr.trim();
     }
 
-    const content = stdout.trim() || (params.out ? `Extracts written to ${params.out}` : "No sessions found.");
+    const s = (summary ?? {}) as Record<string, unknown>;
+    const summaryBits =
+      summary && typeof summary === "object"
+        ? `sessions=${s.sessions ?? "?"} parsed=${s.parsed ?? "?"} reused=${s.reused ?? "?"}`
+        : "summary unavailable";
+
+    let content: string;
+    if (inline) {
+      // Explicit opt-in: still capped so a dump cannot blow context.
+      const raw = stdout.trim();
+      if (raw.length <= MAX_INLINE_CHARS) {
+        content = raw || "No sessions found.";
+      } else {
+        const lines = raw.split("\n").length;
+        content = `${raw.slice(0, MAX_INLINE_CHARS)}\n… [truncated: ${lines} sessions, ${raw.length} chars — full listing not inlined]`;
+      }
+    } else if (stdout.trim().length > 0) {
+      // Defensive: --out given but tool still emitted bytes; do not inline them.
+      content = `Extracts written to ${outPath} (${summaryBits}); output suppressed to save context.`;
+    } else {
+      content = `Extracts written to ${outPath} (${summaryBits}). Read or query that file for details.`;
+    }
 
     return {
       content: [{ type: "text", text: content }],
-      details: { summary, bin: PIDX_BIN },
+      details: { summary, out: outPath, inline, bin: PIDX_BIN },
     };
   },
 
@@ -96,6 +145,7 @@ const pidxTool = defineTool({
     if (args.sessionsDir) bits.push(args.sessionsDir);
     if (args.max !== undefined) bits.push(`max=${args.max}`);
     if (args.force) bits.push("--force");
+    if (args.stdout) bits.push("stdout");
     text += theme.fg("text", bits.join(" ") || "sessions");
     return new Text(text, 0, 0);
   },

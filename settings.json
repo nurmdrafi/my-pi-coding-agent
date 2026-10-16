@@ -10,6 +10,11 @@
     "deepseek/deepseek-v4-pro": "off"
   },
   "hideThinkingBlock": true,
+  "defaultTools": ["+codemode"],
+  "codemode": {
+    "mode": "only",
+    "inlineBudget": 0
+  },
   "compaction": {
     "enabled": true,
     "midTurnEnabled": true,
