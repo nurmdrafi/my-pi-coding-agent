@@ -91,7 +91,7 @@ const pidxTool = defineTool({
   },
 
   renderCall(args, theme) {
-    let text = theme.fg("toolTitle", theme.bold("pidx "));
+    let text = theme.fg("success", theme.bold("pidx "));
     const bits: string[] = [];
     if (args.sessionsDir) bits.push(args.sessionsDir);
     if (args.max !== undefined) bits.push(`max=${args.max}`);

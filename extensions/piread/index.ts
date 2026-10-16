@@ -438,7 +438,7 @@ export default function pireadExtension(pi: ExtensionAPI): void {
       const start = args.offset ?? 1;
       let range = `:${start}`;
       if (args.limit) range = `:${start}-${start + args.limit - 1}`;
-      let text = theme.fg("toolTitle", theme.bold("piread "));
+      let text = theme.fg("success", theme.bold("piread "));
       text += theme.fg("accent", `${args.path}${range}`);
       return new Text(text, 0, 0);
     },
