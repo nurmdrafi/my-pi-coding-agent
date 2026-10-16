@@ -1,7 +1,7 @@
 # Change Discipline
 
-- Simplest thing that works — **ponytail ladder** (YAGNI → this codebase → stdlib → platform → installed dep → one line → then code), after understanding problem.
-- Bug fix = root cause; `rg` callers first.
-- Deployment constraints first: fix touches env vars, network/TLS, proxy, auth, startup → ask once, batched, about deployment realities (servers, env never set, proxies). Correct fix breaking standing deployment = regression.
-- Prefer deleting over adding when both solve task.
+- Simplest thing that works — ponytail ladder: YAGNI → this codebase → stdlib → platform → installed dep → one line → code. Understand the problem first.
+- Bug fix = root cause; `rg` the callers first.
+- Deployment constraints first: fix touches env vars, network/TLS, proxy, auth or startup → ask once, batched, about deployment realities (servers, env never set, proxies). A correct fix that breaks a standing deployment is a regression.
+- Addition and deletion both solve the task → prefer deletion.
 - Never delete beyond approved scope.
