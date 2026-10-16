@@ -31,6 +31,9 @@ struct Request {
     path: String,
     offset: Option<u64>,
     limit: Option<u64>,
+    /// Per-line char cap; absent = no cap (byte parity with the built-in).
+    #[serde(default)]
+    line_cap: Option<u64>,
     /// Directory relative paths resolve against (default: process cwd).
     cwd: Option<String>,
 }
@@ -86,7 +89,7 @@ fn handle_into(req: &Request, buf: &mut Vec<u8>) {
             .into_owned()
     });
     let resolved = pipeline::resolve_path_against(&req.path, &base);
-    match pipeline::read_text(&resolved, &req.path, req.offset, req.limit) {
+    match pipeline::read_text(&resolved, &req.path, req.offset, req.limit, req.line_cap) {
         Ok(out) => write_success_with_id(
             buf,
             Some(&req.id),

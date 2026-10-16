@@ -360,6 +360,49 @@ add("cross-rung: daemon and built-in produce byte-identical content", async () =
   return { ok: true };
 });
 
+// ---- PI_READ_LINE_CAP (default OFF) ----
+// Off by default the native read must stay byte-identical to the built-in
+// (edit's exact matching depends on line fidelity). When set, only lines OVER
+// the cap are truncated, with a `...[+N chars]` marker; shorter lines are
+// untouched.
+
+add("line-cap: default OFF keeps long lines byte-identical to the oracle", async () => {
+  const path = join(dir, "long-lines");
+  const before = process.env.PI_READ_LINE_CAP;
+  delete process.env.PI_READ_LINE_CAP;
+  try {
+    const a = await armResult(wrapped, { path });
+    const b = await armResult(oracle, { path });
+    assert.ok(!a.rejected && !b.rejected, "both arms should succeed");
+    assert.equal(a.value.content[0].text, b.value.content[0].text, "default OFF must be byte-identical");
+    assert.ok(!a.value.content[0].text.includes("...[+"), "no marker when the cap is off");
+  } finally {
+    if (before === undefined) delete process.env.PI_READ_LINE_CAP;
+    else process.env.PI_READ_LINE_CAP = before;
+  }
+  return { ok: true };
+});
+
+add("line-cap: set caps only lines over the limit, tagging the dropped count", async () => {
+  const path = join(dir, "long-lines"); // 20 lines of 300 chars each
+  const before = process.env.PI_READ_LINE_CAP;
+  process.env.PI_READ_LINE_CAP = "50";
+  try {
+    const r = await armResult(wrapped, { path });
+    assert.ok(!r.rejected, `capped read should succeed: ${r.error}`);
+    const text = r.value.content[0].text;
+    const lines = text.split("\n");
+    // Each fixture line is 300 chars; capped at 50 → 50 + "...[+250 chars]".
+    assert.match(lines[0], /^\d{3}:x{46}\.\.\.\[\+250 chars\]$/, `first line: ${lines[0]}`);
+    assert.ok(text.includes("...[+250 chars]"), "dropped count marker missing");
+    assert.ok(!lines[0].includes("x".repeat(47)), "line not actually cut at the cap");
+  } finally {
+    if (before === undefined) delete process.env.PI_READ_LINE_CAP;
+    else process.env.PI_READ_LINE_CAP = before;
+  }
+  return { ok: true };
+});
+
 // ---- daemon (persistent dispatch) lock-ins ----
 // The wrapped tool now dispatches through a lazy-started `piread --serve`
 // daemon (spawn-floor fix). These pin the client behaviors parity does not:

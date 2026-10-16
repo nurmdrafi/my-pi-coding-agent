@@ -138,7 +138,7 @@ Four Rust crates in `custom-tools/` register as their own first-class tools, so 
 | `pibash` | built-in `bash`                | bash-kind in permission-gate, so the H1 cap, R10 re-run guard, and destructive analysis apply unchanged |
 | `pidx`   | Node session-log parser        | compact per-session extracts, incremental via a (size, mtime) cache |
 
-Native tools forward the context env keys the built-in tools inject — `PI_SESSION_ID`, `PI_SESSION_FILE`, `PI_PROVIDER`, `PI_MODEL`, `PI_REASONING_LEVEL` — so commands see the same `PI_*` context. `PI_CODING_AGENT_DIR` overrides the config directory, and `PI_PIDX_MAX_INLINE` changes the inline extract cap (default 2000 chars).
+Native tools forward the context env keys the built-in tools inject — `PI_SESSION_ID`, `PI_SESSION_FILE`, `PI_PROVIDER`, `PI_MODEL`, `PI_REASONING_LEVEL` — so commands see the same `PI_*` context. `PI_CODING_AGENT_DIR` overrides the config directory, `PI_PIDX_MAX_INLINE` changes the inline extract cap (default 2000 chars), and `PI_READ_LINE_CAP` caps piread line width (default off; when set to a positive integer, lines over the cap are truncated to that many characters plus a `...[+N chars]` marker, leaving shorter lines and whitespace byte-identical).
 
 Parity is pinned by `tests/piread-parity.test.mjs`, `tests/piedit-parity.test.mjs`, and `tests/pibash-parity.test.mjs`, plus `tests/piedit-diff-fuzz.mjs`. Measured speedups and full methodology live in [`benchmark/runs/`](benchmark/runs) and [`CHANGELOG.md`](CHANGELOG.md).
 

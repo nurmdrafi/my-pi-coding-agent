@@ -5,6 +5,30 @@ the token impact and the affected assertions. Any change listed here must be
 the *only* reason an otherwise-parity assertion differs; everything else stays
 byte-identical (see `tests/*-parity.test.mjs`).
 
+## piread — `PI_READ_LINE_CAP` (default OFF)
+
+**What.** When `PI_READ_LINE_CAP` is set to a positive integer, native piread
+truncates each selected line longer than the cap to that many characters and
+appends `...[+N chars]` (N = characters dropped). Lines at or under the cap,
+and all whitespace, are untouched. When unset (default) or non-positive, the
+output is byte-identical to the built-in read.
+
+**Why.** From real session logs, lines over 2,000 chars accounted for 1.490% of
+all read bytes (26 lines across 25 calls, 136,556 bytes) — above the 0.5%
+threshold set for this change. A default cap would break `edit`'s exact
+matching, so the cap is opt-in only and never rewrites normal lines.
+
+**Token impact.** Off by default: zero. When enabled, proportional to the
+oversized-line share (≈1.5% of read bytes corpus-wide; lines up to 40,010
+chars were observed).
+
+**Affected assertions.** `tests/piread-parity.test.mjs`:
+- `line-cap: default OFF keeps long lines byte-identical to the oracle`
+  (the default path is unchanged).
+- `line-cap: set caps only lines over the limit, tagging the dropped count`.
+- Rust unit tests: `pipeline::tests::file::line_cap_truncates_only_long_lines`,
+  `tests::parses_line_cap_and_defaults_off`.
+
 ## piread — `details.via` and `details.fallbackReason`
 
 **What.** Native piread results carry `details.via` with the serving rung:

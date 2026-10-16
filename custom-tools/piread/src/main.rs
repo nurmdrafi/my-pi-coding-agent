@@ -38,7 +38,7 @@ fn main() -> ExitCode {
         Ok(Parsed::Serve) => serve::serve(),
         Ok(Parsed::Run(run)) => {
             let resolved = pipeline::resolve_path(&run.path);
-            match pipeline::read_text(&resolved, &run.path, run.offset, run.limit) {
+            match pipeline::read_text(&resolved, &run.path, run.offset, run.limit, run.line_cap) {
                 Ok(out) => {
                     let json = success_envelope(
                         &out.content,
@@ -100,9 +100,18 @@ mod tests {
         let r = ok(&["--path", "/tmp/x", "--offset", "5", "--limit", "10"]);
         assert_eq!(r.offset, Some(5));
         assert_eq!(r.limit, Some(10));
+        assert_eq!(r.line_cap, None);
         let r = ok(&["--path=/tmp/x", "--offset=7"]);
         assert_eq!(r.path, "/tmp/x");
         assert_eq!(r.offset, Some(7));
+    }
+
+    #[test]
+    fn parses_line_cap_and_defaults_off() {
+        assert_eq!(ok(&["--path", "/x"]).line_cap, None);
+        assert_eq!(ok(&["--path", "/x", "--line-cap", "1000"]).line_cap, Some(1000));
+        assert_eq!(ok(&["--path", "/x", "--line-cap=50"]).line_cap, Some(50));
+        assert!(parse_args(&args(&["--path", "/x", "--line-cap", "0"])).is_err());
     }
 
     #[test]

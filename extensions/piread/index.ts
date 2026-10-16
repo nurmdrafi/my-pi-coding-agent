@@ -122,6 +122,20 @@ function logViolation(reason: string, path: string): void {
 /** Machine-local build output (scripts/bootstrap.sh), no absolute user paths. */
 const PIREAD_BIN = resolve(extDir, "../../bin/piread");
 
+/**
+ * Per-line character cap, from `PI_READ_LINE_CAP`. Default OFF (unset, 0, or
+ * non-numeric): every line stays byte-identical to the built-in read, which
+ * `edit`'s exact matching depends on. When set to a positive integer, selected
+ * lines longer than the cap are truncated to that many characters plus a
+ * `...[+N chars]` marker; shorter lines and whitespace are never touched.
+ */
+function readLineCap(): number | undefined {
+  const raw = process.env.PI_READ_LINE_CAP;
+  if (raw === undefined || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
 /** Mirror the built-in read tool's `resolveToCwd` (pi `path-utils.ts`):
  * unicode-space normalization, leading-`@` strip, `~` expansion, `file://`
  * URLs, then lexical resolve against cwd. The SDK does not export it, so it is
@@ -334,11 +348,13 @@ function daemonRequest(
     state.pending.set(id, settle);
     state.stdin.ref(); // hold the loop until this response settles
     state.stdout.ref();
+    const lineCap = readLineCap();
     const request = JSON.stringify({
       id,
       path,
       ...(offset !== undefined ? { offset } : {}),
       ...(limit !== undefined ? { limit } : {}),
+      ...(lineCap !== undefined ? { line_cap: lineCap } : {}),
       cwd,
     });
     state.stdin.write(`${request}\n`, (err) => {
@@ -370,6 +386,8 @@ async function oneshotDispatch(
   const args = ["--path", path];
   if (offset !== undefined) args.push("--offset", String(offset));
   if (limit !== undefined) args.push("--limit", String(limit));
+  const lineCap = readLineCap();
+  if (lineCap !== undefined) args.push("--line-cap", String(lineCap));
   let stdout: string;
   try {
     ({ stdout } = await execFileAsync(PIREAD_BIN, args, {

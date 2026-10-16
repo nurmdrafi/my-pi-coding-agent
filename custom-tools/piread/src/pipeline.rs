@@ -44,6 +44,7 @@ pub fn read_text(
     raw_path: &str,
     offset: Option<u64>,
     limit: Option<u64>,
+    line_cap: Option<u64>,
 ) -> Result<PipelineOutput, ToolError> {
     let file = File::open(resolved).map_err(|e| open_error(e, resolved))?;
     let mut segs = Segmenter::new(BufReader::with_capacity(64 * 1024, file));
@@ -63,12 +64,27 @@ pub fn read_text(
     while segs.next(&mut buf)? {
         seg_index = seg_index.saturating_add(1);
         if seg_index > start_line && sel_end.is_none_or(|e| seg_index <= e) {
-            let line = String::from_utf8_lossy(&buf);
+            let raw = String::from_utf8_lossy(&buf);
+            // Optional per-line cap (PI_READ_LINE_CAP). Off by default: with
+            // `line_cap == None` this is a borrow, so the common path is
+            // byte-identical to the built-in. Only lines OVER the cap are
+            // touched; whitespace and normal lines are never altered (edit's
+            // exact matching depends on fidelity).
+            let capped: std::borrow::Cow<str> = match line_cap.filter(|c| raw.chars().count() as u64 > *c) {
+                Some(c) => {
+                    let n = c as usize;
+                    let head: String = raw.chars().take(n).collect();
+                    let dropped = raw.chars().count() - n;
+                    std::borrow::Cow::Owned(format!("{head}...[+{dropped} chars]"))
+                }
+                None => raw,
+            };
+            let line = capped.as_ref();
             let sep = u64::from(sel_segments > 0); // \n between joined segments
             sel_decoded_bytes = sel_decoded_bytes.saturating_add(sep + line.len() as u64);
             sel_segments = sel_segments.saturating_add(1);
             last_sel_empty = buf.is_empty();
-            truncator.push(&line);
+            truncator.push(line);
         }
         // Outside the selection: keep scanning (file line count + sniff) but
         // never buffer — the memory contract above.
@@ -632,7 +648,7 @@ mod tests {
         }
 
         fn read(path: &Path, offset: Option<u64>, limit: Option<u64>) -> Result<PipelineOutput, ToolError> {
-            read_text(&path.to_string_lossy(), &path.to_string_lossy(), offset, limit)
+            read_text(&path.to_string_lossy(), &path.to_string_lossy(), offset, limit, None)
         }
 
         #[test]
@@ -679,7 +695,7 @@ mod tests {
             let body = format!("{}\nsmall\n", "y".repeat(60_000));
             let f = tmp_file("big1st", body.as_bytes());
             let p = f.to_string_lossy().into_owned();
-            let out = read_text(&p, &p, None, None).unwrap();
+            let out = read_text(&p, &p, None, None, None).unwrap();
             assert_eq!(out.content, format!(
                 "[Line 1 is 58.6KB, exceeds 50.0KB limit. Use bash: sed -n '1p' {p} | head -c 51200]"
             ));
@@ -690,8 +706,28 @@ mod tests {
         }
 
         #[test]
-        fn crlf_noeol_empty_one_and_unicode() {
-            let out = read(&tmp_file("crlf", b"one\r\ntwo\r\nthree\r\n"), None, None).unwrap();
+        fn line_cap_truncates_only_long_lines() {
+            // Off by default: identical to the built-in.
+            let body = format!("short\n{}\nnorm\n", "a".repeat(20));
+            let f = tmp_file("linecap", body.as_bytes());
+            let p = f.to_string_lossy().into_owned();
+            let uncapped = read_text(&p, &p, None, None, None).unwrap();
+            assert_eq!(uncapped.content, body);
+
+            // Cap at 10: only the long line is cut, with a [+N chars] marker.
+            let capped = read_text(&p, &p, None, None, Some(10)).unwrap();
+            assert_eq!(capped.content, "short\naaaaaaaaaa...[+10 chars]\nnorm\n");
+
+            // Lines at or below the cap are untouched.
+            let body2 = "exactlyten\nexactlynine\n"; // 10 then 11 chars
+            let f2 = tmp_file("linecap2", body2.as_bytes());
+            let p2 = f2.to_string_lossy().into_owned();
+            let out2 = read_text(&p2, &p2, None, None, Some(10)).unwrap();
+            assert_eq!(out2.content, "exactlyten\nexactlynin...[+1 chars]\n");
+        }
+
+        #[test]
+        fn crlf_noeol_empty_one_and_unicode() {            let out = read(&tmp_file("crlf", b"one\r\ntwo\r\nthree\r\n"), None, None).unwrap();
             assert_eq!(out.content, "one\r\ntwo\r\nthree\r\n");
             assert!(out.truncation.is_none());
             assert_eq!(out.total_bytes, 17);
