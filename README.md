@@ -9,14 +9,14 @@
 [![macOS](https://img.shields.io/badge/macOS-6e7681?logo=apple&logoColor=A2AAAD&labelColor=24292f&style=flat-square)](#portability)[![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=FCC624&labelColor=24292f&style=flat-square)](#portability)
 [![rust](https://img.shields.io/badge/rust-default-DEA584?logo=rust&logoColor=white&labelColor=24292f&style=flat-square)](#requirements)
 [![tmux](https://img.shields.io/badge/tmux-optional-6e7681?logo=tmux&logoColor=1BB91F&labelColor=24292f&style=flat-square)](#subagents)
-[![skills](https://img.shields.io/badge/skills-22_manual-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
+[![skills](https://img.shields.io/badge/skills-manual-2563eb?logo=readthedocs&logoColor=8CA1AF&labelColor=24292f&style=flat-square)](#skills)
 [![extensions](https://img.shields.io/badge/extensions-ts-2563eb?labelColor=24292f&style=flat-square)](#extensions)
 
 Portable pi harness powered by Rust native tools — lean core, progressive disclosure, zero absolute paths.
 
 A git-synced configuration for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent): one `~/.pi/agent/` directory that turns any macOS or Linux machine into a fully configured coding-agent workstation in minutes.
 
-**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config as an engineered product: a lean behavioral core, progressive-disclosure skills, always-on extensions that enforce discipline at the tool-call level, and a measured token budget (~0.5K tokens permanent floor).
+**Why this exists:** coding-agent configs rot — they accumulate always-on prompt bloat, machine-specific paths, and undocumented setup rituals. This harness treats the config as an engineered product: a lean behavioral core, progressive-disclosure skills, always-on extensions that enforce discipline at the tool-call level, and a permanent prefix small enough to measure in fractions of a kilotoken.
 
 - **One directory, one repo** — `git clone` is the entire install; git is the only sync mechanism.
 - **Zero env vars required for setup, zero absolute paths** — everything works from the default `~/.pi/agent`.
@@ -140,13 +140,13 @@ Four Rust crates in `custom-tools/` register as their own first-class tools, so 
 
 Native tools forward the context env keys the built-in tools inject — `PI_SESSION_ID`, `PI_SESSION_FILE`, `PI_PROVIDER`, `PI_MODEL`, `PI_REASONING_LEVEL` — so commands see the same `PI_*` context. `PI_CODING_AGENT_DIR` overrides the config directory, and `PI_PIDX_MAX_INLINE` changes the inline extract cap (default 2000 chars).
 
-Parity is pinned by `tests/piread-parity.test.mjs` (30 cases), `tests/piedit-parity.test.mjs` (58), and `tests/pibash-parity.test.mjs` (60), plus `tests/piedit-diff-fuzz.mjs`. Measured speedups (2.4–9.2× for edits, 1.2–1.8× for shell, ~28× warm for indexing) and full methodology live in [`benchmark/runs/`](benchmark/runs) and [`CHANGELOG.md`](CHANGELOG.md).
+Parity is pinned by `tests/piread-parity.test.mjs`, `tests/piedit-parity.test.mjs`, and `tests/pibash-parity.test.mjs`, plus `tests/piedit-diff-fuzz.mjs`. Measured speedups and full methodology live in [`benchmark/runs/`](benchmark/runs) and [`CHANGELOG.md`](CHANGELOG.md).
 
 Built-in `bash` is blocked while `pibash` is registered (permission-gate "Pibash-first"), so shell work runs through the native pipeline — `pibash` runs the same schema and rules and falls back itself, so the block never strands the agent.
 
 ## Skills
 
-All 22 skills are **manual** — invoke with `/skill:<name>`; none auto-load. Bodies never enter context until invoked, so the skill roster costs nothing per session.
+All skills are **manual** — invoke with `/skill:<name>`; none auto-load. Bodies never enter context until invoked, so the skill roster costs nothing per session.
 
 | Skill                | Purpose                                                            | Invocation                    |
 | -------------------- | ------------------------------------------------------------------ | ----------------------------- |
@@ -168,7 +168,7 @@ All 22 skills are **manual** — invoke with `/skill:<name>`; none auto-load. Bo
 | pidoc                | Harness setup health check; `--fix` rebuilds tools                 | `/skill:pidoc`                |
 | playwright-tester    | e2e specs, stress runs, untested-critical-path coverage             | `/skill:playwright-tester`    |
 | refactoring-ui       | Audit/fix existing UI: hierarchy, spacing, color, depth            | `/skill:refactoring-ui`       |
-| rust-skills          | Rust coding guidelines (265 rules, 26 categories)                  | `/skill:rust-skills`          |
+| rust-skills          | Rust coding guidelines (ownership, errors, async, unsafe, API, serde, testing) | `/skill:rust-skills` |
 | sdk-development      | Installable packages (Go/npm/CLI): codegen, test, publish          | `/skill:sdk-development`      |
 | session-audit        | Token/cost waste audit of `~/.pi/agent/sessions`                   | `/skill:session-audit`        |
 | skill-manager        | Create/modify SKILL.md + mandatory validator gate                  | `/skill:skill-manager`        |
@@ -241,13 +241,13 @@ Skill discovery order: project `.pi/skills/` / `.agents/skills/` (if trusted) �
 
 ## Always-on token budget
 
-The permanent prefix costs ~0.5K tokens per session (AGENTS.md ≈ 0.5K). Scoped rules live in `docs/` and load on demand; all skills are manual, so no skill descriptions sit in the model-visible catalog.
+The permanent prefix is `AGENTS.md` alone — the only always-on artifact. Scoped rules live in `docs/` and load on demand; all skills are manual, so no skill descriptions sit in the model-visible catalog.
 
 | Component           | Target                                      | Notes                                  |
 | ------------------- | ------------------------------------------- | -------------------------------------- |
 | AGENTS.md           | as small as possible (behavioral core only) | no stack essays, no skill lists        |
 | Skill descriptions  | short; delete dead skills                   | all manual — zero per-session cost     |
-| **Total always-on** | ≤ ~1K tok                                   | AGENTS.md only; no package tool defs   |
+| **Total always-on** | AGENTS.md only                               | no auto-skill catalog, no package tool defs |
 
 Thinking defaults to `high` in `settings.json`; drop it per-task with `--thinking off` when tokens matter more than depth.
 
@@ -316,7 +316,7 @@ Every repo script is exposed through `package.json` — run `npm run <name>` fro
 | `after-pull`        | `sh scripts/after-pull.sh` | Post-pull re-sync (run automatically by husky `post-merge`/`post-rewrite`): refresh deps when the lockfile moved, recreate the shim, rebuild stale native tools, then `pidoc --fix` |
 | `link-pi`           | `node scripts/link-pi.mjs` | Links the host pi packages into the gitignored `node_modules` so extensions and tests resolve their imports |
 | `typecheck`         | `tsc -p tsconfig.json`    | Links pi, then type-checks the TypeScript extensions                       |
-| `test`             | `node --test`             | Full suite: permission-gate (275 cases) + parity + doc-check               |
+| `test`             | `node --test`             | Full suite: permission-gate, parity, and doc-check suites                  |
 | `test:subagents`    | `node --test`             | Subagent unit suite (mock-based, no tmux or model needed)                  |
 | `lint:agents`       | `node scripts/agents-lint.mjs` | AGENTS.md lint — flags duplicated rules and contradictory directives (one JSON line) |
 | `doc:check`         | `node scripts/doc-check.mjs` | Verifies harness commands, paths, tool and env-var inventories declared in markdown actually resolve |

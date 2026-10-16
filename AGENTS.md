@@ -1,6 +1,6 @@
 # Global Pi Instructions
 
-Personal pi coding-agent harness (`pi-agent-harness`): extensions (permission-gate, piedit, piread), Rust native tools (pidx, piedit), scripts, tests. npm with `.nvmrc`-pinned Node. Non-standard commands: `npm run typecheck` (links pi, then tsc), `npm run gate:eval`, `npm run doc:check`.
+Personal pi coding-agent harness (`pi-native`): extensions (permission-gate, subagents, handoff), Rust native tools (piread, piedit, pibash, pidx), scripts, tests. npm with `.nvmrc`-pinned Node. Repo commands: `npm run check` (typecheck + agents lint + doc check + tests), `npm run gate:eval`.
 
 Loaded every session. Task rule sets in `docs/` — follow link when task touches area.
 
