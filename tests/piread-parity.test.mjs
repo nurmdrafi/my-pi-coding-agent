@@ -128,9 +128,10 @@ async function armResult(tool, params, ctx) {
 async function parityCase(params, ctx) {
   const a = await armResult(wrapped, params, ctx);
   const b = await armResult(oracle, params, ctx);
-  // The rung is now carried on details.via (TUI/observability) instead of a
-  // "[piread native]" content marker. Assert the rung explicitly, then drop
-  // `via` before the byte-parity compare, whose oracle has no such field.
+  // The rung is carried on details.via (TUI/observability) instead of a
+  // "[piread native]" content marker; a real fallback also carries
+  // details.fallbackReason. Assert the rung, then drop both before the
+  // byte-parity compare (the oracle has neither field).
   if (!a.rejected && !b.rejected) {
     assert.ok(
       a.value?.details?.via === "daemon" || a.value?.details?.via === "oneshot" || a.value?.details?.via === "builtin",
@@ -139,6 +140,7 @@ async function parityCase(params, ctx) {
   }
   if (!a.rejected && a.value?.details) {
     delete a.value.details.via;
+    delete a.value.details.fallbackReason;
     // Match the oracle's own-property `details: undefined` (deepStrictEqual
     // distinguishes an absent key from one explicitly set to undefined).
     if (Object.keys(a.value.details).length === 0) a.value.details = undefined;
@@ -271,6 +273,93 @@ add("fallback: garbage stdout → oracle result + stderr line", async () => {
   }
 });
 
+// ---- cross-rung parity: daemon vs one-shot vs built-in ----
+// piread is idempotent, so it may always fall through; the CONTENT must be
+// byte-identical no matter which rung served the call, and every rung must
+// tag details.via (the terminal rung also tags details.fallbackReason).
+// Inputs cover the shapes that differ per rung: a plain read, an
+// offset/limit window, a missing file, a directory, a binary (NUL) file, an
+// offset beyond EOF, and CRLF text.
+
+/** Make exactly ONE call through the one-shot rung: replace `bin/piread` with
+ * a wrapper that fails `--serve` but execs the real binary for one-shot
+ * invocations, issue the call, then restore. */
+
+/** Make exactly ONE call with the binary renamed away, i.e. through the
+ * built-in rung (daemon and one-shot both fail). Rename ⇒ call ⇒ restore,
+ * with a short settle on each side so the killed daemon releases the renamed
+ * inode before the next spawn (an immediate spawn can otherwise race the
+ * teardown). This is the established forcing pattern used by the fallback
+ * tests above. */
+const settle = () => new Promise((r) => setTimeout(r, 25));
+
+async function builtinOnce(params) {
+  const bak = `${BIN}.cr-bak`;
+  resetDaemon();
+  await settle();
+  renameSync(BIN, bak);
+  try {
+    return await armResult(wrapped, params);
+  } finally {
+    renameSync(bak, BIN);
+    resetDaemon();
+    await settle();
+  }
+}
+
+/** The content text of a result, or the rejection message. */
+const contentOf = (r) =>
+  r.rejected ? `REJECT: ${r.error}` : (r.value?.content ?? []).map((c) => c.text ?? "").join("");
+
+// Content parity across rungs. The one-shot rung is intentionally NOT forced
+// here: swapping `bin/piread` for a `--serve`-failing wrapper and issuing an
+// immediate call races the daemon teardown non-deterministically (observed
+// hang / ETXTBSY), which would make this suite flaky and can corrupt the
+// checked-in binary on a crash. The daemon and built-in rungs are both forced
+// deterministically below; the one-shot rung shares the exact same envelope
+// → details path and is covered by the fallback tests above.
+add("cross-rung: daemon and built-in produce byte-identical content", async () => {
+  const inputs = [
+    ["plain", { path: join(dir, "mid30") }, true],
+    ["offset/limit", { path: join(dir, "mid30"), offset: 5, limit: 4 }, true],
+    ["crlf", { path: join(dir, "crlf") }, true],
+    ["missing", { path: missingPath }, false],
+    ["directory", { path: join(dir, "a-directory") }, false],
+    ["binary", { path: join(dir, "nul-text") }, false],
+    ["offset beyond EOF", { path: join(dir, "mid30"), offset: 10_000 }, false],
+  ];
+
+  for (const [label, params, serve] of inputs) {
+    // daemon rung: warm it explicitly, then measure.
+    resetDaemon();
+    const d = await armResult(wrapped, { ...params });
+    // built-in rung: forced by renaming the binary away for one call.
+    const b = await builtinOnce({ ...params });
+
+    const dc = contentOf(d);
+    const bc = contentOf(b);
+    // The invariant: content/errors are byte-identical no matter which rung
+    // served the call (a failed daemon must never change the bytes).
+    assert.equal(bc, dc, `built-in content differs from daemon for ${label}`);
+    // Every non-rejected result carries a valid rung on details.via.
+    const validVia = (v) => v === "daemon" || v === "oneshot" || v === "builtin";
+    if (!d.rejected) assert.ok(validVia(d.value?.details?.via), `daemon via for ${label} (got ${d.value?.details?.via})`);
+    if (!b.rejected) assert.ok(validVia(b.value?.details?.via), `built-in via for ${label} (got ${b.value?.details?.via})`);
+    // The daemon rung carries no fallbackReason only when it actually served
+    // the call; an error/binary envelope falls through to builtin, which sets
+    // fallbackReason (the terminal rung's contract).
+    if (d.value?.details?.via === "daemon") {
+      assert.equal(d.value?.details?.fallbackReason, undefined, `daemon fallbackReason for ${label}`);
+    }
+    if (serve) {
+      assert.equal(d.value?.details?.via, "daemon", `daemon via for ${label}`);
+      assert.equal(b.value?.details?.via, "builtin", `built-in via for ${label}`);
+      assert.equal(typeof b.value?.details?.fallbackReason, "string", `built-in fallbackReason for ${label}`);
+    }
+  }
+  return { ok: true };
+});
+
 // ---- daemon (persistent dispatch) lock-ins ----
 // The wrapped tool now dispatches through a lazy-started `piread --serve`
 // daemon (spawn-floor fix). These pin the client behaviors parity does not:
@@ -288,11 +377,13 @@ add("daemon: concurrent dispatches keep responses matched", async () => {
       limit: i === 3 ? 2 : undefined,
     });
     try {
-      // Drop details.via before the structural compare (oracle has no such
-      // field); the rung itself is asserted by the primary parity cases.
+      // Drop details.via/fallbackReason before the structural compare (the
+      // oracle has neither field); the rung itself is asserted by the primary
+      // parity cases.
       const a = wrappedResults[i];
       if (!a.rejected && a.value?.details) {
         delete a.value.details.via;
+        delete a.value.details.fallbackReason;
         if (Object.keys(a.value.details).length === 0) a.value.details = undefined;
       }
       assert.deepStrictEqual(a, b);

@@ -152,7 +152,7 @@ type ReadParams = { path: string; offset?: number; limit?: number };
 /** Structural shape of the built-in read result — the only contract piread rebuilds. */
 type ReadResult = {
   content: { type: "text"; text: string }[];
-  details?: { truncation?: unknown; via?: Via } | undefined;
+  details?: { truncation?: unknown; via?: Via; fallbackReason?: string } | undefined;
   structuredContent?: unknown;
 };
 
@@ -411,8 +411,13 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     process.stderr.write(`piread: fallback (${reason}) path=${params.path}\n`);
     logViolation(reason, params.path);
     const result = await builtinExecute(toolCallId, params, signal, onUpdate, ctx);
-    // Tag the rung for observability without touching model-visible content.
-    return { ...result, details: { ...(result.details ?? {}), via: "builtin" as Via } };
+    // Tag the rung and the fallback cause for observability without touching
+    // model-visible content. The daemon/oneshot rungs set `via` but never
+    // `fallbackReason` (they are not fallbacks); only this terminal rung does.
+    return {
+      ...result,
+      details: { ...(result.details ?? {}), via: "builtin" as Via, fallbackReason: reason },
+    };
   };
 
   const execute = async (
@@ -439,7 +444,8 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     const lower = path.toLowerCase();
     if (IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
       // Images are always served by the built-in instance; tag the rung for
-      // observability (details.via never enters model-visible content).
+      // observability (details.via never enters model-visible content). Images
+      // are not a "fallback", so no fallbackReason is attached.
       const result = await builtinExecute(toolCallId, params, signal, onUpdate, ctx);
       return { ...result, details: { ...(result.details ?? {}), via: "builtin" as Via } };
     }
