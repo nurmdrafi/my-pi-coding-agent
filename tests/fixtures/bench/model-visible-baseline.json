@@ -1,0 +1,464 @@
+{
+  "generatedAt": "2026-10-16T20:49:40.571Z",
+  "rows": [
+    {
+      "name": "read small (4ln)",
+      "tool": "piread",
+      "native": {
+        "bytes": 39,
+        "tokens": 10,
+        "words": 6,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 23,
+        "tokens": 6,
+        "words": 4,
+        "rejected": false
+      }
+    },
+    {
+      "name": "read mid200 (full)",
+      "tool": "piread",
+      "native": {
+        "bytes": 6596,
+        "tokens": 1649,
+        "words": 1402,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 6580,
+        "tokens": 1645,
+        "words": 1400,
+        "rejected": false
+      }
+    },
+    {
+      "name": "read mid200 (offset/limit)",
+      "tool": "piread",
+      "native": {
+        "bytes": 709,
+        "tokens": 178,
+        "words": 151,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 693,
+        "tokens": 174,
+        "words": 149,
+        "rejected": false
+      }
+    },
+    {
+      "name": "read missing",
+      "tool": "piread",
+      "native": {
+        "bytes": 83,
+        "tokens": 21,
+        "words": 9,
+        "rejected": true
+      },
+      "builtin": {
+        "bytes": 83,
+        "tokens": 21,
+        "words": 9,
+        "rejected": true
+      }
+    },
+    {
+      "name": "read repo ~100ln",
+      "tool": "piread",
+      "native": {
+        "bytes": 3908,
+        "tokens": 977,
+        "words": 496,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 3892,
+        "tokens": 973,
+        "words": 494,
+        "rejected": false
+      }
+    },
+    {
+      "name": "read repo ~300ln",
+      "tool": "piread",
+      "native": {
+        "bytes": 11831,
+        "tokens": 2958,
+        "words": 1574,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 11815,
+        "tokens": 2954,
+        "words": 1572,
+        "rejected": false
+      }
+    },
+    {
+      "name": "read repo ~1000ln",
+      "tool": "piread",
+      "native": {
+        "bytes": 36324,
+        "tokens": 9081,
+        "words": 4099,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 36308,
+        "tokens": 9077,
+        "words": 4097,
+        "rejected": false
+      }
+    },
+    {
+      "name": "read repo ~1922ln (largest)",
+      "tool": "piread",
+      "native": {
+        "bytes": 50574,
+        "tokens": 12644,
+        "words": 6521,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 50558,
+        "tokens": 12640,
+        "words": 6519,
+        "rejected": false
+      }
+    },
+    {
+      "name": "read repo ~1000ln (repeat)",
+      "tool": "piread",
+      "native": {
+        "bytes": 36324,
+        "tokens": 9081,
+        "words": 4099,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 36308,
+        "tokens": 9077,
+        "words": 4097,
+        "rejected": false
+      }
+    },
+    {
+      "name": "bash tiny printf",
+      "tool": "pibash",
+      "native": {
+        "bytes": 2,
+        "tokens": 1,
+        "words": 1,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 2,
+        "tokens": 1,
+        "words": 1,
+        "rejected": false
+      },
+      "retention": {
+        "mustSurvive": [],
+        "missing": [],
+        "oracleMissing": [],
+        "expectRetention": true,
+        "pass": true
+      }
+    },
+    {
+      "name": "bash 64 lines",
+      "tool": "pibash",
+      "native": {
+        "bytes": 141,
+        "tokens": 36,
+        "words": 45,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 183,
+        "tokens": 46,
+        "words": 64,
+        "rejected": false
+      },
+      "retention": {
+        "mustSurvive": [],
+        "missing": [],
+        "oracleMissing": [],
+        "expectRetention": true,
+        "pass": true
+      }
+    },
+    {
+      "name": "bash 1300 lines",
+      "tool": "pibash",
+      "native": {
+        "bytes": 171,
+        "tokens": 43,
+        "words": 45,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 5393,
+        "tokens": 1349,
+        "words": 1300,
+        "rejected": false
+      },
+      "retention": {
+        "mustSurvive": [],
+        "missing": [],
+        "oracleMissing": [],
+        "expectRetention": true,
+        "pass": true
+      }
+    },
+    {
+      "name": "bash 10k lines",
+      "tool": "pibash",
+      "native": {
+        "bytes": 173,
+        "tokens": 44,
+        "words": 45,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 10085,
+        "tokens": 2522,
+        "words": 2008,
+        "rejected": false
+      },
+      "retention": {
+        "mustSurvive": [],
+        "missing": [],
+        "oracleMissing": [],
+        "expectRetention": true,
+        "pass": true
+      }
+    },
+    {
+      "name": "bash failing test-like",
+      "tool": "pibash",
+      "native": {
+        "bytes": 807,
+        "tokens": 202,
+        "words": 88,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 42100,
+        "tokens": 10525,
+        "words": 4014,
+        "rejected": false
+      },
+      "retention": {
+        "mustSurvive": [
+          "error: boom",
+          "test result: FAILED"
+        ],
+        "missing": [],
+        "oracleMissing": [],
+        "expectRetention": true,
+        "pass": true
+      }
+    },
+    {
+      "name": "bash interleaved warnings",
+      "tool": "pibash",
+      "native": {
+        "bytes": 258,
+        "tokens": 65,
+        "words": 45,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 2584,
+        "tokens": 646,
+        "words": 400,
+        "rejected": false
+      },
+      "retention": {
+        "mustSurvive": [],
+        "missing": [],
+        "oracleMissing": [],
+        "expectRetention": true,
+        "pass": true
+      }
+    },
+    {
+      "name": "bash test names + summary",
+      "tool": "pibash",
+      "native": {
+        "bytes": 742,
+        "tokens": 186,
+        "words": 195,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 9850,
+        "tokens": 2463,
+        "words": 2512,
+        "rejected": false
+      },
+      "retention": {
+        "mustSurvive": [
+          "FAIL 1 - must survive",
+          "test result: FAILED. 500 passed; 1 failed"
+        ],
+        "missing": [],
+        "oracleMissing": [],
+        "expectRetention": true,
+        "pass": true
+      }
+    },
+    {
+      "name": "bash buried error (build-kind)",
+      "tool": "pibash",
+      "native": {
+        "bytes": 458,
+        "tokens": 115,
+        "words": 92,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 20082,
+        "tokens": 5021,
+        "words": 4008,
+        "rejected": false
+      },
+      "retention": {
+        "mustSurvive": [
+          "error[E0308]: mismatched types at src/main.rs:42:5"
+        ],
+        "missing": [],
+        "oracleMissing": [
+          "error[E0308]: mismatched types at src/main.rs:42:5"
+        ],
+        "expectRetention": true,
+        "pass": true
+      }
+    },
+    {
+      "name": "bash buried first error (generic)",
+      "tool": "pibash",
+      "native": {
+        "bytes": 403,
+        "tokens": 101,
+        "words": 81,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 24082,
+        "tokens": 6021,
+        "words": 4008,
+        "rejected": false
+      },
+      "retention": {
+        "mustSurvive": [
+          "ERROR: first real failure at src/main.rs:10:5"
+        ],
+        "missing": [
+          "ERROR: first real failure at src/main.rs:10:5"
+        ],
+        "oracleMissing": [
+          "ERROR: first real failure at src/main.rs:10:5"
+        ],
+        "expectRetention": false,
+        "pass": true
+      }
+    },
+    {
+      "name": "edit single line",
+      "tool": "piedit",
+      "native": {
+        "bytes": 64,
+        "tokens": 16,
+        "words": 6,
+        "rejected": false
+      },
+      "builtin": {
+        "bytes": 64,
+        "tokens": 16,
+        "words": 6,
+        "rejected": false
+      }
+    },
+    {
+      "name": "edit multi line",
+      "tool": "piedit",
+      "native": {
+        "bytes": 139,
+        "tokens": 35,
+        "words": 20,
+        "rejected": true
+      },
+      "builtin": {
+        "bytes": 139,
+        "tokens": 35,
+        "words": 20,
+        "rejected": true
+      }
+    },
+    {
+      "name": "edit failure: not found",
+      "tool": "piedit",
+      "native": {
+        "bytes": 139,
+        "tokens": 35,
+        "words": 20,
+        "rejected": true
+      },
+      "builtin": {
+        "bytes": 139,
+        "tokens": 35,
+        "words": 20,
+        "rejected": true
+      }
+    },
+    {
+      "name": "edit failure: non-unique",
+      "tool": "piedit",
+      "native": {
+        "bytes": 142,
+        "tokens": 36,
+        "words": 22,
+        "rejected": true
+      },
+      "builtin": {
+        "bytes": 142,
+        "tokens": 36,
+        "words": 22,
+        "rejected": true
+      }
+    },
+    {
+      "name": "edit failure: overlap",
+      "tool": "piedit",
+      "native": {
+        "bytes": 132,
+        "tokens": 33,
+        "words": 17,
+        "rejected": true
+      },
+      "builtin": {
+        "bytes": 132,
+        "tokens": 33,
+        "words": 17,
+        "rejected": true
+      }
+    }
+  ],
+  "totals": {
+    "native": {
+      "bytes": 150159,
+      "tokens": 37547,
+      "words": 19079
+    },
+    "builtin": {
+      "bytes": 261237,
+      "tokens": 65316,
+      "words": 36741
+    }
+  }
+}
