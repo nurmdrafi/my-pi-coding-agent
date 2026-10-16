@@ -254,18 +254,29 @@ Warm runs are O(changes), not O(archive): the state store replays unchanged sess
 
 The 60 KB single-blob class sits at parity (residual Δ ≤ +0.07 ms ≈ noise floor; the earlier regression is closed). The persistent daemon removes the **3.4–3.6 ms per-call spawn floor** the one-shot CLI arm pays (3.1–5.7 ms); daemon RSS is 2 MB. Structural floor: ~0.083 ms round-trip scheduling + ~0.10 ms Node-side `JSON.parse` of large envelopes — pinned by result parity with the built-in.
 
-**`piedit` — text-file edits** (daemon dispatch vs the built-in `edit`; linux x64, node v24, N=100/arm, p50 ms, three runs agreeing within noise — confirmation run shown — `benchmark/runs/piedit-microbench-2026-10-16.md`, after the perf pass `b34e7ba`):
+**`piedit` — text-file edits** (daemon dispatch vs the built-in `edit`; linux x64, node v24, N=100/arm, p50 ms, `benchmark/runs/piedit-microbench-2026-10-16.md`, after the native Rust diff/patch render `17e4792`):
 
-| Corpus class | Bytes | Built-in `edit` | Rust `piedit` (daemon) | Speedup | One-shot spawn |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Small exact | 17 | 0.405 | 0.321 | **1.3×** | 3.242 |
-| Small fuzzy (trailing ws) | 30 | 0.474 | 0.311 | **1.5×** | 3.295 |
-| Mid exact (1 of 200) | 1.8 KB | 0.913 | 0.657 | **1.4×** | 3.336 |
-| Mid multi (2 of 200) | 1.8 KB | 0.787 | 0.560 | **1.4×** | 3.260 |
-| Multiline block | 18.9 KB | 2.602 | 2.177 | **1.2×** | 3.626 |
-| Large (~1 MiB) | 589 KB | 88.118 | 90.014 | ~1× (parity) | 34.993 |
+| Corpus class | Built-in `edit` | Rust `piedit` (daemon) | Speedup |
+| --- | ---: | ---: | ---: |
+| Small exact | 0.513 | 0.288 | **1.8×** |
+| Small fuzzy (trailing ws) | 0.445 | 0.308 | **1.4×** |
+| Mid exact (1 of 200) | 0.893 | 0.342 | **2.6×** |
+| Mid multi (2 of 200) | 0.854 | 0.327 | **2.6×** |
+| Multiline block | 2.556 | 1.033 | **2.5×** |
+| Large (~1 MiB) | 90.630 | 36.416 | **2.5×** |
 
-Every class is at or below the built-in. The wins come from the 2026-10-16 perf pass: one shared `FuzzyView` (the JS semantics re-normalize the whole content **per edit** — matching pre-pass, replacement base, and every occurrence count; the Rust side builds the fuzzy view lazily once, observably identical because the function is deterministic and idempotent), NFKC skipped entirely for pure-ASCII input with no per-line allocations, `Cow` LF/BOM normalization, and Buffer-based line scanning in both Node clients (the previous `setEncoding` string path re-flattened the rope on every pipe chunk — O(n²) on MiB-scale envelopes). The large class sits at parity (Δ ≤ +1.9 ms on an ~88 ms total): ~74 ms of it is the TypeScript `generateDiffString` + `generateUnifiedPatch` pair, which spec D2 pins to the shared helpers — the built-in pays the identical cost — while the isolated native read→match→write round-trip (one-shot arm) completes in ~31–35 ms. The earlier +30.9 ms regression and the size-based-routing follow-up are retired. Parity held throughout: crate 25/25, `tests/piedit-parity.test.mjs` 40/40, clippy `-D warnings` clean.
+Same test on a tmpfs corpus, where the shared ~18–20 ms ext4 truncate+write drops out and the structural ratios surface:
+
+| Corpus class | Built-in `edit` | Rust `piedit` (daemon) | Speedup |
+| --- | ---: | ---: | ---: |
+| Small exact | 0.428 | 0.180 | **2.4×** |
+| Small fuzzy (trailing ws) | 0.411 | 0.182 | **2.3×** |
+| Mid exact (1 of 200) | 0.817 | 0.215 | **3.8×** |
+| Mid multi (2 of 200) | 0.623 | 0.235 | **2.7×** |
+| Multiline block | 2.483 | 0.738 | **3.4×** |
+| Large (~1 MiB) | 88.246 | 9.628 | **9.2×** |
+
+Every class is at or below the built-in. The wins come from the 2026-10-16 perf pass plus the native render: one shared `FuzzyView` (the JS semantics re-normalize the whole content **per edit** — matching pre-pass, replacement base, and every occurrence count; the Rust side builds the fuzzy view lazily once, observably identical because the function is deterministic and idempotent), NFKC skipped entirely for pure-ASCII input with no per-line allocations, `Cow` LF/BOM normalization, and Buffer-based line scanning in both Node clients (the previous `setEncoding` string path re-flattened the rope on every pipe chunk — O(n²) on MiB-scale envelopes). The large class now runs at ~2.5× instead of parity: the Rust side renders the diff/patch (`src/diff.rs`, a byte-identical jsdiff port pinned by the parity suite plus `tests/piedit-diff-fuzz.mjs`), so the TypeScript `generateDiffString`/`generateUnifiedPatch` pass and the `{baseContent,newContent}` IPC payload are both gone. The disk corpus lives on an ~84%-full ext4 root, where a 590 KB truncate+write costs ~18–20 ms that **both** arms pay (identical `writeFile` semantics, R4), flooring the ratio; on tmpfs the large class reaches **9.2×** (88.2 → 9.6 ms). The earlier +30.9 ms regression and the size-based-routing follow-up are retired. Parity held throughout: crate 40/40, `tests/piedit-parity.test.mjs` 51/51, `tests/piedit-diff-fuzz.mjs` 0 failures, clippy `-D warnings` clean.
 
 ## Context layers
 
