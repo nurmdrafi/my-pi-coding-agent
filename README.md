@@ -161,17 +161,19 @@ Dispatch latency, p50 ms — `built-in` is the stock pi tool (bash/read/edit), `
 <details>
 <summary>Per-tool detail</summary>
 
-**piread** (N=200/arm; `daemon / oracle` p50 ms):
+**piread** vs the built-in `read` (N=200/arm; p50 ms; mean of two runs):
 
-| corpus | daemon p50 | oracle p50 |
-| --- | ---: | ---: |
-| one-line | 0.079 | 0.296 |
-| crlf | 0.057 | 0.272 |
-| unicode | 0.074 | 0.289 |
-| long-lines | 0.116 | 0.425 |
-| lines2500 | 0.505 | 1.393 |
-| bytes60k | 0.680 | 0.684 |
-| head60k | 0.244 | 0.458 |
+| corpus | `read` p50 | `piread` daemon p50 | `piread` one-shot p50 |
+| --- | ---: | ---: | ---: |
+| one-line | 0.258 | 0.077 | 3.215 |
+| crlf | 0.291 | 0.081 | 3.270 |
+| unicode | 0.284 | 0.077 | 3.116 |
+| long-lines | 0.260 | 0.095 | 3.139 |
+| lines2500 | 1.065 | 0.483 | 3.820 |
+| bytes60k | 0.650 | 0.795 | 4.393 |
+| head60k | 0.364 | 0.179 | 3.804 |
+
+`piread` output is **byte-identical** to the built-in `read` on every text case (see `npm run bench:model-visible:compare`): the daemon path wins on latency (~3x on small reads, ~2x on 2,500 lines), the one-shot path pays the ~3.5 ms spawn floor, and `bytes60k` is the one case where the daemon does not win (it does a full newline count, like `read`).
 
 **piedit** (N=100/arm; oracle vs piedit p50 ms):
 
