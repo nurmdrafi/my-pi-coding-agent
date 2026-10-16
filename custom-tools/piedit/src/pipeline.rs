@@ -20,6 +20,7 @@
 //! piedit mirrors that exactly (no temp-file+rename); same-path serialization
 //! stays on the extension's `withFileMutationQueue`.
 
+use std::borrow::Cow;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -47,21 +48,22 @@ pub struct Applied {
 
 // ---- normalization ----
 
-/// Mirror `normalizeToLF`.
-pub fn normalize_to_lf(text: &str) -> String {
+/// Mirror `normalizeToLF`. Returns a borrowed view when no `\r` is
+/// present — the overwhelmingly common case pays no copy.
+pub fn normalize_to_lf(text: &str) -> Cow<'_, str> {
     if !text.contains('\r') {
-        return text.to_string();
+        return Cow::Borrowed(text);
     }
     // `\r\n` → `\n`, then any remaining lone `\r` → `\n`.
-    text.replace("\r\n", "\n").replace('\r', "\n")
+    Cow::Owned(text.replace("\r\n", "\n").replace('\r', "\n"))
 }
 
-/// Mirror `restoreLineEndings`.
-pub fn restore_line_endings(text: &str, ending: &str) -> String {
+/// Mirror `restoreLineEndings`. Borrows for the LF no-op case.
+pub fn restore_line_endings<'a>(text: &'a str, ending: &str) -> Cow<'a, str> {
     if ending == "\r\n" {
-        text.replace('\n', "\r\n")
+        Cow::Owned(text.replace('\n', "\r\n"))
     } else {
-        text.to_string()
+        Cow::Borrowed(text)
     }
 }
 
@@ -85,30 +87,55 @@ pub fn split_bom(content: &str) -> (&str, &str) {
     }
 }
 
-/// Mirror the tail of `normalizeForFuzzyMatch` applied to a single line:
-/// JS `trimEnd` followed by the smart-quote/dash/space substitutions that are
-/// not order-sensitive across a single line.
-fn fuzzy_line(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
-    for ch in line.trim_end().chars() {
-        out.push(match ch {
-            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' => '\'',
-            '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' => '"',
-            '\u{2010}' | '\u{2011}' | '\u{2012}' | '\u{2013}' | '\u{2014}' | '\u{2015}'
-            | '\u{2212}' => '-',
-            '\u{00A0}' | '\u{2002}'..='\u{200A}' | '\u{202F}' | '\u{205F}' | '\u{3000}' => ' ',
-            other => other,
-        });
+/// The substitution table from `normalizeForFuzzyMatch`'s tail: smart
+/// quotes → ASCII quotes, dashes → `-`, special spaces → ` `.
+fn fuzzy_char(ch: char) -> Option<char> {
+    match ch {
+        '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' => Some('\''),
+        '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' => Some('"'),
+        '\u{2010}' | '\u{2011}' | '\u{2012}' | '\u{2013}' | '\u{2014}' | '\u{2015}'
+        | '\u{2212}' => Some('-'),
+        '\u{00A0}' | '\u{2002}'..='\u{200A}' | '\u{202F}' | '\u{205F}' | '\u{3000}' => Some(' '),
+        _ => None,
     }
-    out
+}
+
+/// One line of the `normalizeForFuzzyMatch` tail: JS `trimEnd` followed by
+/// the substitutions, appended into `out` with no per-line allocation —
+/// clean lines cross as a single `push_str`.
+fn push_fuzzy_line(out: &mut String, line: &str) {
+    let line = line.trim_end();
+    // Fast path: printable ASCII only — nothing to trim or substitute.
+    if line.bytes().all(|b| (0x20..=0x7E).contains(&b)) {
+        out.push_str(line);
+        return;
+    }
+    let mut last = 0;
+    for (i, ch) in line.char_indices() {
+        if let Some(replacement) = fuzzy_char(ch) {
+            out.push_str(&line[last..i]);
+            out.push(replacement);
+            last = i + ch.len_utf8();
+        }
+    }
+    out.push_str(&line[last..]);
 }
 
 /// Mirror `normalizeForFuzzyMatch`: NFKC, per-line `trimEnd`, then the
 /// smart-quote / dash / special-space substitutions.
+///
+/// NFKC is the identity on pure-ASCII input (no decomposition or
+/// compatibility mapping starts below `U+0080`), so the common case skips
+/// the per-character normalization pass entirely; the per-line pass builds
+/// one output buffer with no per-line allocations.
 pub fn normalize_for_fuzzy_match(text: &str) -> String {
-    let nfkc: String = text.nfkc().collect();
-    // Per-line trimEnd, preserving the `\n` separators exactly as JS's
-    // `split("\n").map(trimEnd).join("\n")` does.
+    let nfkc_owned: String;
+    let nfkc: &str = if text.is_ascii() {
+        text
+    } else {
+        nfkc_owned = text.nfkc().collect();
+        &nfkc_owned
+    };
     let mut out = String::with_capacity(nfkc.len());
     let mut first = true;
     for line in nfkc.split('\n') {
@@ -116,7 +143,7 @@ pub fn normalize_for_fuzzy_match(text: &str) -> String {
             out.push('\n');
         }
         first = false;
-        out.push_str(&fuzzy_line(line));
+        push_fuzzy_line(&mut out, line);
     }
     out
 }
@@ -130,45 +157,73 @@ struct MatchResult {
     used_fuzzy: bool,
 }
 
-/// Mirror `fuzzyFindText`: exact `indexOf` first, else fuzzy.
-fn fuzzy_find_text(content: &str, old_text: &str) -> MatchResult {
-    if let Some(index) = content.find(old_text) {
-        return MatchResult {
-            found: true,
-            index,
-            match_length: old_text.len(),
-            used_fuzzy: false,
-        };
-    }
-    let fuzzy_content = normalize_for_fuzzy_match(content);
-    let fuzzy_old = normalize_for_fuzzy_match(old_text);
-    match fuzzy_content.find(&fuzzy_old) {
-        Some(index) => MatchResult {
-            found: true,
-            index,
-            match_length: fuzzy_old.len(),
-            used_fuzzy: true,
-        },
-        None => MatchResult {
-            found: false,
-            index: 0,
-            match_length: 0,
-            used_fuzzy: false,
-        },
-    }
+/// The shared fuzzy view of one content string.
+///
+/// JS recomputes `normalizeForFuzzyMatch(content)` per edit — once in the
+/// `initialMatches` pre-pass, once for the replacement base, and again for
+/// every `countOccurrences` call — so a multi-edit call normalizes the whole
+/// file once per edit. The function is deterministic and idempotent (NFKC is
+/// idempotent; `trimEnd` and the substitutions are no-ops on their own
+/// output), so one lazily-built view serves every call site with identical
+/// results at O(content) once instead of O(content × edits).
+struct FuzzyView<'a> {
+    base: &'a str,
+    view: Option<String>,
 }
 
-/// Mirror `countOccurrences`: count of non-overlapping splits in fuzzy space.
-fn count_occurrences(content: &str, old_text: &str) -> usize {
-    let fuzzy_content = normalize_for_fuzzy_match(content);
-    let fuzzy_old = normalize_for_fuzzy_match(old_text);
-    if fuzzy_old.is_empty() {
-        // JS: "abc".split("").length - 1 == len; normalizeForFuzzyMatch("")
-        // yields "" so split("") splits per char. We never reach here with an
-        // empty oldText (guarded earlier), but keep JS semantics.
-        return fuzzy_content.chars().count() + 1;
+impl<'a> FuzzyView<'a> {
+    fn new(base: &'a str) -> Self {
+        Self { base, view: None }
     }
-    fuzzy_content.matches(&fuzzy_old).count()
+
+    /// The fuzzy view of `base`, computed at most once.
+    fn content(&mut self) -> &str {
+        self.view.get_or_insert_with(|| normalize_for_fuzzy_match(self.base))
+    }
+
+    /// Mirror `fuzzyFindText(base, oldText)`: exact find on the active
+    /// replacement base first, else `normalizeForFuzzyMatch(oldText)` in the
+    /// shared view. When the base is itself the fuzzy view, the fallback
+    /// still matches JS exactly (the fuzzy view of a fuzzy view is itself).
+    fn find(&mut self, base_is_fuzzy: bool, old_text: &str) -> MatchResult {
+        let exact = if base_is_fuzzy {
+            self.content().find(old_text)
+        } else {
+            self.base.find(old_text)
+        };
+        if let Some(index) = exact {
+            return MatchResult { found: true, index, match_length: old_text.len(), used_fuzzy: false };
+        }
+        let fuzzy_old = normalize_for_fuzzy_match(old_text);
+        match self.content().find(&fuzzy_old) {
+            Some(index) => MatchResult {
+                found: true,
+                index,
+                match_length: fuzzy_old.len(),
+                used_fuzzy: true,
+            },
+            None => MatchResult { found: false, index: 0, match_length: 0, used_fuzzy: false },
+        }
+    }
+
+    /// Mirror `countOccurrences`: non-overlapping matches of the normalized
+    /// `oldText` in the fuzzy view of the base.
+    fn count(&mut self, old_text: &str) -> usize {
+        let fuzzy_old = normalize_for_fuzzy_match(old_text);
+        if fuzzy_old.is_empty() {
+            // JS: "abc".split("").length - 1 == len; normalizeForFuzzyMatch("")
+            // yields "" so split("") splits per char. We never reach here
+            // with an empty oldText (guarded earlier), but keep JS semantics.
+            return self.content().chars().count() + 1;
+        }
+        self.content().matches(&fuzzy_old).count()
+    }
+
+    /// Consumes the view, returning the materialized fuzzy string (present
+    /// once any edit matched fuzzily or any occurrence count ran).
+    fn into_view(self) -> Option<String> {
+        self.view
+    }
 }
 
 // ---- error builders (byte-identical to edit-diff.js) ----
@@ -393,7 +448,12 @@ fn apply_replacements_preserving_unchanged_lines(
 pub fn apply_edits(normalized_content: &str, edits: &[crate::envelope::Edit], path: &str) -> Result<Applied, ToolError> {
     let normalized: Vec<(String, String)> = edits
         .iter()
-        .map(|e| (normalize_to_lf(&e.old_text), normalize_to_lf(&e.new_text)))
+        .map(|e| {
+            (
+                normalize_to_lf(&e.old_text).into_owned(),
+                normalize_to_lf(&e.new_text).into_owned(),
+            )
+        })
         .collect();
 
     for (i, (old_text, _)) in normalized.iter().enumerate() {
@@ -402,25 +462,28 @@ pub fn apply_edits(normalized_content: &str, edits: &[crate::envelope::Edit], pa
         }
     }
 
-    // `initialMatches` decides whether ANY edit needs the fuzzy view; the
-    // offsets themselves are recomputed below against the chosen base.
-    let used_fuzzy_match = normalized
-        .iter()
-        .any(|(old_text, _)| fuzzy_find_text(normalized_content, old_text).used_fuzzy);
+    // One shared fuzzy view (see `FuzzyView`): the pre-pass, the replacement
+    // base, and every occurrence count reuse it instead of each paying a
+    // full-content `normalizeForFuzzyMatch`.
+    let mut fuzzy = FuzzyView::new(normalized_content);
 
-    let replacement_base_content = if used_fuzzy_match {
-        normalize_for_fuzzy_match(normalized_content)
-    } else {
-        normalized_content.to_string()
-    };
+    // `initialMatches.some(m => m.usedFuzzyMatch)`: exact-first per edit —
+    // only edits that fail the exact find ever touch the fuzzy view.
+    let mut used_fuzzy_match = false;
+    for (old_text, _) in &normalized {
+        if fuzzy.find(false, old_text).used_fuzzy {
+            used_fuzzy_match = true;
+            break;
+        }
+    }
 
     let mut matched_edits: Vec<MatchedEdit> = Vec::with_capacity(normalized.len());
     for (i, (old_text, new_text)) in normalized.iter().enumerate() {
-        let match_result = fuzzy_find_text(&replacement_base_content, old_text);
+        let match_result = fuzzy.find(used_fuzzy_match, old_text);
         if !match_result.found {
             return Err(not_found_error(path, i, normalized.len()));
         }
-        let occurrences = count_occurrences(&replacement_base_content, old_text);
+        let occurrences = fuzzy.count(old_text);
         if occurrences > 1 {
             return Err(duplicate_error(path, i, normalized.len(), occurrences));
         }
@@ -449,13 +512,12 @@ pub fn apply_edits(normalized_content: &str, edits: &[crate::envelope::Edit], pa
 
     let base_content = normalized_content;
     let new_content = if used_fuzzy_match {
-        apply_replacements_preserving_unchanged_lines(
-            normalized_content,
-            &replacement_base_content,
-            &matched_edits,
-        )?
+        let base_view = fuzzy
+            .into_view()
+            .expect("fuzzy mode implies the shared view was materialized");
+        apply_replacements_preserving_unchanged_lines(normalized_content, &base_view, &matched_edits)?
     } else {
-        apply_replacements(&replacement_base_content, &matched_edits, 0)?
+        apply_replacements(normalized_content, &matched_edits, 0)?
     };
 
     if base_content == new_content {
@@ -534,14 +596,23 @@ pub fn edit_file(path: &str, resolved: &str, edits: &[crate::envelope::Edit]) ->
     let raw_bytes = fs::read(p).map_err(raw_io_error)?;
     let raw_content = String::from_utf8_lossy(&raw_bytes);
     let (bom, content) = split_bom(&raw_content);
-    let original_ending = detect_line_ending(content).to_string();
+    let original_ending = detect_line_ending(content);
     let normalized_content = normalize_to_lf(content);
 
     let applied = apply_edits(&normalized_content, edits, path)?;
 
-    let final_content = format!("{bom}{}", restore_line_endings(&applied.new_content, &original_ending));
-    // Mirror `fs.writeFile(path, content, "utf-8")` — no temp-file+rename.
-    fs::write(p, final_content.as_bytes()).map_err(raw_io_error)?;
+    // Mirror `fs.writeFile(path, content, "utf-8")` — a non-atomic
+    // truncate+write. The common no-BOM case writes the restored content
+    // with no concatenation copy.
+    let restored = restore_line_endings(&applied.new_content, original_ending);
+    if bom.is_empty() {
+        fs::write(p, restored.as_bytes()).map_err(raw_io_error)?;
+    } else {
+        let mut bytes = Vec::with_capacity(bom.len() + restored.len());
+        bytes.extend_from_slice(bom.as_bytes());
+        bytes.extend_from_slice(restored.as_bytes());
+        fs::write(p, &bytes).map_err(raw_io_error)?;
+    }
 
     Ok(applied)
 }

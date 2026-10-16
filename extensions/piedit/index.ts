@@ -139,7 +139,12 @@ type DaemonState = {
   stdout: PipeStdout;
   pending: Map<number, DaemonPending>;
   nextId: number;
-  buffer: string;
+  /** Partial (newline-terminated-pending) response bytes: raw Buffer chunks
+   * scanned per chunk, decoded once per complete line — a large response
+   * (1 MiB+ envelopes) costs O(bytes), not the O(n²) of string `+=` +
+   * per-chunk `indexOf` over a re-flattened rope. */
+  chunks: Buffer[];
+  buffered: number;
 };
 
 /** Module-lifetime daemon; null when not started or after death (lazy restart). */
@@ -176,19 +181,34 @@ function startDaemon(): DaemonState | null {
       if (daemon) daemon.proc.kill();
     });
   }
-  const state: DaemonState = { proc, stdin, stdout, pending: new Map(), nextId: 1, buffer: "" };
+  const state: DaemonState = { proc, stdin, stdout, pending: new Map(), nextId: 1, chunks: [], buffered: 0 };
   // Any death (crash, spawn ENOENT, garbage protocol) fails pending requests
   // into the one-shot rung and clears the slot for a lazy restart.
   proc.on("error", () => killDaemon(state, "spawn error"));
   proc.on("exit", () => killDaemon(state, "exited"));
   stdin.on("error", () => killDaemon(state, "stdin error")); // incl. EPIPE
-  stdout.setEncoding("utf8");
-  stdout.on("data", (chunk: string) => {
-    state.buffer += chunk;
-    for (let nl = state.buffer.indexOf("\n"); nl >= 0; nl = state.buffer.indexOf("\n")) {
-      const line = state.buffer.slice(0, nl);
-      state.buffer = state.buffer.slice(nl + 1);
-      handleDaemonLine(state, line);
+  // No setEncoding: chunks stay Buffers; each chunk is scanned once for the
+  // 0x0a terminator, and only complete lines are decoded + parsed.
+  stdout.on("data", (chunk: Buffer) => {
+    let search = 0;
+    for (;;) {
+      const nl = chunk.indexOf(0x0a, search);
+      if (nl === -1) {
+        if (search < chunk.length) {
+          state.chunks.push(chunk.subarray(search));
+          state.buffered += chunk.length - search;
+        }
+        return;
+      }
+      const tail = chunk.subarray(search, nl);
+      const line =
+        state.chunks.length === 0 && search === 0
+          ? tail // whole chunk is one line: zero-copy view
+          : Buffer.concat([...state.chunks, tail], state.buffered + tail.length);
+      state.chunks = [];
+      state.buffered = 0;
+      search = nl + 1;
+      handleDaemonLine(state, line.toString("utf8"));
     }
   });
   // Refcount hygiene: the daemon never keeps the host's event loop alive
@@ -304,7 +324,7 @@ async function oneshotDispatch(
       rejectCall(new OneshotError(`spawn ${String(err)}`));
       return;
     }
-    let stdout = "";
+    const stdoutChunks: Buffer[] = [];
     let settled = false;
     const onAbort = () => {
       if (settled) return;
@@ -319,9 +339,11 @@ async function oneshotDispatch(
       signal?.removeEventListener("abort", onAbort);
       fn();
     };
-    child.stdout?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string) => {
-      stdout += chunk;
+    // No setEncoding: chunks stay Buffers and are decoded once at close
+    // (execFile's pattern) — a large envelope never pays per-chunk string
+    // concatenation and re-flattening.
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
     });
     child.on("error", (err) => finish(() => rejectCall(new OneshotError(`spawn ${String(err)}`))));
     child.on("close", (code) => {
@@ -329,6 +351,7 @@ async function oneshotDispatch(
         // piedit exits 3 with a JSON envelope on stdout for tool-level failures
         // (missing file, validation error); that is a *result*, not a transport
         // failure — parse it so the caller can throw the exact message.
+        const stdout = stdoutChunks.length ? Buffer.concat(stdoutChunks).toString("utf8") : "";
         if (stdout.trim()) {
           try {
             resolveCall(JSON.parse(stdout) as PieditEnvelope);
