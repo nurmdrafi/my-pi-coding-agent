@@ -11,6 +11,7 @@
 ## Calls and output
 - Batch: all independent calls one turn; every turn re-bills prefix. Self-check before each turn: “could this call have run in the previous turn?” If yes and it wasn't blocked by a dependency, it was a wasted turn.
 - Pipe raw payloads through `jq` to `/tmp`, never into context; bash caps 100 lines/4 KB (oversize → pgate-spill; read spills offset/limit).
+- Read cap (H1b): a `read`/`piread` result over 300 lines / 8KB is truncated to its head, full text spilled to `$TMPDIR/pgate-spill` — request a tighter window rather than one wide read.
 
 ## Tests
 - Test: narrowest target once; read failure block, fix, verify once. Never full suite — husky gates commits.

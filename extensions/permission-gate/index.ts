@@ -12,7 +12,9 @@
  * | P1  | Token Economy (Piread-first)  | built-in read of a text file blocked — use the piread tool; images keep `read` (piread delegates them internally) |
  * | P2  | Token Economy (Pibash-first)  | built-in bash blocked — use the pibash tool (same schema, full bash-kind rules; pibash falls back itself) |
  * | P3  | Token Economy (Pibash/Piread-first) | a codemode script that calls built-in `tools.bash`/`tools.read` is blocked — call `tools.pibash`/`tools.piread` (the sandbox used to sidestep P1/P2 entirely) |
+ * | P4  | Codemode (Script)             | a codemode script that does not PARSE as an async function body is blocked before execution — a syntax/escaping slip costs a wasted turn otherwise (template-literal backticks, escaped quotes) |
  * | H1  | output cap (non-blocking)     | bash output capped at 100 lines / 4KB UTF-8; oversized first line head+tail; tail spilled to $TMPDIR/pgate-spill; errors capped too |
+ * | H1b | read cap (non-blocking)       | read/piread result over 300 lines / 8KB truncated to the head, full text spilled to $TMPDIR/pgate-spill with a pointer — reads had no post-cap before |
  * | H2  | Permission Gate (Destructive) | destructive commands need approval: chat yes / UI confirm; fail closed headless; re-send re-prompts |
  * | R9  | Commitlint                    | conventional-commit headers, subject case, body line length (incl. heredoc bodies), pre-hook |
  * | TC1 | Toolchain (pnpm)              | npm/npx/yarn in a pnpm repo (packageManager/pnpm-lock) — pnpm run/exec/dlx |
@@ -41,6 +43,40 @@ import { config, ruleEnabled } from "./config.ts";
 function isBashKind(event: { toolName: string }): boolean {
   return event.toolName === "bash" || event.toolName === "pibash";
 }
+
+/** P4: does the codemode script parse as an async function body? Returns a
+ * short `line N: message` pointer on a SyntaxError, else undefined. The
+ * AsyncFunction constructor is the closest host-side model of the QuickJS
+ * sandbox's wrapper (top-level `await`/`return` allowed).
+ *
+ * V8's SyntaxError carries no line/column, so the line is recovered by
+ * bisecting line-prefixes: the first prefix that fails to parse is the last
+ * line the error can be on (a multi-line construct pins to the line that
+ * closed it, which is where the message points anyway). A non-SyntaxError
+ * failure returns undefined — the guard only blocks scripts PROVEN not to
+ * parse, never guesses on an unexpected throw. */
+function codemodeParseError(code: string): string | undefined {
+  const parse = (src: string): string | undefined => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      new (Object.getPrototypeOf(async function () {}).constructor)(src);
+      return undefined;
+    } catch (err) {
+      return err instanceof SyntaxError ? err.message.replace(/^SyntaxError:\s*/, "") : undefined;
+    }
+  };
+  const full = parse(code);
+  if (full === undefined) return undefined; // parses, or the throw was not a SyntaxError — never block
+  const lines = code.split("\n");
+  if (lines.length > 1) {
+    // first line-prefix that fails to parse = the earliest line the error can be on
+    for (let i = 1; i <= lines.length; i++) {
+      if (parse(lines.slice(0, i).join("\n")) !== undefined)
+        return i < lines.length ? `line ${i}: ${full}` : full;
+    }
+  }
+  return full;
+}
 import type { ExtensionAPI, ExtensionHandler } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "crypto";
 import { homedir } from "os";
@@ -56,7 +92,7 @@ import { readFile, lstat } from "fs/promises";
 import { basename, dirname, join } from "path";
 
 import { toLF, validateEditAnchors } from "./anchor-guard.ts";
-import { capBashOutput } from "./bash-cap.ts";
+import { capBashOutput, capReadOutput } from "./bash-cap.ts";
 import { scrubBashText } from "./output-scrub.ts";
 import {
   APPROVED_WINDOW_MS,
@@ -508,6 +544,26 @@ export default function (pi: ExtensionAPI) {
     // tool, so blocking would strand the agent), and never matches the native
     // names (`tools.pibash`/`tools.piread` do not match `tools.bash`/
     // `tools.read` under the word-boundary regex).
+    // P4 (2026-10-21 audit): the codemode sandbox runs the script as an async
+    // function body, so a script that does not PARSE never reaches a tool and
+    // burns a whole turn (session logs: `SyntaxError: Unexpected identifier
+    // 'sleep'`, `unexpected end of file`) — most often a template-literal
+    // backtick or an "escaped" quote that closed the literal early. A parse
+    // check costs microseconds and replaces the sandbox's opaque failure with
+    // a line pointer plus the escaping rule. Runs before P3 so a script that is
+    // both non-parsing and built-in-name-calling gets the parse fix first (it
+    // must compile before its calls mean anything).
+    if (event.toolName === "codemode" && ruleEnabled("codemodeScriptGuard")) {
+      const code = (event.input as { code?: unknown }).code;
+      if (typeof code === "string" && code.trim()) {
+        const parseError = codemodeParseError(code);
+        if (parseError)
+          return blockCall(
+            `Codemode (Script): script does not parse (${parseError}) — it is an async function body; a stray backtick or an over-escaped quote usually closes a template/string early. Fix the escaping and re-send.`,
+          );
+      }
+    }
+
     if (event.toolName === "codemode" && ruleEnabled("nativeToolsInScripts")) {
       const code = (event.input as { code?: unknown }).code;
       if (typeof code === "string") {
@@ -897,6 +953,25 @@ export default function (pi: ExtensionAPI) {
     if (ruleEnabled("outputScrub")) scrubBashText(event.content ?? []);
     if (!ruleEnabled("outputCap")) return;
     return capBashOutput(event);
+  });
+
+  // H1b read cap (2026-10-21) — reads had no post-cap: pibash/bash get H1's
+  // 40/2KB, but a piread/read window rode straight into context (audit: piread
+  // median 1.6KB, p90 8.5KB, max 40KB). Registered as its own tool_result
+  // handler so it applies to piread AND the built-in read uniformly, and
+  // independent of the coverage bookkeeping below. Skipped for images and for
+  // the gate's own synthesized blocks; non-blocking (overlay only).
+  on("tool_result", async (event) => {
+    if (!ruleEnabled("readOutputCap")) return;
+    if (event.toolName !== "read" && event.toolName !== "piread") return;
+    if (blockFamilyOf(event)) return;
+    if (
+      (event.content ?? []).some(
+        (b) => (b as { type?: unknown })?.type === "image",
+      )
+    )
+      return; // images are not text — the built-in already size-checks them
+    return capReadOutput(event);
   });
 
   on("tool_result", async (event) => {

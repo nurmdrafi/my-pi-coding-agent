@@ -19,6 +19,14 @@ import { join } from "path";
 const CAP_LINES = 40;
 const CAP_BYTES = 2_048;
 
+/** H1b read cap (2026-10-21): reads had NO post-cap — pibash/bash get H1's
+ * 40/2KB, but a `piread`/`read` window rode straight into context (session
+ * audit: piread median 1.6KB, p90 8.5KB, max 40KB; the pre-cap pidx incident
+ * dumped 1.16M chars). 40 lines is too small for a code read, so the read cap
+ * is looser than H1 but still bounded: 300 lines / 8KB, spill pointer kept. */
+const CAP_READ_LINES = 300;
+const CAP_READ_BYTES = 8_192;
+
 /**
  * Replaces the deleted blocking viewing/dump rules (R2 viewing first;
  * R5/R6/R7/R8/verbose retire next): oversized bash output is truncated in
@@ -97,6 +105,86 @@ export function capBashOutput(event: {
       // pruning is hygiene only
     }
     note = `… [output capped: kept ${kept.length}/${lines.length} lines — full output in ${spill}; read it with offset/limit if needed]`;
+  } catch {
+    // spill is best-effort; truncation alone still caps the flood
+  }
+  const content: ToolResultEventResult["content"] = blocks.filter(
+    (b) => (b as { type?: unknown })?.type !== "text",
+  ) as NonNullable<ToolResultEventResult["content"]>;
+  content.push({ type: "text", text: `${kept.join("\n")}\n${note}` });
+  const out: ToolResultEventResult = { content };
+  if (event.structuredContent !== undefined)
+    out.structuredContent =
+      event.structuredContent as ToolResultEventResult["structuredContent"];
+  return out;
+}
+
+/**
+ * H1b: non-blocking cap for read results (piread and the built-in `read`).
+ * Mirrors capBashOutput with a looser ceiling (300 lines / 8KB) so a normal
+ * code window still lands whole while a flood is cut and spilled. Returns
+ * undefined when the result is already within budget or carries no text, so
+ * the caller overlays nothing.
+ */
+export function capReadOutput(event: {
+  toolCallId: string;
+  content?: unknown[];
+  structuredContent?: unknown;
+}): ToolResultEventResult | undefined {
+  const blocks = event.content ?? [];
+  const texts: string[] = [];
+  for (const b of blocks)
+    if ((b as { type?: unknown })?.type === "text")
+      texts.push(String((b as { text?: unknown })?.text ?? ""));
+  if (texts.length === 0) return;
+  const full = texts.join("\n");
+  const lines = full.split("\n");
+  if (
+    lines.length <= CAP_READ_LINES &&
+    Buffer.byteLength(full, "utf8") <= CAP_READ_BYTES
+  )
+    return;
+  const kept: string[] = [];
+  let bytes = 0;
+  for (const l of lines) {
+    if (kept.length >= CAP_READ_LINES) break;
+    const b = Buffer.byteLength(l, "utf8") + 1;
+    if (bytes + b > CAP_READ_BYTES) {
+      if (kept.length === 0 && l) {
+        const buf = Buffer.from(l, "utf8");
+        const half = Math.max(64, Math.floor((CAP_READ_BYTES - 64) / 2));
+        kept.push(
+          `${buf.subarray(0, half).toString("utf8")} … [line truncated: ${buf.length} B] … ${buf.subarray(Math.max(half, buf.length - half)).toString("utf8")}`,
+        );
+      }
+      break;
+    }
+    kept.push(l);
+    bytes += b;
+  }
+  let note = `… [read capped: kept ${kept.length}/${lines.length} lines]`;
+  try {
+    const safeId = String(event.toolCallId).replace(/[^A-Za-z0-9._-]/g, "_");
+    const spillDir = join(tmpdir(), "pgate-spill");
+    const spill = join(spillDir, `${safeId}.txt`);
+    mkdirSync(spillDir, { recursive: true, mode: 0o700 });
+    writeFileSync(spill, full, { mode: 0o600 });
+    try {
+      const cutoff = Date.now() - 24 * 60 * 60_000;
+      let pruned = 0;
+      for (const f of readdirSync(spillDir)) {
+        if (pruned >= 50) break;
+        const p = join(spillDir, f);
+        const s = statSync(p);
+        if (s.isFile() && s.mtimeMs < cutoff) {
+          unlinkSync(p);
+          pruned++;
+        }
+      }
+    } catch {
+      // pruning is hygiene only
+    }
+    note = `… [read capped: kept ${kept.length}/${lines.length} lines — full text in ${spill}; read it with offset/limit if needed]`;
   } catch {
     // spill is best-effort; truncation alone still caps the flood
   }

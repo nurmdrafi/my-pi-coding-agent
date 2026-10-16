@@ -13,7 +13,7 @@
   "defaultTools": ["-bash", "-read", "-edit", "+codemode", "+pibash", "+piread", "+piedit", "+pidx"],
   "codemode": {
     "mode": "on",
-    "inlineBudget": 3000
+    "inlineBudget": 1200
   },
   "compaction": {
     "enabled": true,

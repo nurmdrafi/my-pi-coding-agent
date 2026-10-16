@@ -38,6 +38,8 @@ Loaded every session. Task rule sets in `docs/` — follow link when task touche
 
 ### Tooling defaults
 - Rust-based tools first — [docs/tooling-defaults.md](docs/tooling-defaults.md). Search is `rg` (ripgrep); find is `fd`. Never reach for `grep`/`find` first — they are error-only fallbacks.
+- Codemode scripts: call `tools.pibash`/`tools.piread`/`tools.piedit`/`tools.pidx`, never built-in `tools.bash`/`tools.read` (gate P3). The script is an async function body — it must parse; keep escaping simple, the gate blocks a non-parsing script with a `line:col` pointer before it runs (gate P4). Use codemode only for scripted aggregation across several calls; a single command or read goes to `pibash`/`piread` directly.
+- Output caps: bash/pibash output capped at 40 lines / 2KB (H1); read/piread over 300 lines / 8KB capped with a spill pointer (H1b) — keep commands and read windows targeted.
 
 ### GitHub issues
 - Repo has gh issues → check related, cover acceptance criteria, state deviations. Flow: [docs/agent-hygiene.md](docs/agent-hygiene.md). Failure classes: [docs/issue-classes.md](docs/issue-classes.md).

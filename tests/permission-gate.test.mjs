@@ -1683,6 +1683,115 @@ const cases = [
         : { blocked: true, reason: `spill: ${files.slice(-3).join()}` };
     },
   ],
+  // ---- H1b (2026-10-21): reads had no post-cap — a wide read window rode into context whole ----
+  [
+    "H1b: oversized piread output is capped with spill pointer",
+    "pass",
+    async (pi) => {
+      const id = `rcap${++seqId}`;
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "piread",
+        toolCallId: id,
+        input: { path: "big.ts", offset: 1, limit: 500 },
+      });
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "piread",
+        toolCallId: id,
+        input: { path: "big.ts", offset: 1, limit: 500 },
+        content: textBlocks(
+          Array.from({ length: 500 }, (_, i) => `line ${i + 1}`).join("\n"),
+        ),
+        isError: false,
+      });
+      const t = r?.content?.[0]?.text ?? "";
+      const ok = r && t.startsWith("line 1\n") && t.includes("read capped") && t.includes("pgate-spill");
+      return ok
+        ? { blocked: false }
+        : { blocked: true, reason: `read cap missing: ${JSON.stringify(r).slice(0, 160)}` };
+    },
+  ],
+  [
+    "H1b: a read within 300 lines / 8KB passes uncapped",
+    "pass",
+    async (pi) => {
+      const id = `rcap${++seqId}`;
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "piread",
+        toolCallId: id,
+        input: { path: "small.ts", offset: 1, limit: 100 },
+      });
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "piread",
+        toolCallId: id,
+        input: { path: "small.ts", offset: 1, limit: 100 },
+        content: textBlocks(
+          Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n"),
+        ),
+        isError: false,
+      });
+      return r === undefined || r === null
+        ? { blocked: false }
+        : { blocked: true, reason: `small read was capped: ${JSON.stringify(r).slice(0, 120)}` };
+    },
+  ],
+  [
+    "H1b: byte flood under the line cap is still capped",
+    "pass",
+    async (pi) => {
+      const id = `rcap${++seqId}`;
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "piread",
+        toolCallId: id,
+        input: { path: "wide.ts", offset: 1, limit: 50 },
+      });
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "piread",
+        toolCallId: id,
+        input: { path: "wide.ts", offset: 1, limit: 50 },
+        content: textBlocks(
+          Array.from({ length: 50 }, () => "x".repeat(500)).join("\n"),
+        ),
+        isError: false,
+      });
+      const t = r?.content?.[0]?.text ?? "";
+      return t.includes("read capped") && t.length < 25_000
+        ? { blocked: false }
+        : { blocked: true, reason: `wide-line flood not byte-capped: len=${t.length}` };
+    },
+  ],
+  [
+    "H1b: an image read result is never capped",
+    "pass",
+    async (pi) => {
+      const id = `rcap${++seqId}`;
+      const input = { path: "pic.png" };
+      await pi.invoke("tool_call", {
+        type: "tool_call",
+        toolName: "read",
+        toolCallId: id,
+        input,
+      });
+      const r = await pi.invoke("tool_result", {
+        type: "tool_result",
+        toolName: "read",
+        toolCallId: id,
+        input,
+        content: [
+          { type: "image", source: { type: "base64", media_type: "image/png", data: "x" } },
+        ],
+        isError: false,
+      });
+      return r === undefined || r === null
+        ? { blocked: false }
+        : { blocked: true, reason: "image result was capped" };
+    },
+  ],
   // ---- R5 git log caps (deleted 2026-10-08, H1 step 5 — output cap covers) ----
   [
     "uncapped git log is allowed (H1 step 5 cap)",
@@ -3682,6 +3791,63 @@ const cases = [
     'P3: codemode tools.bash passes when pibash is opted out (PI_NATIVE_BASH=0)',
     'pass',
     async (pi) => codemode(pi, "return await tools.bash({ command: 'ls' });"),
+  ],
+  // ---- P4 (2026-10-21): a codemode script must PARSE before it runs ----
+  [
+    'P4: codemode script that does not parse is blocked (stray backtick)',
+    'blocked',
+    async (pi) => {
+      // an unterminated template literal: the sandbox would throw SyntaxError
+      const r = await codemode(pi, 'const x = `abc; return x;');
+      return r.blocked && r.reason.startsWith('Codemode (Script)')
+        ? r
+        : { blocked: false, reason: `wrong family: ${String(r.reason).slice(0, 70)}` };
+    },
+  ],
+  [
+    'P4: codemode parse block carries a line pointer',
+    'blocked',
+    async (pi) => {
+      const r = await codemode(pi, 'const a = 1;\nconst b = `oops;\nreturn a;');
+      return r.blocked && /line 2:/.test(r.reason)
+        ? r
+        : { blocked: false, reason: `no pointer: ${String(r.reason).slice(0, 90)}` };
+    },
+  ],
+  [
+    'P4: a well-formed codemode script passes the parse check',
+    'pass',
+    async (pi) => codemode(pi, 'const x = `ok`; return x;'),
+  ],
+  [
+    'P4: an empty/whitespace script passes (nothing to parse)',
+    'pass',
+    async (pi) => codemode(pi, '   \n  '),
+  ],
+  [
+    'P4: top-level await/return parse (async function body)',
+    'pass',
+    async (pi) => codemode(pi, 'const r = await tools.pidx({}); return r;'),
+  ],
+  [
+    'P4: parse guard is skippable (PGATE_CODEMODE_SCRIPT_GUARD=0)',
+    'pass',
+    async () => {
+      // rules are baked at module import, so the env override is exercised in a
+      // subprocess: with the rule off the gate must NOT block a non-parsing script
+      const res = spawnSync(
+        process.execPath,
+        [join(ROOT, "tests/fixtures/p4-guard-off-probe.mjs"), ROOT],
+        {
+          cwd: ROOT,
+          encoding: "utf8",
+          env: { ...process.env, PGATE_CODEMODE_SCRIPT_GUARD: "0" },
+        },
+      );
+      if (res.status !== 0)
+        throw new Error(`guard still blocked with the rule off: ${res.stdout}${res.stderr}`);
+      return { blocked: false };
+    },
   ],
   [
     'AT1: a completed native-tool call records an adoption line',

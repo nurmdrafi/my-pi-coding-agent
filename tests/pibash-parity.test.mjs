@@ -156,7 +156,9 @@ check("parameter schema is byte-equal to createBashToolDefinition's", () => {
 });
 
 check("description stays bash-shaped (truncation contract preserved)", () => {
-  assert.match(wrapped.description, /truncated to the last/);
+  assert.match(wrapped.description, /truncates to the last/);
+  // the description must also disclose the gate cap the model actually sees
+  assert.match(wrapped.description, /40 lines \/ 2KB/);
 });
 
 // ---- command matrix: envelope parity ----
