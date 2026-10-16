@@ -3,6 +3,7 @@
 use serde::Serialize;
 
 use crate::truncate::Truncation;
+use crate::compress::CompressionMeta;
 
 #[derive(Debug, Serialize)]
 pub struct Success {
@@ -20,6 +21,12 @@ pub struct Success {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub truncation: Option<Truncation>,
     pub last_line_bytes: usize,
+    /// Tier-1 compression metadata (requirement 5). Additive: absent when no
+    /// compression pass produced a marker.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compression: Option<CompressionMeta>,
+    /// Rough token count (chars / 4) of the model-visible text.
+    pub token_estimate: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -67,10 +74,14 @@ mod tests {
             structured_truncated: false,
             truncation: None,
             last_line_bytes: 2,
+            compression: None,
+            token_estimate: 0,
         };
         let json = serde_json::to_string(&envelope).unwrap();
         assert!(!json.contains("fullOutputPath"));
         assert!(!json.contains("truncation"));
+        assert!(!json.contains("compression"));
+        assert!(json.contains("\"token_estimate\":0"));
         assert!(json.starts_with(r#"{"ok":true"#));
     }
 }

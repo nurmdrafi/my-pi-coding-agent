@@ -92,7 +92,7 @@ import { readFile, lstat } from "fs/promises";
 import { basename, dirname, join } from "path";
 
 import { toLF, validateEditAnchors } from "./anchor-guard.ts";
-import { capBashOutput, capReadOutput } from "./bash-cap.ts";
+import { capBashOutput, capReadOutput, isRustCompressed } from "./bash-cap.ts";
 import { scrubBashText } from "./output-scrub.ts";
 import {
   APPROVED_WINDOW_MS,
@@ -947,6 +947,12 @@ export default function (pi: ExtensionAPI) {
     // error outputs and sailed through uncapped). Only the gate's own
     // synthesized block results pass through untouched.
     if (blockFamilyOf(event)) return;
+    // 2026-10-22 native-pass-through: pibash's Rust Tier-1 engine already pruned
+    // this result to the model-visible budget (2 KB / 40 lines) with
+    // diagnostic-aware windows. Running the scrub + H1 cap on top would re-cut
+    // the rescued error/stack lines. Detect the compression signal and pass it
+    // through raw.
+    if (isRustCompressed(event)) return;
     // 2026-10-13 output scrub (rtk-optimizer principles): ANSI strip +
     // test/build aggregation runs first, in place; the H1 cap below then
     // truncates/elides whatever is left. Failures/errors always survive.

@@ -72,6 +72,23 @@ pub fn truncate_string_to_bytes_from_end(s: &str, max_bytes: usize) -> String {
     String::from_utf8_lossy(&bytes[start..]).into_owned()
 }
 
+/// Take the first `max_bytes` bytes of `s`, on a character boundary: never end
+/// inside a UTF-8 sequence. The complement of `truncate_string_to_bytes_from_end`
+/// for head slices.
+#[must_use]
+pub fn truncate_string_to_bytes_from_start(s: &str, max_bytes: usize) -> String {
+    let bytes = s.as_bytes();
+    if bytes.len() <= max_bytes {
+        return s.to_string();
+    }
+    let mut end = max_bytes;
+    // Back off any trailing continuation bytes so the cut lands on a boundary.
+    while end > 0 && (bytes[end] & 0xc0) == 0x80 {
+        end -= 1;
+    }
+    String::from_utf8_lossy(&bytes[..end]).into_owned()
+}
+
 /// Truncate from the head, keeping the last `max_lines` / `max_bytes`.
 /// Direct port of `truncateTail`.
 #[must_use]

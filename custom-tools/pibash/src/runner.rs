@@ -197,7 +197,13 @@ pub fn run_observed(
     // built-in resolves the moment the shell exits; drain only in-flight bytes
     // and then abandon readers that never see EOF.
     drain_readers(&rx, &mut pending_out, &mut pending_err);
-    let _ = flush_pending(&mut pending_out, &mut pending_err, accumulator);
+    // The final flush may be the ONLY flush for a fast command whose output
+    // arrived after the loop broke on child exit. Notify the observer so the
+    // last partial is streamed, not just accumulated (previously this flush
+    // was silent: the observer never saw short-lived commands' output).
+    if flush_pending(&mut pending_out, &mut pending_err, accumulator) {
+        observer.update(accumulator);
+    }
 
     let exit_code = status.map(|s| exit_code_of(&s));
     RunOutcome {

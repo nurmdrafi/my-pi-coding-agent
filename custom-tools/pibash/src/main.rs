@@ -7,6 +7,7 @@
 
 mod accumulator;
 mod cli;
+mod compress;
 mod envelope;
 mod render;
 mod runner;
@@ -121,26 +122,100 @@ pub fn execute_observed(
         ));
     };
 
-    let snapshot = accumulator.snapshot(true);
-    // Read the fields that survive the move before format_output consumes it.
-    let truncated = snapshot.truncation.truncated;
-    let full_output_path = snapshot
-        .full_output_path
+    // Capture the full stream for the shadow pre-pass FIRST — `read_full_output`
+    // consumes the in-memory raw buffer when no spill exists.
+    let full_text = accumulator.full_text();
+    let structured_output_path = accumulator.temp_output_path();
+    let (structured_output, structured_truncated) =
+        accumulator.read_full_output(structured_limit());
+    let full_output_path = structured_output_path
         .as_ref()
         .map(|path| path.to_string_lossy().into_owned());
-    let (text, mut truncation) = format_output(&mut accumulator, snapshot, "(no output)");
-    // `truncation.content` is always an exact prefix of `text` (the note is
-    // appended after it), so the daemon re-sends the same bytes twice. Drop the
-    // copy on the wire; the extension restores it from `text`. The one-shot CLI
-    // keeps it so crate/CLI consumers see a self-contained envelope.
+
+    // ---- Option B: Tier-1 shadow pre-pass over the FULL stream ----
+    // Compress the complete output (from the spill file when one exists, else
+    // the in-memory raw buffer) so errors buried in the middle of a huge
+    // failing stream survive. Then feed the compressed text through the legacy
+    // tail-truncation/parity path, unchanged, so the envelope shape is intact.
+    let kind = compress::classify(&request.command);
+    let success = exit_code == 0;
+    // Prune to the model-visible budget (40 lines / 2 KB), not the accumulator's
+    // 2000 / 50 KB spill cap, so the gate's H1 can pass the result through.
+    let compressed = compress::compress_output(
+        &full_text,
+        kind,
+        success,
+        compress::COMPRESS_MAX_LINES,
+        compress::COMPRESS_MAX_BYTES,
+    );
+
+    // Parity-shaped display + truncation over the (cleaned/pruned) stream, using
+    // a scratch accumulator so the original's spill writer/raw stay intact.
+    let mut scratch = OutputAccumulator::new("pi-bash-shadow");
+    scratch.append(compressed.content.as_bytes());
+    scratch.finish();
+    let snapshot = scratch.snapshot(false);
+    let truncated = snapshot.truncation.truncated;
+    let (text, mut truncation) = format_output(&mut scratch, snapshot, "(no output)");
+    // `truncation.content` duplicates `text` on the wire; drop it for the daemon
+    // exactly as before (the extension restores it from `text`).
     if omit_truncation_content
         && let Some(t) = truncation.as_mut()
     {
         t.content = String::new();
     }
+    // If the shadow pre-pass still overflows, the scratch accumulator wrote its
+    // OWN spill; the model-visible reference must point at the ORIGINAL full
+    // spill (which holds the untouched stream), not the scratch copy.
+    let shadow_spill = scratch.temp_output_path();
+    drop(scratch);
+    if let Some(path) = shadow_spill {
+        let _ = std::fs::remove_file(path);
+    }
+
     let last_line_bytes = accumulator.last_line_bytes();
-    let (structured_output, structured_truncated) =
-        accumulator.read_full_output(structured_limit());
+    // `truncated`, `truncation`, and `fullOutputPath` mirror the built-in oracle
+    // exactly (based on the ORIGINAL stream's 2000-line / 50 KB window).
+    // Compression is a separate, additive signal (`compression` metadata + the
+    // omission marker in `text`), so machine-readable parity is preserved even
+    // though the display text diverges by design.
+    //
+    // The scratch accumulator ran over the compressed (fitting) text, so its own
+    // `truncated` is false. To keep the envelope consistent with the original
+    // window, recompute from the accumulator's real spill state.
+    let original_truncated = full_output_path.is_some();
+    let truncated = original_truncated || truncated;
+    if truncation.is_none() && original_truncated {
+        // The original spilled: surface an oracle-shaped truncation object so the
+        // extension's `details` carries the spill reference.
+        let original_lines = full_text.lines().count();
+        truncation = Some(crate::truncate::Truncation {
+            content: String::new(),
+            truncated: true,
+            truncated_by: Some("bytes"),
+            total_lines: original_lines,
+            total_bytes: full_text.len(),
+            output_lines: compressed.content.lines().count(),
+            output_bytes: compressed.content.len(),
+            last_line_partial: false,
+            first_line_exceeds_limit: false,
+            max_lines: compress::COMPRESS_MAX_LINES,
+            max_bytes: compress::COMPRESS_MAX_BYTES,
+        });
+    }
+    let compression = if compressed.strategy == compress::Strategy::None {
+        None
+    } else {
+        Some(compress::CompressionMeta {
+            strategy: compressed.strategy.as_str(),
+            original_chars: full_text.chars().count(),
+            visible_chars: compressed.content.chars().count(),
+            omitted_chars: compressed.omitted_chars,
+            spill_used: full_output_path.is_some(),
+            full_output_path: full_output_path.clone(),
+        })
+    };
+    let token_estimate = compress::token_estimate(&text);
 
     Ok(Success {
         ok: true,
@@ -153,5 +228,157 @@ pub fn execute_observed(
         structured_truncated,
         truncation,
         last_line_bytes,
+        compression,
+        token_estimate,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::Request;
+    use std::path::PathBuf;
+
+    fn run_command(command: &str) -> Success {
+        run_command_env(command, None)
+    }
+
+    fn run_command_env(command: &str, env: Option<std::collections::HashMap<String, String>>) -> Success {
+        let request = Request {
+            command: command.to_string(),
+            cwd: PathBuf::from(std::env::temp_dir()),
+            timeout_seconds: None,
+            env,
+        };
+        execute(&request).expect("command runs")
+    }
+
+    /// Strip the trailing `[... Showing ... Full output: <path>]` / `[output
+    /// capped ... <path>]` note, leaving only the compressed content — the
+    /// note carries a unique spill filename and is not part of the payload.
+    fn body_without_spill_note(text: &str) -> &str {
+        match text.find("\n\n[") {
+            Some(idx) => &text[..idx],
+            None => text,
+        }
+    }
+
+    #[test]
+    fn small_output_has_no_spill_and_no_compression() {
+        let env = run_command("printf 'hello\\nworld\\n'");
+        // Within budget: byte-identical passthrough (trailing newline kept,
+        // matching the built-in oracle).
+        assert_eq!(env.text, "hello\nworld\n");
+        assert!(env.full_output_path.is_none());
+        assert!(env.compression.is_none());
+        assert!(env.token_estimate > 0);
+    }
+
+    #[test]
+    fn oversized_successful_output_is_compressed_within_budget() {
+        // seq 1 5000 (~24 KB) compresses into the 2 KB model budget, so the
+        // display fits and no envelope-level spill reference is emitted
+        // (requirement: spill only when the compressed result still overflows).
+        let env = run_command("seq 1 5000");
+        let c = env.compression.expect("compression meta");
+        assert_eq!(c.strategy, "head-tail");
+        assert!(c.omitted_chars > 0);
+        assert!(env.text.contains("omitted"), "carries an omission marker");
+        assert!(
+            env.text.split('\n').count() <= compress::COMPRESS_MAX_LINES + 4,
+            "fits the model-visible line budget"
+        );
+    }
+
+    #[test]
+    fn output_beyond_the_spill_cap_still_spills() {
+        // Beyond the accumulator's 50 KB spill cap the original stream is kept
+        // in a spill file, referenced from the envelope.
+        let env = run_command("seq 1 20000");
+        assert!(env.full_output_path.is_some(), "spill reference kept");
+        assert!(env.compression.is_some(), "compression meta present");
+    }
+
+    #[test]
+    fn oversized_failing_test_preserves_middle_error_lines() {
+        // Errors sit in the MIDDLE of a huge failing stream. Option B must
+        // surface them even though legacy tail truncation would drop them.
+        // A stub `cargo` on PATH forces the Test classification while emitting
+        // a deterministic failing stream.
+        let dir = std::env::temp_dir().join(format!("pibash-stub-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let stub = dir.join("cargo");
+        std::fs::write(
+            &stub,
+            "#!/bin/sh\n\
+             i=0; while [ $i -lt 5000 ]; do echo \"   Compiling dep$i\"; i=$((i+1)); done; \
+             echo 'error[E0308]: mismatched types'; \
+             echo '  --> src/main.rs:42:5'; \
+             echo 'test result: FAILED. 3 passed; 1 failed'; \
+             i=0; while [ $i -lt 5000 ]; do echo \"   trailing noise $i\"; i=$((i+1)); done; \
+             exit 1\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut env_map = std::collections::HashMap::new();
+        env_map.insert(
+            "PATH".to_string(),
+            format!("{}:/usr/bin:/bin", dir.display()),
+        );
+        let env = run_command_env("cargo test", Some(env_map));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(env.exit_code, 1);
+        let c = env.compression.expect("compression meta");
+        assert_eq!(c.strategy, "error-priority");
+        assert!(
+            env.text.contains("error[E0308]: mismatched types"),
+            "middle error line must survive: {}",
+            &env.text[..env.text.len().min(200)]
+        );
+        assert!(env.text.contains("--> src/main.rs:42:5"));
+        assert!(env.text.contains("test result: FAILED. 3 passed; 1 failed"));
+    }
+
+    #[test]
+    fn multibyte_output_stays_valid_utf8() {
+        let env = run_command("sh -c 'for i in $(seq 1 5000); do echo \"\u{8a9e}\u{8a9e}\u{8a9e}\u{8a9e}\"; done'");
+        assert!(!env.text.contains('\u{FFFD}'));
+        assert!(env.text.is_char_boundary(0));
+        assert!(env.text.is_char_boundary(env.text.len()));
+    }
+
+    #[test]
+    fn timeout_output_keeps_the_timeout_status() {
+        let request = Request {
+            command: "sleep 5".to_string(),
+            cwd: PathBuf::from(std::env::temp_dir()),
+            timeout_seconds: Some(0.2),
+            env: None,
+        };
+        match execute(&request) {
+            Err(failure) => assert_eq!(failure.error.kind, "timeout"),
+            Ok(_) => panic!("expected timeout failure"),
+        }
+    }
+
+    #[test]
+    fn compression_is_deterministic_across_runs() {
+        let a = run_command("seq 1 5000");
+        let b = run_command("seq 1 5000");
+        // The spill note carries a unique temp path per run; the compressed
+        // payload itself must be byte-identical.
+        assert_eq!(
+            body_without_spill_note(&a.text),
+            body_without_spill_note(&b.text)
+        );
+        assert_eq!(
+            a.compression.map(|c| c.omitted_chars),
+            b.compression.map(|c| c.omitted_chars)
+        );
+    }
 }

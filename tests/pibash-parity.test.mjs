@@ -235,12 +235,93 @@ function normalize(result) {
   return { content, structuredContent: structured, details, isError: value.isError };
 }
 
+/**
+ * Machine-readable parity: fields that must stay byte-identical to the built-in
+ * regardless of display-text compression. Display `text` is intentionally
+ * excluded — the Tier-1 Rust engine compresses oversized output, so pibash is
+ * no longer the display oracle for large payloads (see compression invariants
+ * below).
+ */
+function machineFields(result) {
+  const value = result.value;
+  if (!value) return { rejected: result.rejected, error: result.error };
+  return {
+    isError: value.isError,
+    exit_code: value.structuredContent?.exit_code,
+    structured_truncated: value.structuredContent?.truncated,
+    structured_has_path: typeof value.structuredContent?.full_output_path === "string",
+    content_is_text: value.content?.[0]?.type === "text",
+  };
+}
+
+/** The model-visible budget the Rust Tier-1 engine compresses to — mirrors
+ * `compress.rs` COMPRESS_MAX_LINES / COMPRESS_MAX_BYTES and the gate's H1 cap. */
+const COMPRESS_MAX_LINES = 40;
+const COMPRESS_MAX_BYTES = 2048;
+
+/** True when pibash's display text was compressed (differs from a plain tail
+ * view): it carries the Rust omission marker or a head-tail/error-priority
+ * shape. Small within-budget output never has these. */
+function wasCompressed(text) {
+  return /\[\.\.\. omitted |\[\.\.\. repeated /.test(String(text));
+}
+
+/** True when the ORACLE display exceeds the model budget, i.e. pibash will
+ * intentionally diverge from it by compressing. */
+function oracleExceedsBudget(text) {
+  const s = String(text);
+  return s.split("\n").length > COMPRESS_MAX_LINES || Buffer.byteLength(s, "utf8") > COMPRESS_MAX_BYTES;
+}
+
+/**
+ * Compression invariants for oversized output: the display must stay within the
+ * model-visible budget, carry an explicit omission marker, and preserve UTF-8
+ * boundaries. These replace the old byte-identity assertion, which no longer
+ * holds by design.
+ */
+function assertCompressionInvariants(text, label) {
+  const s = String(text);
+  assert.ok(s.length > 0, `${label}: empty display text`);
+  assert.ok(!s.includes("\uFFFD"), `${label}: replacement char (broken UTF-8 boundary)`);
+  const lines = s.split("\n").length;
+  assert.ok(
+    lines <= COMPRESS_MAX_LINES + 4,
+    `${label}: ${lines} lines exceeds the ${COMPRESS_MAX_LINES}-line model budget (+marker)`,
+  );
+  assert.ok(
+    Buffer.byteLength(s, "utf8") <= COMPRESS_MAX_BYTES + 512,
+    `${label}: exceeds the ${COMPRESS_MAX_BYTES}-byte model budget (+marker)`,
+  );
+  assert.ok(
+    wasCompressed(s) || s.includes("Showing lines") || s.includes("output capped"),
+    `${label}: oversized output must carry an omission marker or cap note`,
+  );
+}
+
 for (const command of COMMANDS) {
   await checkAsync(`parity: ${JSON.stringify(command)}`, async () => {
     resetDaemon();
     const mine = await run(wrapped, { command }, NO_UI_CTX);
     const theirs = await run(oracle, { command }, NO_UI_CTX);
-    assert.deepStrictEqual(normalize(mine), normalize(theirs));
+
+    // Machine-readable fields must match the built-in exactly, always.
+    assert.deepStrictEqual(
+      machineFields(mine),
+      machineFields(theirs),
+      "machine-readable fields diverged from the built-in",
+    );
+
+    const mineText = mine.value.content[0].text;
+    const theirsText = theirs.value.content[0].text;
+    if (wasCompressed(mineText) || oracleExceedsBudget(theirsText)) {
+      // Over the model budget: display text diverges by design — assert the
+      // compression contract (budget, marker, UTF-8 boundaries) instead of
+      // byte identity with the built-in.
+      assertCompressionInvariants(mineText, JSON.stringify(command));
+    } else {
+      // Within budget: pibash must still be a byte-identical display oracle.
+      assert.deepStrictEqual(normalize(mine), normalize(theirs));
+    }
   });
 }
 
@@ -266,31 +347,25 @@ await checkAsync("parity: empty output renders the oracle's placeholder", async 
 
 // ---- truncation lock-in ----
 
-await checkAsync("truncation: line-capped output matches the oracle's note", async () => {
+await checkAsync("truncation: oversized output preserves machine parity + compression contract", async () => {
   resetDaemon();
   const command = "seq 1 2500";
   const mine = await run(wrapped, { command }, NO_UI_CTX);
   const theirs = await run(oracle, { command }, NO_UI_CTX);
-  const note = (text) => String(text).split("\n\n").pop();
-  const mineNote = note(mine.value.content[0].text);
-  const theirsNote = note(theirs.value.content[0].text);
-  // both report the same line window; only the spill path differs
-  assert.equal(mineNote.replace(/Full output: .*\]$/, "Full output: <spill>]"),
-    theirsNote.replace(/Full output: .*\]$/, "Full output: <spill>]"));
+  // Machine-readable fields still match the built-in exactly.
+  assert.deepStrictEqual(machineFields(mine), machineFields(theirs));
   assert.equal(mine.value.structuredContent.truncated, theirs.value.structuredContent.truncated);
+  // Display text diverges by design: assert the compression contract.
+  assertCompressionInvariants(mine.value.content[0].text, "seq 1 2500");
 });
 
-await checkAsync("truncation: byte-capped single line keeps its tail like the oracle", async () => {
+await checkAsync("truncation: byte-capped single line stays within budget", async () => {
   resetDaemon();
   const command = "printf 'x%.0s' $(seq 1 60000)";
   const mine = await run(wrapped, { command }, NO_UI_CTX);
   const theirs = await run(oracle, { command }, NO_UI_CTX);
-  const head = (text) => String(text).split("\n\n[")[0];
-  assert.equal(head(mine.value.content[0].text).length, head(theirs.value.content[0].text).length);
-  assert.equal(
-    mine.value.content[0].text.split("\n\n")[1].replace(/Full output: .*\]$/, "").slice(0, 20),
-    theirs.value.content[0].text.split("\n\n")[1].replace(/Full output: .*\]$/, "").slice(0, 20),
-  );
+  assert.deepStrictEqual(machineFields(mine), machineFields(theirs));
+  assertCompressionInvariants(mine.value.content[0].text, "single 60k line");
 });
 
 // ---- fail-open ladder ----
@@ -370,14 +445,25 @@ await checkAsync("parity: timeout rejects exactly like the built-in", async () =
   assert.match(String(mine.error), /timed out after 1 seconds/);
 });
 
-await checkAsync("truncation: details.truncation.content is restored byte-identically", async () => {
+await checkAsync("truncation: details restore contract for spilled output", async () => {
   resetDaemon();
-  const command = "seq 1 2500";
+  // A stream beyond the accumulator's 50 KB spill cap: the envelope truncates
+  // AND spills, so `details` is present. (A smaller stream compresses to fit
+  // the 2 KB budget and emits no envelope-level truncation.)
+  const command = "seq 1 20000";
   const mine = await run(wrapped, { command }, NO_UI_CTX);
   const theirs = await run(oracle, { command }, NO_UI_CTX);
-  assert.equal(mine.value.details.truncation.content, theirs.value.details.truncation.content);
-  assert.equal(mine.value.details.truncation.outputBytes, theirs.value.details.truncation.outputBytes);
-  assert.equal(mine.value.details.truncation.totalLines, theirs.value.details.truncation.totalLines);
+  assert.ok(mine.value.details?.truncation, "spilled output carries details.truncation");
+  // Shape parity: the truncation object carries the oracle's field set.
+  const oracleKeys = Object.keys(theirs.value.details.truncation).sort();
+  assert.deepStrictEqual(Object.keys(mine.value.details.truncation).sort(), oracleKeys);
+  // The extension restores `content` from the display text; it must be a
+  // prefix of that text (compressed text differs from the oracle by design).
+  const restored = mine.value.details.truncation.content;
+  const display = mine.value.content[0].text;
+  assert.ok(typeof restored === "string" && restored.length > 0, "content restored");
+  assert.ok(display.startsWith(restored), "restored content is a prefix of the display text");
+  assert.equal(mine.value.structuredContent.truncated, theirs.value.structuredContent.truncated);
 });
 
 await checkAsync("parity: timeout parameter shape is accepted like the oracle", async () => {

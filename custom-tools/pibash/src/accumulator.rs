@@ -269,6 +269,30 @@ impl OutputAccumulator {
         )
     }
 
+    /// The path of the spill file holding the full stream, if one exists. Does
+    /// not create a spill (unlike `snapshot(true)`).
+    #[must_use]
+    pub fn temp_output_path(&self) -> Option<PathBuf> {
+        self.temp_file_path.clone()
+    }
+
+    /// The complete output, uncapped — the spill file's contents when a spill
+    /// exists, else the in-memory raw buffer. Used by the Tier-1 compression
+    /// pre-pass (Option B), which must see the middle of a large stream before
+    /// legacy tail truncation discards it. The spill file itself is never
+    /// modified, and `raw` is borrowed (not consumed) so `read_full_output`
+    /// still produces `structured_output` afterwards.
+    #[must_use]
+    pub fn full_text(&self) -> String {
+        if let Some(path) = self.temp_file_path.as_ref() {
+            return match std::fs::read(path) {
+                Ok(bytes) => from_utf8_owned(bytes),
+                Err(_) => String::new(),
+            };
+        }
+        from_utf8_owned(self.raw.clone())
+    }
+
     fn append_decoded_text(&mut self, text: &str) {
         if text.is_empty() {
             return;
@@ -422,6 +446,30 @@ mod tests {
         let (full, was_truncated) = acc.read_full_output(50 * 1024);
         assert!(was_truncated);
         assert!(full.contains("bytes omitted"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn full_text_returns_small_output_without_spill() {
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        acc.append(b"hello\nworld\n");
+        acc.finish();
+        assert_eq!(acc.full_text(), "hello\nworld\n");
+    }
+
+    #[test]
+    fn full_text_returns_the_whole_spilled_stream_uncapped() {
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        let body: String = (0..3000)
+            .map(|i| format!("line{i}\n"))
+            .collect();
+        acc.append(body.as_bytes());
+        acc.finish();
+        let snapshot = acc.snapshot(true);
+        let path = snapshot.full_output_path.clone().unwrap();
+        // full_text sees the middle that the tail snapshot discarded.
+        assert_eq!(acc.full_text(), body);
+        assert!(acc.full_text().contains("line5\n"));
         let _ = std::fs::remove_file(&path);
     }
 

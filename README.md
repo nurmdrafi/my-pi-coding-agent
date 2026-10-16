@@ -142,6 +142,66 @@ Native tools forward the context env keys the built-in tools inject — `PI_SESS
 
 Parity is pinned by `tests/piread-parity.test.mjs`, `tests/piedit-parity.test.mjs`, and `tests/pibash-parity.test.mjs`, plus `tests/piedit-diff-fuzz.mjs`. Measured speedups and full methodology live in [`benchmark/runs/`](benchmark/runs) and [`CHANGELOG.md`](CHANGELOG.md).
 
+### Performance (Linux x64, node v24.21.0)
+
+Dispatch latency, p50 ms — `built-in` is the stock pi tool (bash/read/edit), `native` is the replacement. The native tools replace a per-call process spawn with a persistent `--serve` daemon, so the win is the amortized spawn floor (~3.3–4.3 ms), not output shaping. Sources: [`benchmark/runs/piread-microbench-2026-10-15-daemon-opt.md`](benchmark/runs/piread-microbench-2026-10-15-daemon-opt.md), [`piedit-microbench-2026-10-16.md`](benchmark/runs/piedit-microbench-2026-10-16.md), [`pibash-microbench-2026-10-16.md`](benchmark/runs/pibash-microbench-2026-10-16.md).
+
+| Tool     | Replaces        | Representative case                          | built-in p50 | native p50 | Δ p50     |
+| -------- | --------------- | -------------------------------------------- | -----------: | ---------: | --------- |
+| `piread` | built-in `read` | one-line file                                | 0.296 ms    | 0.079 ms   | **−0.22** |
+| `piread` | built-in `read` | 2500-line window                             | 1.393 ms    | 0.505 ms   | **−0.89** |
+| `piedit` | built-in `edit` | mid exact (1800 B)                           | 0.893 ms    | 0.342 ms   | **−0.55** |
+| `piedit` | built-in `edit` | 1 MiB file (tmpfs corpus)                    | 88.246 ms   | 9.628 ms   | **9.2×**  |
+| `pibash` | built-in `bash` | `printf`                                     | 3.989 ms    | 2.377 ms   | **−1.61** |
+| `pibash` | built-in `bash` | `seq 50000` (doubled envelope)               | 10.146 ms   | 10.266 ms  | **+0.12** |
+| `pidx`   | Node log parser | 512 sessions / 103 MB (cold → warm)          | —           | 572 → 390 ms | n/a     |
+
+`pibash` is the only arm with a regression (`seq 50000`, +0.12 ms): its envelope ships the payload twice (`content[0].text` + `structuredContent.output`), structural and parity-pinned. `pidx` is a daemonless one-shot CLI, so it has no oracle/daemon split; its figures are a live cold/warm run on this repo's corpus and have no committed bench file yet.
+
+<details>
+<summary>Per-tool detail</summary>
+
+**piread** (N=200/arm; `daemon / oracle` p50 ms):
+
+| corpus | daemon p50 | oracle p50 |
+| --- | ---: | ---: |
+| one-line | 0.079 | 0.296 |
+| crlf | 0.057 | 0.272 |
+| unicode | 0.074 | 0.289 |
+| long-lines | 0.116 | 0.425 |
+| lines2500 | 0.505 | 1.393 |
+| bytes60k | 0.680 | 0.684 |
+| head60k | 0.244 | 0.458 |
+
+**piedit** (N=100/arm; oracle vs piedit p50 ms):
+
+| corpus | bytes | oracle p50 | piedit p50 | Δ p50 |
+| --- | ---: | ---: | ---: | ---: |
+| small-exact | 17 | 0.513 | 0.288 | −0.225 |
+| mid-exact | 1800 | 0.893 | 0.342 | −0.551 |
+| mid-multi | 1800 | 0.854 | 0.327 | −0.527 |
+| fuzzy-trailing-ws | 30 | 0.445 | 0.308 | −0.137 |
+| multiline-block | 18890 | 2.556 | 1.033 | −1.524 |
+| large-1mib | 588890 | 90.630 | 36.416 | −54.214 |
+
+**pibash** (N=60/arm; oracle vs daemon p50 ms):
+
+| command class | oracle p50 | pibash p50 | Δ p50 |
+| --- | ---: | ---: | ---: |
+| true | 4.180 | 2.353 | −1.826 |
+| printf | 3.989 | 2.377 | −1.612 |
+| rg-version | 5.518 | 3.960 | −1.558 |
+| seq1000 | 4.615 | 3.198 | −1.417 |
+| seq2500 | 6.176 | 3.563 | −2.613 |
+| seq50000 | 10.146 | 10.266 | +0.120 |
+| large-blob | 6.801 | 4.239 | −2.561 |
+| stderr-mix | 5.169 | 2.366 | −2.803 |
+| exit-nonzero | 5.075 | 2.262 | −2.813 |
+
+Daemon RSS: piread 2 MB · pibash 3 MB. Spawn floor per session: ~3.3–4.3 ms (paid once, not per call).
+
+</details>
+
 Built-in `bash` is blocked while `pibash` is registered (permission-gate "Pibash-first"), so shell work runs through the native pipeline — `pibash` runs the same schema and rules and falls back itself, so the block never strands the agent.
 
 ## Skills

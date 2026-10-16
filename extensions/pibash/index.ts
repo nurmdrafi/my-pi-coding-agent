@@ -191,6 +191,8 @@ type PibashEnvelope = {
   structured_output?: string;
   structured_truncated?: boolean;
   truncation?: unknown;
+  compression?: { strategy?: string; omittedChars?: number };
+  token_estimate?: number;
   error?: { kind: string; message: string };
 };
 
@@ -469,6 +471,12 @@ function toResult(envelope: PibashEnvelope): BashResult {
       truncation.content = noteAt === -1 ? displayText : displayText.slice(0, noteAt);
     }
     details = { truncation, fullOutputPath: envelope.fullOutputPath };
+  }
+  // Forward the additive compression metadata so the permission gate can skip
+  // its H1 re-truncation for output the Rust engine already pruned to the
+  // model budget (otherwise the gate would re-cut rescued error lines).
+  if (envelope.compression) {
+    details = { ...(details ?? {}), compression: envelope.compression };
   }
   const structuredContent = {
     output: envelope.structured_output ?? "",

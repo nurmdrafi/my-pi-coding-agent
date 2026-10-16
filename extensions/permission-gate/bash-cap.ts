@@ -19,6 +19,26 @@ import { join } from "path";
 const CAP_LINES = 40;
 const CAP_BYTES = 2_048;
 
+/**
+ * True when a result was already compressed by the native Rust engine
+ * (pibash `compress.rs`) to the model-visible budget. Signals: the additive
+ * `compression` metadata the extension forwards into `details`, or the Rust
+ * omission marker in the text. When true the gate must NOT run H1 — re-truncating
+ * would cut off the diagnostic lines the engine deliberately rescued.
+ */
+export function isRustCompressed(event: {
+  content?: unknown[];
+  details?: unknown;
+}): boolean {
+  const details = event.details as { compression?: unknown } | undefined;
+  if (details?.compression) return true;
+  const text = (event.content ?? [])
+    .filter((b) => (b as { type?: unknown })?.type === "text")
+    .map((b) => String((b as { text?: unknown })?.text ?? ""))
+    .join("\n");
+  return /\.\.\. omitted |\.\.\. repeated /.test(text);
+}
+
 /** H1b read cap (2026-10-21): reads had NO post-cap — pibash/bash get H1's
  * 40/2KB, but a `piread`/`read` window rode straight into context (session
  * audit: piread median 1.6KB, p90 8.5KB, max 40KB; the pre-cap pidx incident
