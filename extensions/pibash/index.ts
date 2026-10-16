@@ -558,6 +558,7 @@ export default function pibashExtension(pi: ExtensionAPI): void {
       "Execute a bash command via the native pibash pipeline — prefer this over the bash tool for shell work. Returns stdout and stderr. Output is truncated to the last 2000 lines or 50KB (whichever is hit first); when truncated the full output is saved to a temp file. Optionally provide a timeout in seconds. Any pipeline failure falls back to the built-in bash tool automatically.",
     promptGuidelines: [
       "Use pibash to run shell commands instead of the built-in bash tool — it runs the same schema and bash-kind gate rules and falls back to the built-in executor automatically.",
+      "Inside a codemode script call this tool as `tools.pibash` — the built-in `tools.bash` does NOT exist in this harness. Check `ALL_TOOLS` before any other tool name.",
       ...(definition.promptGuidelines ?? []),
     ],
     execute: execute as typeof definition.execute,

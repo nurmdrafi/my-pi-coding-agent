@@ -97,18 +97,21 @@ export function toolchainCheck(
   seg: string,
   cmd: string,
   cwd?: string,
+  enabled: { pnpm?: boolean; node?: boolean } = {},
 ): string | undefined {
-  if (process.env.PGATE_TOOLCHAIN === "0") return undefined;
+  const pnpmOn = enabled.pnpm ?? true;
+  const nodeOn = enabled.node ?? true;
+  if (!pnpmOn && !nodeOn) return undefined;
   const head = headBinary(seg);
   if (!head) return undefined; // explicit binary path = deliberate pin
   if (VERSION_MANAGER_RE.test(cmd)) return undefined;
   const m = readManifest(cwd);
-  if ((m.pm?.startsWith("pnpm") || m.pnpmLock) && NPM_FAMILY.test(head)) {
+  if (pnpmOn && (m.pm?.startsWith("pnpm") || m.pnpmLock) && NPM_FAMILY.test(head)) {
     if (!(head === "npx" && /^npx\s+pnpm\b/.test(seg)))
       return `Toolchain (pnpm): '${head}' in a pnpm repo — use 'pnpm run <script>', 'pnpm exec <bin>' or 'pnpm dlx <pkg>'. npm/npx/yarn against a pnpm tree caused 7 failed runs (lockfile/engine drift).`;
   }
   const pin = pinnedNode(m);
-  if (pin && process.version !== `v${pin}` && NODE_FAMILY.test(head))
+  if (nodeOn && pin && process.version !== `v${pin}` && NODE_FAMILY.test(head))
     return `Toolchain (Node): repo pins Node ${pin}, current interpreter is ${process.version.slice(1)} — prefix with 'nvm use ${pin} &&' or call the pinned binary by full path; the mismatch caused Unsupported-engine and module-not-found runs.`;
   return undefined;
 }

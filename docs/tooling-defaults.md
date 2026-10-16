@@ -13,7 +13,9 @@ Rust-based tools first at every layer; non-Rust fallbacks only on error.
 - `pibash {command, timeout}` — the default shell tool, same standing as piread/piedit. Runs through the native pipeline with full built-in bash semantics (env/PI_* injection, truncation/spill, streaming, cancellation) and falls back to the built-in bash executor automatically on any pipeline failure — never fall back manually.
 
 ## Codemode scripts
-Inside a codemode script the same defaults hold: call `tools.pibash`, `tools.piread`, `tools.piedit`, `tools.pidx` — never `tools.bash`/`tools.read` (permission-gate P3 blocks the built-in names in script source; the rule only fires while the native tool is registered).
+Inside a codemode script the same defaults hold: call `tools.pibash`, `tools.piread`, `tools.piedit`, `tools.pidx` — never `tools.bash`/`tools.read`/`tools.edit` (permission-gate P3 blocks the built-in bash/read names in script source; the rule only fires while the native tool is registered).
+
+**Discover names before using them.** The sandbox has no ambient globals and no built-in bash/read/edit — `defaultTools` removes them — so a guessed name fails at dispatch (`ReferenceError: read is not defined`, `tools.bash does not exist`) before any work happens. The complete callable set here is `pibash`, `pidx`, `piedit`, `piread`, `write`. Read `ALL_TOOLS` (or `searchTools(query)` / `describeTool(name)`) rather than assuming a name; `write` is the only built-in tool that still exists.
 
 Tool visibility also matters: settings.json must declare the native tools (`defaultTools: ["-bash","-read","-edit","+codemode","+pibash","+piread","+piedit","+pidx"]`) and run codemode with `"mode": "on"` (not `"only"`). With `"only"` the model sees codemode alone and falls back to built-in names it already knows, which P3 then blocks.
 

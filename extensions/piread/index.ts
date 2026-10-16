@@ -494,7 +494,10 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     label: "piread",
     description:
       "Read the contents of a text file via the native piread pipeline — prefer this over the read tool for text files. Output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files; continue with offset until complete. Images (jpg, png, gif, webp, bmp) are not supported here — use the read tool for those. Any pipeline failure falls back to the built-in reader automatically.",
-    promptGuidelines: ["Use piread to examine text files instead of cat or sed; use read for images."],
+    promptGuidelines: [
+      "Use piread to examine text files instead of cat or sed; use read for images.",
+      "Inside a codemode script call this tool as `tools.piread` — the built-in `tools.read` does NOT exist in this harness. Check `ALL_TOOLS` before any other tool name.",
+    ],
     execute: execute as typeof definition.execute,
     renderCall(args, theme, _context) {
       const start = args.offset ?? 1;

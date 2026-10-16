@@ -102,24 +102,47 @@ const SS3_MSG =
  * SS1's crawl-cost premise applies to all searches.
  * PB1 (deterministic BSD failure) and NM1 (user-approval policy) still block.
  */
+export interface SearchRules {
+  /** SS1: recursive grep with no path/glob scope */
+  scope?: boolean;
+  /** PB1: grep -P on darwin */
+  portability?: boolean;
+  /** SS2: mid-pipe grep */
+  midPipe?: boolean;
+  /** SS3: find head — prefer fd */
+  findFirst?: boolean;
+  /** NM1: node_modules reads/searches */
+  nodeModules?: boolean;
+}
+
 export function searchCheck(
   seg: string,
   isDarwin: boolean,
+  rules: SearchRules = {},
 ): string | undefined {
+  const on = {
+    scope: rules.scope ?? true,
+    portability: rules.portability ?? true,
+    midPipe: rules.midPipe ?? true,
+    findFirst: rules.findFirst ?? true,
+    nodeModules: rules.nodeModules ?? true,
+  };
   const toks = tokens(seg);
   let i = 0;
   if (toks[i] === "sudo") i++;
   const head = toks[i] ?? "";
   if (head !== "grep" && head !== "egrep" && head !== "fgrep") {
-    if (/^(?:find|rg|cat|head|tail)$/.test(head) &&
+    if (on.nodeModules &&
+        /^(?:find|rg|cat|head|tail)$/.test(head) &&
         toks.some((t) => isNodeModulesToken(t) && !isEarendilExempt(t)))
       return NM1_MSG;
-    // SS3 fd-first: `find` head → fd (NM1's node_modules reason stays first)
-    if (head === "find") return SS3_MSG;
-    // SS2 mid-pipe: `… | grep …` in a segment headed by another command
-    for (let k = 1; k < toks.length; k++)
-      if (toks[k - 1] === "|" && /^(?:grep|egrep|fgrep)$/.test(toks[k]))
-        return SS2_MSG;
+    // SS3 fd-first: find head → fd (NM1's node_modules reason stays first)
+    if (on.findFirst && head === "find") return SS3_MSG;
+    // SS2 mid-pipe: a grep segment headed by another command
+    if (on.midPipe)
+      for (let k = 1; k < toks.length; k++)
+        if (toks[k - 1] === "|" && /^(?:grep|egrep|fgrep)$/.test(toks[k]))
+          return SS2_MSG;
     return undefined;
   }
   // grep: flags, then the pattern, then path args / mid-command options
@@ -139,7 +162,7 @@ export function searchCheck(
     flags.some((f) => !f.startsWith("--") && f.slice(1).includes(ch));
   const hasLong = (name: string, all: string[]) =>
     all.some((f) => f === name || f.startsWith(name + "="));
-  if (isDarwin && (shortFlag("P") || hasLong("--perl-regexp", flags)))
+  if (on.portability && isDarwin && (shortFlag("P") || hasLong("--perl-regexp", flags)))
     return "Portability (grep -P): BSD grep has no -P (audit: 'grep: invalid option -- P') — use 'rg <pattern>' or 'grep -E'.";
   const paths = rest.filter((t) => !t.startsWith("-"));
   const opts = rest.filter((t) => t.startsWith("-"));
@@ -149,12 +172,12 @@ export function searchCheck(
   const unscoped =
     paths.length === 0 ||
     paths.every((p) => p === "." || p === "./" || p === "..");
-  if (recursive && unscoped && !includeScoped)
+  if (on.scope && recursive && unscoped && !includeScoped)
     return "Search (Scope): recursive grep with no path/glob scope crawls node_modules/.git and timed out at 30s — scope it (grep -rn --include='*.ts' PATTERN src/) or use rg PATTERN src/.";
-  if ([...paths, ...opts].some((t) => isNodeModulesToken(t) && !isEarendilExempt(t)))
+  if (on.nodeModules && [...paths, ...opts].some((t) => isNodeModulesToken(t) && !isEarendilExempt(t)))
     return NM1_MSG;
   // user-approved 2026-10-13: grep into @earendil-works pi docs stays allowed
-  return paths.length > 0 && paths.every(isEarendilExempt)
+  return !on.midPipe || (paths.length > 0 && paths.every(isEarendilExempt))
     ? undefined
     : SS2_MSG;
 }

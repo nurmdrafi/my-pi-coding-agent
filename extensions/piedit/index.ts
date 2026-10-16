@@ -569,6 +569,7 @@ export default function pieditExtension(pi: ExtensionAPI): void {
       "When changing multiple separate locations in one file, use one piedit call with multiple entries in edits[] instead of multiple calls.",
       "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
       "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+      "Inside a codemode script call this tool as `tools.piedit` — the built-in `tools.edit` does NOT exist in this harness. Check `ALL_TOOLS` before any other tool name.",
     ],
     execute: execute as typeof definition.execute,
     renderCall(args, theme, _context) {

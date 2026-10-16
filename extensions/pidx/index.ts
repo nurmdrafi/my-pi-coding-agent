@@ -116,6 +116,9 @@ const pidxTool = defineTool({
   label: "pidx",
   description:
     "Index pi session logs into compact per-session extracts (turns, tool calls with param hashes, tool results, compactions, skill loads) via the native Rust indexer. Incremental: unchanged files reuse the cached extract, so warm runs only process changes. Extracts are written to a file (default .cache/pidx-extracts.jsonl) and only a short pointer plus summary enters context — read or query that file for details. Pass stdout:true only when the listing itself is needed (hard-capped). Use this as the fast path for session-audit and session-history analysis.",
+  promptGuidelines: [
+    "Inside a codemode script call this tool as `tools.pidx` — check `ALL_TOOLS` before any other tool name; the built-in bash/read/edit tools do NOT exist in this harness.",
+  ],
   parameters: Type.Object({
     sessionsDir: Type.Optional(
       Type.String({ description: "Sessions directory to scan (default: pi default sessions dir)" }),

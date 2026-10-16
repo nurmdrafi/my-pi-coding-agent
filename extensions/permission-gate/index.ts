@@ -30,6 +30,7 @@
  * Change history lives in git log; this table lists what is CURRENTLY enforced.
  */
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import { config, ruleEnabled } from "./config.ts";
 
 /** Bash-kind predicate: `bash` plus the native `pibash` tool (2026-10-18
  * pibash adoption). Both share the bash schema and both must run the full
@@ -429,6 +430,7 @@ export default function (pi: ExtensionAPI) {
   };
 
   on("before_agent_start", (event) => {
+    if (!ruleEnabled("violationMemory")) return;
     if (memoryInjectedThisProcess) return; // once per process — per-run re-entry must not stack copies
     memoryInjectedThisProcess = true;
     const lessons = Object.entries(counts)
@@ -506,7 +508,7 @@ export default function (pi: ExtensionAPI) {
     // tool, so blocking would strand the agent), and never matches the native
     // names (`tools.pibash`/`tools.piread` do not match `tools.bash`/
     // `tools.read` under the word-boundary regex).
-    if (event.toolName === "codemode") {
+    if (event.toolName === "codemode" && ruleEnabled("nativeToolsInScripts")) {
       const code = (event.input as { code?: unknown }).code;
       if (typeof code === "string") {
         if (
@@ -536,16 +538,18 @@ export default function (pi: ExtensionAPI) {
       // S4 fix 8: symlink-resolved protected targets confirm through the
       // same H2 ladder as destructive bash — a write into <fake-home>/.ssh
       // via an in-cwd link must never land silently
-      const prot = protectedPathReason("edit", path);
+      const prot = ruleEnabled("destructiveConfirm")
+        ? protectedPathReason("edit", path)
+        : undefined;
       if (prot) {
         const r = await confirmDestructive(`edit:${path}`, prot, ctx);
         if (r) return blockCall(r);
       }
-      const checked = await validateEditAnchors(
-        event.input,
-        ctx?.cwd,
-        coverage.get(path),
-      );
+      // Anchor Guard off: skip validation and coverage registration entirely —
+      // the built-in editor's own validation is then the only check.
+      const checked = ruleEnabled("editAnchorGuard")
+        ? await validateEditAnchors(event.input, ctx?.cwd, coverage.get(path))
+        : undefined;
       if (checked && "block" in checked) {
         // S5 M3: the hash disproved the certified spans/stat — drop them, or
         // R1 would block the corrective re-read as a dup-read (deadlock)
@@ -569,8 +573,9 @@ export default function (pi: ExtensionAPI) {
     // both names get the same read handling so gate protection survives
     // the individual registration.
     if (
-      isToolCallEventType("read", event) ||
-      isToolCallEventType("piread", event)
+      (ruleEnabled("reReadGuard") || ruleEnabled("largeReadGuard")) &&
+      (isToolCallEventType("read", event) ||
+        isToolCallEventType("piread", event))
     ) {
       // S4 fix 3: malformed read input — explicit block, never an analyzer throw
       if (typeof event.input.path !== "string" || !event.input.path.trim())
@@ -583,7 +588,7 @@ export default function (pi: ExtensionAPI) {
       const shown = display.length > 57 ? `…${display.slice(-56)}` : display;
       // NM1 (2026-10-13 audit): dependency internals — a node_modules/.pnpm
       // path was read straight through the read tool; ask user first (@earendil-works exempt)
-      const nm = nodeModulesPath(display);
+      const nm = ruleEnabled("dependencyInternals") ? nodeModulesPath(display) : undefined;
       if (nm) return blockCall(nm);
       // P1 (2026-10-15 audit): piread-first. Built-in `read` on a text file is
       // blocked so the native pipeline (same schema, same coverage) is used;
@@ -592,6 +597,7 @@ export default function (pi: ExtensionAPI) {
       // Skipped when the piread extension is opted out (PI_NATIVE_READ=0) —
       // then `piread` does not exist and blocking `read` would strand the agent.
       if (
+        ruleEnabled("nativeReadFirst") &&
         isToolCallEventType("read", event) &&
         process.env.PI_NATIVE_READ !== "0" &&
         !IMAGE_EXTENSIONS.some((ext) => display.toLowerCase().endsWith(ext))
@@ -616,7 +622,8 @@ export default function (pi: ExtensionAPI) {
       // BIG_READ_WIN lines pass untouched, small files pass, R1 covers
       // re-reads of what is already certified in context.
       if (
-        win.end === Infinity || win.end - win.start >= BIG_READ_WIN
+        ruleEnabled("largeReadGuard") &&
+        (win.end === Infinity || win.end - win.start >= BIG_READ_WIN)
       ) {
         const snap = await snapshot(path);
         if (snap && snap.size > BIG_READ_BYTES) {
@@ -663,7 +670,9 @@ export default function (pi: ExtensionAPI) {
         );
       const path = normPath(event.input.path, ctx?.cwd);
       // S4 fix 8: same symlink-resolved protected-path confirm as edit
-      const prot = protectedPathReason("write", path);
+      const prot = ruleEnabled("destructiveConfirm")
+        ? protectedPathReason("write", path)
+        : undefined;
       if (prot) {
         const r = await confirmDestructive(`write:${path}`, prot, ctx);
         if (r) return blockCall(r);
@@ -735,7 +744,11 @@ export default function (pi: ExtensionAPI) {
     // its binary is missing, so no manual fallback is needed. Skipped when the
     // pibash extension is opted out (PI_NATIVE_BASH=0) — then `pibash` does not
     // exist and blocking `bash` would strand the agent.
-    if (event.toolName === "bash" && process.env.PI_NATIVE_BASH !== "0")
+    if (
+      ruleEnabled("nativeBashFirst") &&
+      event.toolName === "bash" &&
+      process.env.PI_NATIVE_BASH !== "0"
+    )
       return blockCall(
         "Token Economy (Pibash-first): use the pibash tool (pibash {command, timeout}) for shell work instead of bash — same schema and bash-kind gate rules; pibash falls back to the built-in executor itself.",
       );
@@ -751,6 +764,7 @@ export default function (pi: ExtensionAPI) {
     // Short window: the pattern is an immediate re-send; a different block
     // in between naturally re-arms the original rule.
     if (
+      ruleEnabled("reblockEscalation") &&
       lastBlockedBash &&
       lastBlockedBash.cmd === cmd &&
       lastBlockedBash.mut === mutationSeq &&
@@ -772,7 +786,7 @@ export default function (pi: ExtensionAPI) {
 
     for (const seg of normSegs) {
       // R9: commit message must follow the commitlint conventional pattern
-      if (/^git commit\b/.test(seg)) {
+      if (ruleEnabled("commitMessageLint") && /^git commit\b/.test(seg)) {
         const lint = validateCommitMessages(seg);
         if (lint) return blockCall(lint);
       }
@@ -784,9 +798,18 @@ export default function (pi: ExtensionAPI) {
     // command a rule rejects anyway
     const isDarwin = process.platform === "darwin";
     for (const seg of normSegs) {
-      const tc = toolchainCheck(seg, cmd, ctx?.cwd);
+      const tc = toolchainCheck(seg, cmd, ctx?.cwd, {
+        pnpm: ruleEnabled("toolchainPnpm"),
+        node: ruleEnabled("toolchainNode"),
+      });
       if (tc) return blockCall(tc);
-      const sc = searchCheck(seg, isDarwin);
+      const sc = searchCheck(seg, isDarwin, {
+        scope: ruleEnabled("searchScope"),
+        portability: ruleEnabled("searchPortability"),
+        midPipe: ruleEnabled("searchMidPipe"),
+        findFirst: ruleEnabled("findFirst"),
+        nodeModules: ruleEnabled("dependencyInternals"),
+      });
       if (sc) return blockCall(sc);
     }
 
@@ -804,7 +827,7 @@ export default function (pi: ExtensionAPI) {
     // S4 (2026-10-15): ladder extracted into confirmDestructive(), shared
     // with the write/edit protected-path confirm (fix 8); strict `=== true`
     // approval (fix 2) lives there.
-    if (normSegs.some(segmentDestructive)) {
+    if (ruleEnabled("destructiveConfirm") && normSegs.some(segmentDestructive)) {
       const r = await confirmDestructive(
         cmd,
         `'${cmd.slice(0, 33)}' mutates files, deps, or history and`, // 33c clamp: reason stays ≤ the 220c diet cap for any cmd length
@@ -834,6 +857,7 @@ export default function (pi: ExtensionAPI) {
       /--watch\b/.test(base);
     const prior = lastBashRun.get(base);
     if (
+      ruleEnabled("rerunGuard") &&
       prior &&
       !prior.failed &&
       !watcher &&
@@ -856,7 +880,7 @@ export default function (pi: ExtensionAPI) {
   on("tool_result", async (event) => {
     // AT1: a completed native-tool call is the adoption signal (blocked calls
     // never reach tool_result, and the gate's own blocks carry a family).
-    if (!event.isError) recordAdoption(event.toolName);
+    if (ruleEnabled("adoptionTelemetry") && !event.isError) recordAdoption(event.toolName);
     if (
       !pendingBashFull.has(event.toolCallId) &&
       !pendingBash.has(event.toolCallId)
@@ -870,7 +894,8 @@ export default function (pi: ExtensionAPI) {
     // 2026-10-13 output scrub (rtk-optimizer principles): ANSI strip +
     // test/build aggregation runs first, in place; the H1 cap below then
     // truncates/elides whatever is left. Failures/errors always survive.
-    scrubBashText(event.content ?? []);
+    if (ruleEnabled("outputScrub")) scrubBashText(event.content ?? []);
+    if (!ruleEnabled("outputCap")) return;
     return capBashOutput(event);
   });
 
@@ -1019,6 +1044,7 @@ export default function (pi: ExtensionAPI) {
     const usage = ctx?.getContextUsage?.();
     const overCtx =
       !!usage && usage.tokens !== null && usage.tokens >= CADENCE_CTX_TOKENS;
+    if (!ruleEnabled("cadenceNudge")) return;
     if (turnsSeen < CADENCE_TURNS && !overCtx) return;
     if (blockFamilyOf(event)) return;
     cadenceFired = true;
