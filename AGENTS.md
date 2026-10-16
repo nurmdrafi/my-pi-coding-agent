@@ -1,53 +1,63 @@
 # Global Pi Instructions
 
-Personal pi coding-agent harness (`pi-native`): extensions (permission-gate, subagents, handoff), Rust native tools (piread, piedit, pibash, pidx), scripts, tests. npm with `.nvmrc`-pinned Node. Repo commands: `npm run check` (typecheck + agents lint + doc check + tests), `npm run gate:eval`.
+Personal pi coding-agent harness (`pi-native`): extensions (permission-gate, subagents, handoff), Rust native tools (piread, piedit, pibash, pidx), scripts, tests. npm; Node pinned by `.nvmrc`. Commands: `npm run check` (typecheck + agents lint + doc check + tests), `npm run gate:eval`.
 
-Loaded every session. Task rule sets in `docs/` — follow link when task touches area.
+Always loaded. Task rule sets live in `docs/` — follow the link when a task touches that area.
 
 ## Always-on rules
 
 ### Clarity
-- Unclear or target not found → ask, wait. Never guess, never substitute closest match.
+
+- Target unclear or missing → ask, wait. Never guess, never substitute nearest match.
 - Batch all open questions into one message.
 - Plan/design request → plan only.
-- Ambiguous "continue/proceed" → confirm scope first.
+- Ambiguous "continue"/"proceed" → confirm scope first.
 
 ### Scope
-- Explicit instruction approves named action + directly implied reads/searches.
-- Approved task → plan/do/verify autonomously.
-- Ask before: installs/packages, destructive commands, out-of-scope changes, `sudo`, `curl | sh` — full list in [docs/security.md](docs/security.md).
-- Yes in chat or invoking message = approval.
+
+- Explicit instruction = approval for the named action + directly implied reads/searches.
+- Approved task → plan, do, verify, autonomously.
+- Ask before: package installs, destructive commands, out-of-scope changes, `sudo`, `curl | sh`. Full list: [docs/security.md](docs/security.md).
+- Chat "yes" or the invoking message = approval.
 
 ### Precedence
-- Global + repo context load together; neither replaces other.
+
+- Global + repo context load together; neither replaces the other.
 - Conflict → repo `AGENTS.md`/`.pi` wins; this file fills gaps.
-- Explicit in-session user instruction outranks global/repo/template rules: apply override, one-line deviation note, never relitigate.
+- In-session user instruction outranks global/repo/template: apply the override, one-line deviation note, never relitigate.
 
 ### Safety
-- Enforced by `permission-gate`; block reason = stop, apply fix, never retry differently. Full list: [docs/security.md](docs/security.md).
+
+- Enforced by permission-gate; block reason = stop, fix the cause, never retry differently. Full list: [docs/security.md](docs/security.md).
 
 ### Communication
+
 - Telegram style: short complete sentences, plain prose, no fragments/emoji.
-- Cap ~5 lines/reply. Interstitial text between tool calls: ≤1 short sentence, interpret-only.
-- Only Propose/Report/plan deliverables may exceed the cap.
-- Analysis/audit deliverables → dated file under `audit-reports/` + ≤5-line chat summary + path.
+- Cap ~5 lines/reply.
+- Interstitial text between tool calls: ≤1 short sentence, interpret-only.
+- Cap may be exceeded only by Propose/Report/plan deliverables.
+- Analysis/audit deliverable → dated file under `audit-reports/`, plus ≤5-line chat summary and path.
 
 ### Verification
-- Scoped tests + lint + tsc on changed files only, at task completion — not after every single-file edit. Never full suite: husky gates commits.
-- Build only after risky structural edits (new files, import graph changes) or at task end; edits are cheap to verify by re-read.
+
+- Scoped tests + lint + tsc on changed files only, at task completion — not after every edit. Never the full suite: husky gates commits.
+- Build only after risky structural edits (new files, import-graph changes) or at task end; re-reading verifies plain edits.
 
 ### Tooling defaults
-- Rust-based tools first — [docs/tooling-defaults.md](docs/tooling-defaults.md). Search is `rg` (ripgrep); find is `fd`. Never reach for `grep`/`find` first — they are error-only fallbacks.
-- Codemode scripts: call `tools.pibash`/`tools.piread`/`tools.piedit`/`tools.pidx`, never built-in `tools.bash`/`tools.read` (gate P3). The script is an async function body — it must parse; keep escaping simple, the gate blocks a non-parsing script with a `line:col` pointer before it runs (gate P4). Use codemode only for scripted aggregation across several calls; a single command or read goes to `pibash`/`piread` directly.
-- Output caps: bash/pibash output capped at 40 lines / 2KB (H1); read/piread over 300 lines / 8KB capped with a spill pointer (H1b) — keep commands and read windows targeted.
+
+- Rust tools first: [docs/tooling-defaults.md](docs/tooling-defaults.md). Search `rg`, file find `fd`. Never `grep`/`find` first — error-only fallbacks.
+- Codemode script → `tools.pibash`/`tools.piread`/`tools.piedit`/`tools.pidx`, never `tools.bash`/`tools.read` (gate P3). Script = async function body, must parse; gate blocks a non-parsing script with a `line:col` pointer (gate P4). Codemode for scripted aggregation across several calls only; one command or one read → `pibash`/`piread` direct.
+- Codemode is off by default: declaring it costs ~426 tokens of prefix every turn. Enable only when an aggregation task justifies it.
+- Output caps: bash/pibash 40 lines / 2KB (H1); read/piread over 300 lines / 8KB capped with a spill pointer (H1b) — keep calls targeted.
 
 ### GitHub issues
-- Repo has gh issues → check related, cover acceptance criteria, state deviations. Flow: [docs/agent-hygiene.md](docs/agent-hygiene.md). Failure classes: [docs/issue-classes.md](docs/issue-classes.md).
+
+- Repo has gh issues → check the related issue, cover every acceptance criterion, state deviations. Flow: [docs/agent-hygiene.md](docs/agent-hygiene.md).
 
 ## Scoped rule sets
+
 - [docs/change-discipline.md](docs/change-discipline.md) — ponytail ladder, root-cause fixes, deployment constraints
 - [docs/agent-hygiene.md](docs/agent-hygiene.md) — toolchain pins, edit anchors, issue/commit discipline
-- [docs/issue-classes.md](docs/issue-classes.md) — failure-class catalog (secrets, auth, HTTP, CI, tests)
 - [docs/security.md](docs/security.md) — ask-list, secrets, git protections
 - [docs/portability.md](docs/portability.md) — macOS+Linux shell subset, no absolute user paths
 - [docs/tooling-defaults.md](docs/tooling-defaults.md) — Rust-first: piread/piedit/pidx, rg/fd, fallback etiquette

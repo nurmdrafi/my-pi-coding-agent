@@ -1,18 +1,18 @@
 # Security
 
 ## Build-time
-- Mutating routes: auth/permission checks at first write.
+
+- Mutating routes: auth/permission check at first write.
 - Secrets server-side.
-- Guard/effect fixes re-check adjacent unblocked paths.
+- Guard/effect fix → re-check adjacent unblocked paths.
 
 ## Ask before
-- Installing packages
-- Destructive commands
-- Outside repo / out-of-scope changes (dotfiles, global config)
-- `sudo`, `curl | sh`
+
+The ask-list lives in AGENTS.md §Scope (single source) — installing packages, destructive commands, out-of-repo/out-of-scope changes, `sudo`, `curl | sh`.
 
 ## Never
+
 - Overwrite uncommitted user changes
 - `git add -A`, `git commit --amend`, `--no-verify` unprompted
 - Print/log `.env` or any secret
-- Run command whose output may contain secret without redaction pipe — near known secret: pipe through `sed`/`jq` redaction or print length/hash only; verify redaction pattern matches quoting style first; raw value never reaches tool output or transcript
+- Run a command whose output may contain a secret without a redaction pipe — near a known secret: `sed`/`jq` redaction, or length/hash only; verify the redaction pattern matches the quoting style first; the raw value never reaches tool output or the transcript

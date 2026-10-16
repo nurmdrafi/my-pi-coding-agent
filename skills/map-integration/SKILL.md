@@ -107,7 +107,11 @@ Beyond this shape → github-actions skill (SHA pinning, least-privilege permiss
 
 ## Checklist before writing map code
 
-Prevention catalog: `~/.pi/agent/docs/issue-classes.md` §Realtime & maps.
+Realtime & render prevention (from the repo review audit):
+
+- Rebuild layers/scenes on upstream data change — not on hover/zoom/tick; one client per connection; reconnect only on real change; no duplicate clients; reset stale state on re-join.
+- Heavy math off the main thread; no O(N²) scans or pagination; scope selectors/hooks.
+- Time/environment-dependent features work outside the happy window (off-hours, offline, reconnects).
 
 - Equivalent Layer/hook/util exists in this repo (or sibling/fork)? Reuse first — sibling dashboards = forks of same template.
 - Barikoi repos: import map code from `react-bkoi-gl`/`bkoi-gl` only (never `maplibre-gl` directly); style key in `?key=` query param; check sibling dashboard's DeckGLMap template before starting fresh.

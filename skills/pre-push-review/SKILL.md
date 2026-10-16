@@ -24,7 +24,7 @@ Read whole functions/components around each hunk, not just hunk.
 
 ## 2. Checklist
 
-Domain catalog: `~/.pi/agent/docs/issue-classes.md` — check every class diff touches.
+Domain catalog: auth/IDOR + HTTP-contract + runtime/error + container/deploy classes are owned by their skills (auth, frontend-design, github-actions) — check every class the diff touches.
 
 - Async/state lifecycle
   - Late response: fetch-in-effect has staleness guard (cancelled flag / AbortController / compare requested id before applying).
@@ -57,6 +57,9 @@ Domain catalog: `~/.pi/agent/docs/issue-classes.md` — check every class diff t
 - Cache/SW: no authenticated response cached across logout; no `skipWaiting` + runtime chunk rewrite stranding stale config.
 - TLS: cert verification never disabled (incl. proxy agents).
 - Dependencies: no new unmaintained/CVE dep in prod tree.
+- Method/origin match the API: no POST to a GET-only route, no scheme-less origin.
+- Export/jobs: sanitize sheet/column names; fail loudly on shape mismatch; cover edge cases.
+- Error-handling hygiene: user-facing text leaks no stacks/secrets/internal ids; global handling doesn't mask dev failures.
 - Regression-test discrimination: bug-fix test must be shown failing on bug — restore buggy line once, watch red, re-apply fix. Regression test never failed = proves nothing about detection.
 
 ## 3. Severity

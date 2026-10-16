@@ -106,4 +106,6 @@ env:
 - [ ] Self-hosted runners only private repos / isolated-ephemeral runners — never public repos (pull_request_target pwn risk)
 - [ ] `concurrency` set — stale run can't overwrite same branch/tag
 - [ ] Production image build runs quality gate (lint/typecheck/test) — never skipped via Dockerfile/`.dockerignore`
-- [ ] Domain catalog checked: `~/.pi/agent/docs/issue-classes.md` §CI/container
+- [ ] Container/deploy hardening: fail fast on missing/placeholder env, correct escaping, no swallowed errors; healthcheck; memory/heap limits; non-root PID 1; no EOL base; verified toolchain tarball; registry private unless deliberate; no secret in image config
+- [ ] Logs structured + retained; error reporting wired, not stripped in prod
+- [ ] Dirty `.dockerignore`, dep mismatches, commented-out gates = findings, not noise

@@ -9,7 +9,7 @@ Build distinctive, production-grade frontend interfaces; avoid generic "AI slop"
 
 Input: frontend requirements — component/page/app/interface; maybe purpose, audience, constraints.
 
-Prevention catalog: `~/.pi/agent/docs/issue-classes.md` — new UI ships under error boundary with loading/empty/error states, wired into global error handler, heavy work off render path.
+Prevention catalog (from the repo review audit) — new UI ships under error boundary with loading/empty/error states, wired into global error handler, heavy work off render path.
 
 ## Pattern Audit (MANDATORY FIRST — overrides every aesthetic directive below)
 
@@ -42,6 +42,20 @@ New fonts, new palette, new CSS/styled system, parallel component library, "bold
 - AntD Table pagination — controlled means ALL of it together: `current` + `pageSize` as state + `onChange(page, pageSize)` setting both. Wiring only `current` while hardcoding `pageSize` silently ignores the size changer (looks broken/uncontrolled). Server-side tables: reset `page` to 1 whenever a filter/refresh replaces the dataset. Client-side tables: antd v4 keeps internal/controlled `current` when `dataSource` is replaced — no clamp — so shorter refetched data lands on an empty out-of-range page; reset to 1 on dataset change (effect or at fetch site).
 - Temporary demo/test data for manual verification: fence with `── DEMO ──` markers, never guard or alter live-action handlers beyond a warning, and purge completely (grep `DEMO|demoMode`) the moment the user confirms — never left in a diff.
 - Lazy routes + Suspense: boundary INSIDE persistent shell, around content slot (`<Outlet />`), never above layout. Top-level `<Suspense>` wrapping whole route tree unmounts navbar/sidebar every navigation → shell disappears, full-height spinner flashes = flicker not load, loses scroll position. Shell-less fallback (login/403/404) + first layout-chunk load at outer boundary; in-section navigation handled by inner one. Size inner fallback to content area (`minHeight: 60vh`), not `100vh` — no shell jump. Check codebase for existing scoped pattern first — sibling layout with `<Suspense fallback={null}>` around local panels = precedent to copy.
+
+### Runtime robustness + errors (new UI ships this)
+
+- Error boundaries wrap the page + major subtrees — one thrown panel must not blank the app.
+- Every async surface: loading/empty/error states; a failed poll keeps the last good view.
+- Non-2xx = error, not data: reject, set timeouts, surface the failure; never a silent empty state.
+- Validate/parse API values pre-use — nullable/string numbers hitting `.toFixed`/`.map`/`.charAt` blank the UI.
+- No success toast/modal close on a failed mutation; reset prior entity state on selection change.
+- One owner per failure: a single global layer catches/normalizes/logs/decides — components don't each re-handle (no duplicate toasts/logs/sign-outs).
+- Handlers at every level: process (`window.onerror`, `unhandledrejection`), router/app error page, component boundaries, data layer (one API interceptor).
+- Classify every status/kind, never one generic message: network/timeout, 400/422 validation, 401 auth, 403 permission, 404 missing, 409 conflict, 429 throttle, 5xx server — each → user message + recovery action.
+- Never swallow: no empty `catch`, no `console.error` stripped in prod.
+- Retry only transient failures, with backoff — never infinite, never deterministic.
+- Fallback UI: error page/boundary with reset/retry; keep the last good view.
 
 ## Stack Adaptation (part of Pattern Audit)
 

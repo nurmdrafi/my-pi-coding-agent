@@ -69,6 +69,19 @@ File map (every piece exists for a reason; skip none):
 - Social logins exchange provider token for backend token inside `jwt` callback — provider token never stored as app token.
 - Logout revokes backend session server-side, not only local state; session token never attached to cross-origin or scheme-less URL.
 
+## Hardening (from the repo review audit)
+
+- AuthN+authZ server-side, never client-only: don't trust a forgeable cookie/local flag; never ship "all permissions" to every user.
+- Every mutating route: authN + explicit permission. Every id-addressed read/write: caller owns/can access the record (IDOR).
+- Login needs real credentials — no session for a bare id.
+- Tokens: least privilege, never in client JS, never on cross-origin/scheme-less URLs, refresh before expiry.
+- Cookies: `Secure`+`HttpOnly`+`SameSite`; no public-key "encryption" in localStorage.
+- TLS verification never disabled, incl. proxy agents.
+- Service worker: never cache authenticated responses across logout; no `skipWaiting`+runtime chunk rewrite stranding stale config.
+- CSP+security headers set; no ids/secrets in access logs; rate-limit; container ports never bypass the proxy.
+- No secret in client bundle, git history, image layers or logs — keys/webhooks/broker creds/tokens server-side/env only; check the built bundle after build.
+- No unmaintained dep with known CVEs in the prod tree; audit prod deps, not just dev.
+
 ## Checklist
 
 - [ ] `authorize()` throws with backend message; does all backend auth calls
@@ -82,4 +95,7 @@ File map (every piece exists for a reason; skip none):
 - [ ] Layout passes server session into `SessionProvider`
 - [ ] OTP flows: plain endpoints, no auth side effects; resend cooldown enforced
 - [ ] Social: provider token exchanged for backend token before session write
+- [ ] AuthN+authZ server-side on every mutating route; id-addressed access verifies ownership (IDOR)
+- [ ] Cookies `Secure`+`HttpOnly`+`SameSite`; no token in localStorage; TLS verification on (incl. proxy agents)
+- [ ] No secret in client bundle (check built output); CSP/security headers set
 - [ ] New integration: legacy-free day one. Migration: legacy storage/cookie/route code deleted, not dormant
