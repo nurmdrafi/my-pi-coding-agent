@@ -37,7 +37,7 @@ Loaded every session. Task rule sets in `docs/` — follow link when task touche
 - Build only after risky structural edits (new files, import graph changes) or at task end; edits are cheap to verify by re-read.
 
 ### Tooling defaults
-- Rust-based tools first — [docs/tooling-defaults.md](docs/tooling-defaults.md).
+- Rust-based tools first — [docs/tooling-defaults.md](docs/tooling-defaults.md). Search is `rg` (ripgrep); find is `fd`. Never reach for `grep`/`find` first — they are error-only fallbacks.
 
 ### GitHub issues
 - Repo has gh issues → check related, cover acceptance criteria, state deviations. Flow: [docs/agent-hygiene.md](docs/agent-hygiene.md). Failure classes: [docs/issue-classes.md](docs/issue-classes.md).
