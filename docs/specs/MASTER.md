@@ -2,7 +2,7 @@
 
 Status: **master file** — stable path `docs/specs/MASTER.md`; referenced by every sub-project session.
 Created: 2026-10-15
-Source: design-level review at `docs/reviews/harness-review.md` (originally `native/pidx/Feedback.md`; repo `nurmdrafi/my-pi-coding-agent`) — all its details are folded in below, so this master is self-contained.
+Source: design-level review at `docs/reviews/harness-review.md` (originally `native/pidx/Feedback.md`; repo `nurmdrafi/pi-native`) — all its details are folded in below, so this master is self-contained.
 Decomposition approved; each sub-project gets its own spec → plan → implementation cycle in a dedicated session.
 
 ## Purpose

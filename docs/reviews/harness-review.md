@@ -1,8 +1,8 @@
-# Review: `my-pi-coding-agent`
+# Review: `pi-native`
 
 Scope: README architecture, token efficiency, execution discipline, portability, security, and harness performance. This is a design-level review, not yet a source-code audit.
 
-Repository: [nurmdrafi/my-pi-coding-agent](https://github.com/nurmdrafi/my-pi-coding-agent)
+Repository: [nurmdrafi/pi-native](https://github.com/nurmdrafi/pi-native)
 
 ## 1. Overall assessment
 
@@ -200,7 +200,7 @@ The README is enough to evaluate the design, but it cannot establish whether the
 5. `scripts/bootstrap.sh` and `scripts/after-pull.sh` — installation reliability, update behavior, and supply-chain risks.
 6. `tests/` and `npm run gate:eval` — whether the tests cover adversarial cases and actual coding-task outcomes.
 
-The repository links are available from the [project README](https://github.com/nurmdrafi/my-pi-coding-agent/blob/main/README.md).
+The repository links are available from the [project README](https://github.com/nurmdrafi/pi-native/blob/main/README.md).
 
 ## Final recommendation
 

@@ -1,7 +1,7 @@
 # pi agent harness
 
-[![release CI](https://img.shields.io/github/actions/workflow/status/nurmdrafi/my-pi-coding-agent/release.yml?label=release%20CI&logo=githubactions&logoColor=2088FF&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/actions/workflows/release.yml)
-[![release](https://img.shields.io/github/v/release/nurmdrafi/my-pi-coding-agent?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/my-pi-coding-agent/releases)
+[![release CI](https://img.shields.io/github/actions/workflow/status/nurmdrafi/pi-native/release.yml?label=release%20CI&logo=githubactions&logoColor=2088FF&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/pi-native/actions/workflows/release.yml)
+[![release](https://img.shields.io/github/v/release/nurmdrafi/pi-native?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/nurmdrafi/pi-native/releases)
 [![license](https://img.shields.io/badge/license-MIT-2ea44f?logo=opensourceinitiative&logoColor=white&labelColor=24292f&style=flat-square)](LICENSE)
 [![pi coding agent](https://img.shields.io/badge/pi-coding_agent-8A2BE2?logo=github&logoColor=white&labelColor=24292f&style=flat-square)](https://github.com/earendil-works/pi-coding-agent)
 <br>
@@ -50,7 +50,7 @@ curl -fsSL https://pi.dev/install.sh | sh
 # npm alternative: npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
 # 3. Clone the harness into pi's config dir
-git clone https://github.com/nurmdrafi/my-pi-coding-agent.git ~/.pi/agent
+git clone https://github.com/nurmdrafi/pi-native.git ~/.pi/agent
 
 # Additionally, per machine — copy extras from an existing machine
 scp <your-other-machine>:~/.agents/skills/* ~/.pi/agent/skills/  # private skills, not in the repo
@@ -418,7 +418,7 @@ Quality gates in this repo:
 
 - **Tests:** `node --test "tests/**/*.test.mjs"` (permission-gate, 176 cases); `npm run gate:eval` aggregates the fixture suite with the block-recovery and replay audits and prints a final JSON metrics line. Subagent tests: see [Subagents](#subagents).
 - **Conventional commits:** enforced by husky + commitlint on every commit
-- **CI:** [Release workflow](https://github.com/nurmdrafi/my-pi-coding-agent/actions/workflows/release.yml) extracts the version from `CHANGELOG.md` on push to `main`
+- **CI:** [Release workflow](https://github.com/nurmdrafi/pi-native/actions/workflows/release.yml) extracts the version from `CHANGELOG.md` on push to `main`
 
 | File                           | Update when                                                          |
 | ------------------------------ | -------------------------------------------------------------------- |

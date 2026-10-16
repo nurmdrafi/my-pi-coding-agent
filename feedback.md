@@ -1,4 +1,4 @@
-# Updated review: `my-pi-coding-agent`
+# Updated review: `pi-native`
 
 Reviewed against the current README retrieved on October 16, 2026. This is a README-level architecture review; I have not independently run the repository's tests or reproduced its benchmarks.
 
