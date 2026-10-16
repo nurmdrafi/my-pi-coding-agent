@@ -127,7 +127,9 @@ fn handle_into(req: &Request, buf: &mut Vec<u8>) {
             req.id.as_ref(),
             &ToolError {
                 kind: ErrorKind::Usage,
-                message: "edits must contain at least one replacement".into(),
+                message:
+                    "Edit tool input is invalid. edits must contain at least one replacement."
+                        .into(),
             },
         );
     }

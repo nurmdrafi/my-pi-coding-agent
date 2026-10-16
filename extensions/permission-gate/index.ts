@@ -10,6 +10,7 @@
  * | R1  | Token Economy (Re-read)       | no read whose window is fully covered by in-context spans (reads/edits/writes/@file injections); stat-mismatch invalidation |
  * | R1b | Token Economy (Big read)      | first whole-file-ish (>=500-line window) read of a >24KB file blocked with a targeted-window fix |
  * | P1  | Token Economy (Piread-first)  | built-in read of a text file blocked — use the piread tool; images keep `read` (piread delegates them internally) |
+ * | P2  | Token Economy (Pibash-first)  | built-in bash blocked — use the pibash tool (same schema, full bash-kind rules; pibash falls back itself) |
  * | H1  | output cap (non-blocking)     | bash output capped at 100 lines / 4KB UTF-8; oversized first line head+tail; tail spilled to $TMPDIR/pgate-spill; errors capped too |
  * | H2  | Permission Gate (Destructive) | destructive commands need approval: chat yes / UI confirm; fail closed headless; re-send re-prompts |
  * | R9  | Commitlint                    | conventional-commit headers, subject case, body line length (incl. heredoc bodies), pre-hook |
@@ -675,6 +676,16 @@ export default function (pi: ExtensionAPI) {
     if (typeof cmd !== "string" || cmd.trim() === "")
       return blockCall(
         "Permission Gate (Malformed): bash call has no command string — re-send the tool call with input.command.",
+      );
+    // P2 (2026-10-18): pibash-first. Built-in `bash` is blocked so the native
+    // pipeline (same schema, full bash-kind rule set — H1/R10/destructive/
+    // toolchain) runs; pibash itself falls back to the built-in executor when
+    // its binary is missing, so no manual fallback is needed. Skipped when the
+    // pibash extension is opted out (PI_NATIVE_BASH=0) — then `pibash` does not
+    // exist and blocking `bash` would strand the agent.
+    if (event.toolName === "bash" && process.env.PI_NATIVE_BASH !== "0")
+      return blockCall(
+        "Token Economy (Pibash-first): use the pibash tool (pibash {command, timeout}) for shell work instead of bash — same schema and bash-kind gate rules; pibash falls back to the built-in executor itself.",
       );
     pendingBashFull.set(event.toolCallId, cmd);
 

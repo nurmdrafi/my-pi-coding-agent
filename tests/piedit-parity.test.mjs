@@ -19,9 +19,9 @@
  */
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import assert from "node:assert/strict";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -292,6 +292,99 @@ add("parity: relative path via ctx.cwd", async () => {
     return { ok: true };
   } catch (e) {
     return { ok: false, diff: `relative: ${e.message.slice(0, 400)}` };
+  }
+});
+
+// user-path resolution parity (the SDK's resolveToCwd: @ strip, ~ expand,
+// file:// URLs, unicode-space normalize). The extension pre-resolves with a
+// mirror of resolveToCwd, so the native rung acts on the same file.
+add("parity: @-prefixed path resolves like the built-in", async () => {
+  const body = "alpha\nbeta\n";
+  const mine = fixture("at.piedit", body);
+  const orc = fixture("at.oracle", body);
+  const a = await armResult(wrapped, { path: `@${mine}`, edits: [{ oldText: "beta", newText: "BETA" }] });
+  const b = await armResult(oracle, { path: `@${orc}`, edits: [{ oldText: "beta", newText: "BETA" }] });
+  try {
+    assert.equal(a.rejected, b.rejected);
+    assert.deepStrictEqual(readFileSafe(mine), readFileSafe(orc));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, diff: `@-prefix: ${e.message.slice(0, 400)}` };
+  }
+});
+add("parity: file:// URL resolves like the built-in", async () => {
+  const body = "alpha\nbeta\n";
+  const mine = fixture("url.piedit", body);
+  const orc = fixture("url.oracle", body);
+  const a = await armResult(wrapped, { path: `file://${mine}`, edits: [{ oldText: "beta", newText: "BETA" }] });
+  const b = await armResult(oracle, { path: `file://${orc}`, edits: [{ oldText: "beta", newText: "BETA" }] });
+  try {
+    assert.equal(a.rejected, b.rejected);
+    assert.deepStrictEqual(readFileSafe(mine), readFileSafe(orc));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, diff: `file-url: ${e.message.slice(0, 400)}` };
+  }
+});
+add("parity: ~ path resolves like the built-in", async () => {
+  const body = "alpha\nbeta\n";
+  const mine = join(homedir(), `.piedit-parity-tilde-${process.pid}-a`);
+  const orc = join(homedir(), `.piedit-parity-tilde-${process.pid}-b`);
+  writeFileSync(mine, body);
+  writeFileSync(orc, body);
+  try {
+    const a = await armResult(wrapped, { path: `~/${basename(mine)}`, edits: [{ oldText: "beta", newText: "BETA" }] });
+    const b = await armResult(oracle, { path: `~/${basename(orc)}`, edits: [{ oldText: "beta", newText: "BETA" }] });
+    assert.equal(a.rejected, b.rejected);
+    assert.deepStrictEqual(readFileSafe(mine), readFileSafe(orc));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, diff: `tilde: ${e.message.slice(0, 400)}` };
+  } finally {
+    rmSync(mine, { force: true });
+    rmSync(orc, { force: true });
+  }
+});
+add("parity: NBSP path normalizes to the space variant", async () => {
+  const body = "alpha\nbeta\n";
+  const mine = fixture("nbsp mine.piedit", body);
+  const orc = fixture("nbsp orc.oracle", body);
+  const nbsp = (s) => s.replaceAll(" ", "\u00a0");
+  const a = await armResult(wrapped, { path: nbsp(mine), edits: [{ oldText: "beta", newText: "BETA" }] });
+  const b = await armResult(oracle, { path: nbsp(orc), edits: [{ oldText: "beta", newText: "BETA" }] });
+  try {
+    assert.equal(a.rejected, b.rejected);
+    assert.deepStrictEqual(readFileSafe(mine), readFileSafe(orc));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, diff: `nbsp: ${e.message.slice(0, 400)}` };
+  }
+});
+// validation parity (built-in validateEditInput order/message)
+add("parity: empty edits array rejects identically", () =>
+  paritySamePath("empty-edits", fixture("ee.piedit", "x\n"), []));
+add("parity: non-array edits rejects identically", () =>
+  paritySamePath("nonarray-edits", fixture("na.piedit", "x\n"), "nope"));
+// read-only target → EACCES wrapper, not a raw write error
+add("parity: read-only file rejects identically", async () => {
+  const body = "alpha\n";
+  const mine = fixture("ro.piedit", body);
+  const orc = fixture("ro.oracle", body);
+  chmodSync(mine, 0o444);
+  chmodSync(orc, 0o444);
+  try {
+    const a = await armResult(wrapped, { path: mine, edits: [{ oldText: "alpha", newText: "A" }] });
+    const b = await armResult(oracle, { path: orc, edits: [{ oldText: "alpha", newText: "A" }] });
+    try {
+      assert.equal(a.rejected, b.rejected);
+      assert.equal(String(a.error).replaceAll("ro.piedit", "<F>"), String(b.error).replaceAll("ro.oracle", "<F>"));
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, diff: `read-only: ${e.message.slice(0, 400)}` };
+    }
+  } finally {
+    chmodSync(mine, 0o644);
+    chmodSync(orc, 0o644);
   }
 });
 

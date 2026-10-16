@@ -72,7 +72,7 @@ const SESSION_ID = randomUUID();
 const MAX_TIMEOUT_SECONDS = 2_147_483_647 / 1000;
 
 /** Session env keys the built-in deletes, then re-sets from ctx. */
-const PI_ENV_KEYS = [
+const CONTEXT_ENV_KEYS = [
   "PI_SESSION_ID",
   "PI_SESSION_FILE",
   "PI_PROVIDER",
@@ -120,7 +120,7 @@ function buildEnv(ctx: ExecContext | undefined): Record<string, string> {
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) env[key] = value;
   }
-  for (const key of PI_ENV_KEYS) delete env[key];
+  for (const key of CONTEXT_ENV_KEYS) delete env[key];
   const sessionId = ctx?.sessionManager?.getSessionId();
   if (sessionId) env.PI_SESSION_ID = sessionId;
   const sessionFile = ctx?.sessionManager?.getSessionFile();
@@ -525,7 +525,10 @@ export default function pibashExtension(pi: ExtensionAPI): void {
     label: "pibash",
     description:
       "Execute a bash command via the native pibash pipeline — prefer this over the bash tool for shell work. Returns stdout and stderr. Output is truncated to the last 2000 lines or 50KB (whichever is hit first); when truncated the full output is saved to a temp file. Optionally provide a timeout in seconds. Any pipeline failure falls back to the built-in bash tool automatically.",
-    promptGuidelines: definition.promptGuidelines,
+    promptGuidelines: [
+      "Use pibash to run shell commands instead of the built-in bash tool — it runs the same schema and bash-kind gate rules and falls back to the built-in executor automatically.",
+      ...(definition.promptGuidelines ?? []),
+    ],
     execute: execute as typeof definition.execute,
     renderCall(args, theme) {
       let text = theme.fg("success", theme.bold("pibash ")) + theme.fg("text", args.command);

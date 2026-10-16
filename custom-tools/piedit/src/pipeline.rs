@@ -672,10 +672,18 @@ fn node_io_message(err: &io::Error) -> String {
 }
 
 fn check_access(p: &Path) -> io::Result<()> {
-    // The built-in calls `access(R_OK | W_OK)`; on POSIX a directory passes
-    // that (it is readable+writable), so a directory reaches the read step
-    // and fails EISDIR there. Mirror by accepting directories here.
-    fs::metadata(p).map(|_| ())
+    // Mirror Node's `access(R_OK | W_OK)`: a non-directory must be readable
+    // AND writable. Opening read+write performs exactly that check without
+    // modifying the file, so a read-only target fails here with EACCES and is
+    // wrapped as `Could not edit file: <path>. Error code: EACCES.` — the
+    // built-in's access() behavior. A directory passes access() too (it is
+    // readable+writable) and fails later at the read step with EISDIR, so map
+    // EISDIR to Ok.
+    match fs::OpenOptions::new().read(true).write(true).open(p) {
+        Ok(_) => Ok(()),
+        Err(err) if err.raw_os_error() == Some(21) => Ok(()), // EISDIR: directory
+        Err(err) => Err(err),
+    }
 }
 
 

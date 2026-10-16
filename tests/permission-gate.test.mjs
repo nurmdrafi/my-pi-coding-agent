@@ -50,6 +50,12 @@ if (!existsSync(join(pkgLink, "package.json"))) {
   );
 }
 
+// P2 (2026-10-18): the gate blocks built-in `bash` while pibash is
+// registered (pibash-first). The bash-mechanics cases below exercise the
+// built-in tool's rules, so the suite runs them in the pibash-opted-out
+// configuration; the dedicated P2 cases toggle the env to exercise the default.
+process.env.PI_NATIVE_BASH = "0";
+
 const gate = await import("../extensions/permission-gate/index.ts");
 const rc = await import("../extensions/permission-gate/read-coverage.ts"); // S5: hash plumbing units
 
@@ -3562,6 +3568,29 @@ const cases = [
       }
       return { blocked: false };
     },
+  ],
+  // ---- P2 (2026-10-18): pibash-first — built-in bash is blocked ----
+  [
+    'P2: built-in bash is blocked (pibash-first)',
+    'blocked',
+    async (pi) => {
+      const prev = process.env.PI_NATIVE_BASH;
+      delete process.env.PI_NATIVE_BASH;
+      try {
+        const r = await bash(pi, 'fd -e ts . custom-tools');
+        return r.blocked && r.reason.startsWith('Token Economy (Pibash-first)')
+          ? r
+          : { blocked: false, reason: `wrong family: ${String(r.reason).slice(0, 70)}` };
+      } finally {
+        if (prev === undefined) delete process.env.PI_NATIVE_BASH;
+        else process.env.PI_NATIVE_BASH = prev;
+      }
+    },
+  ],
+  [
+    'P2: built-in bash passes when pibash is opted out (PI_NATIVE_BASH=0)',
+    'pass',
+    async (pi) => bash(pi, 'fd -e ts . custom-tools'),
   ],
   // ---- pibash: deeper bash-kind coverage (destructive, mutation, malformed) ----
   [

@@ -29,7 +29,8 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { dirname, resolve } from "node:path";
+import { isAbsolute, join, dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
@@ -86,6 +87,27 @@ function logViolation(reason: string, path: string): void {
 
 /** Machine-local build output (scripts/bootstrap.sh), no absolute user paths. */
 const PIREAD_BIN = resolve(extDir, "../../bin/piread");
+
+/** Mirror the built-in read tool's `resolveToCwd` (pi `path-utils.ts`):
+ * unicode-space normalization, leading-`@` strip, `~` expansion, `file://`
+ * URLs, then lexical resolve against cwd. The SDK does not export it, so it is
+ * reproduced here; the parity suite pins the behavior. Native piread resolves
+ * too, but without this pre-pass it would act on a literal-NBSP path while the
+ * built-in normalizes to a space (a wrong-file read, not a fallback). */
+const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
+function resolveToolPath(input: string, cwd: string): string {
+  const norm = (raw: string): string => {
+    let n = raw.replace(UNICODE_SPACES, " ");
+    if (n.startsWith("@")) n = n.slice(1);
+    const home = homedir();
+    if (n === "~") return home;
+    if (n.startsWith("~/")) return join(home, n.slice(2));
+    if (/^file:\/\//.test(n)) return fileURLToPath(n);
+    return n;
+  };
+  const n = norm(input);
+  return isAbsolute(n) ? resolve(n) : resolve(norm(cwd), n);
+}
 
 /** Private built-in instance: fallback executor and image path. Never registered.
  * Cast to the definition's execute signature: the AgentTool wrapper types the
@@ -363,6 +385,11 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     ctx: unknown,
   ): Promise<ReadResult> => {
     const { path, offset, limit } = params;
+    // Non-string path (undefined/null/number): let the built-in raise its own
+    // TypeError rather than crashing here with a different message.
+    if (typeof path !== "string") {
+      return fallbackToBuiltin(toolCallId, params, signal, onUpdate, ctx, "non-string path");
+    }
     // The CLI contract is offset/limit >= 1; JS's own semantics for 0,
     // negatives, and non-integers are odd-but-defined — keep them on the
     // built-in verbatim instead of approximating.
@@ -377,6 +404,10 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     }
 
     const spawnCwd = (ctx as { cwd?: string } | undefined)?.cwd || process.cwd();
+    // Resolve with the built-in's exact semantics (see resolveToolPath) so the
+    // native rung acts on the same file the built-in would, not a literal path
+    // that happens to exist (NBSP) or one the built-in would normalize.
+    const resolvedPath = resolveToolPath(path, spawnCwd);
 
     // Dispatch ladder: daemon (persistent) → one-shot spawn → built-in.
     // A daemon TRANSPORT failure (crash, missing binary, bad protocol) moves
@@ -384,11 +415,11 @@ export default function pireadExtension(pi: ExtensionAPI): void {
     // line — exactly one per call.
     let envelope: PireadEnvelope;
     try {
-      envelope = await daemonRequest(path, offset, limit, spawnCwd, signal);
+      envelope = await daemonRequest(resolvedPath, offset, limit, spawnCwd, signal);
     } catch (err) {
       if (isAbort(err, signal)) throw new Error("Operation aborted");
       try {
-        envelope = await oneshotDispatch(path, offset, limit, spawnCwd, signal);
+        envelope = await oneshotDispatch(resolvedPath, offset, limit, spawnCwd, signal);
       } catch (err2) {
         if (isAbort(err2, signal)) throw new Error("Operation aborted");
         const reason = err2 instanceof OneshotError ? err2.reason : `spawn ${String(err2)}`;

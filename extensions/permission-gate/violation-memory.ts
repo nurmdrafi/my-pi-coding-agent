@@ -10,6 +10,8 @@ export const FAMILY_LESSONS: Record<string, string> = {
     "Never re-read a file window already in context this session — read only new regions (offset/limit).",
   "Token Economy (Piread-first)":
     "Read text files with the piread tool, never the built-in read tool — read is only for images. piread already falls back to the built-in reader on its own.",
+  "Token Economy (Pibash-first)":
+    "Run shell commands with the pibash tool, never the built-in bash tool — pibash already falls back to the built-in executor on its own.",
   "Permission Gate (Destructive)":
     "Destructive/mutating commands (rm, git reset --hard/clean/checkout --, package installs, sudo) need explicit user approval first — a yes in chat or in the invoking message (incl. /ship, /issue, /update-changelog) counts and suppresses the confirm; otherwise ask in chat and wait.",
   "Anchor Guard":

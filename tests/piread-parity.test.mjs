@@ -202,6 +202,14 @@ add("parity: jpg image delegates to built-in", () => parityCase({ path: join(dir
 add("parity: missing file rejects identically", () => parityCase({ path: missingPath }));
 add("parity: missing file with offset rejects identically", () => parityCase({ path: missingPath, offset: 3 }));
 add("parity: directory rejects identically", () => parityCase({ path: join(dir, "a-directory") }));
+add("parity: undefined path rejects identically", () => parityCase({ path: undefined }));
+// NBSP in the path must normalize to a space (built-in resolveToCwd), not open
+// a literal-NBSP sibling — the extension pre-resolves with the same rules.
+add("parity: NBSP path normalizes to the space variant (no wrong-file read)", async () => {
+  writeFileSync(join(dir, "nbsp space.txt"), "SPACE\n");
+  writeFileSync(join(dir, "nbsp\u00a0space.txt"), "NBSP\n");
+  return parityCase({ path: join(dir, "nbsp\u00a0space.txt") });
+});
 
 // relative path resolves against ctx.cwd on both arms
 add("parity: relative path via ctx.cwd", () => {

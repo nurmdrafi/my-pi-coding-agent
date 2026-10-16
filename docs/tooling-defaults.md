@@ -3,7 +3,7 @@
 Rust-based tools first at every layer; non-Rust fallbacks only on error.
 
 ## Order of preference
-1. Native Rust pi tools: `piread` (text reads), `piedit` (text edits), `pibash` (shell execution), `pidx` (session-log indexing). Built-in `read` on a text file is blocked (permission-gate P1); built-in `edit` is unused while piedit is registered (`PI_NATIVE_EDIT=0` disables); built-in `bash` is the fallback while pibash is registered (`PI_NATIVE_BASH=0` disables).
+1. Native Rust pi tools: `piread` (text reads), `piedit` (text edits), `pibash` (shell execution), `pidx` (session-log indexing). Built-in `read` on a text file is blocked (permission-gate P1); built-in `edit` is unused while piedit is registered (`PI_NATIVE_EDIT=0` disables); built-in `bash` is blocked while pibash is registered (permission-gate P2 — pibash runs the same schema and bash-kind gate rules and falls back to the built-in executor itself; `PI_NATIVE_BASH=0` disables pibash and restores `bash`).
 2. Rust CLIs: `rg` (ripgrep) for search, `fd` for file find. `grep`/`egrep`/`fgrep`/`find` only when the Rust tool is missing or errored — say so in chat and wait for approval first (permission-gate SS2 enforces this).
 3. Built-in tools only for what the above don't cover (images via built-in `read`).
 

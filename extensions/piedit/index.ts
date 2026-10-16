@@ -33,7 +33,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { dirname, resolve } from "node:path";
+import { isAbsolute, join, dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import {
   createEditTool,
@@ -66,6 +67,35 @@ function logViolation(reason: string, path: string): void {
 
 /** Machine-local build output (scripts/bootstrap.sh), no absolute user paths. */
 const PIEDIT_BIN = resolve(extDir, "../../bin/piedit");
+
+/** Mirror the built-in edit tool's `resolveToCwd` (pi `path-utils.ts`):
+ * unicode-space normalization, leading-`@` strip, `~` expansion, `file://`
+ * URLs, then lexical resolve against cwd. The SDK does not export it, so it is
+ * reproduced here; the extension pre-resolves so native piedit acts on the
+ * same file the built-in would. */
+const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
+function resolveToolPath(input: string, cwd: string): string {
+  const norm = (raw: string): string => {
+    let n = raw.replace(UNICODE_SPACES, " ");
+    if (n.startsWith("@")) n = n.slice(1);
+    const home = homedir();
+    if (n === "~") return home;
+    if (n.startsWith("~/")) return join(home, n.slice(2));
+    if (/^file:\/\//.test(n)) return fileURLToPath(n);
+    return n;
+  };
+  const n = norm(input);
+  return isAbsolute(n) ? resolve(n) : resolve(norm(cwd), n);
+}
+
+/** Built-in `validateEditInput` — same message and order (it runs before path
+ * resolution), so empty / non-array `edits` fail identically without a native
+ * round-trip whose envelope wording could drift. */
+function validateEditInput(input: EditParams): EditParams {
+  if (!Array.isArray(input.edits) || input.edits.length === 0)
+    throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
+  return { path: input.path, edits: input.edits };
+}
 
 /** Edit-tool params (schema from the built-in definition). */
 type EditParams = { path: string; edits: { oldText: string; newText: string }[] };
@@ -414,9 +444,9 @@ export default function pieditExtension(pi: ExtensionAPI): void {
     onUpdate: unknown,
     ctx: unknown,
   ): Promise<EditResult> => {
-    const { path, edits } = input;
+    const { path, edits } = validateEditInput(input);
     const spawnCwd = (ctx as { cwd?: string } | undefined)?.cwd || process.cwd();
-    const absPath = resolve(spawnCwd, path);
+    const absPath = resolveToolPath(path, spawnCwd);
 
     // Native dispatch runs under the exported queue so same-path writes
     // serialize exactly as the built-in does. A fallback is deferred to AFTER
