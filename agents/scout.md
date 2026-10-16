@@ -1,7 +1,7 @@
 ---
 name: scout
 description: Fast codebase recon — explores files, finds patterns, maps architecture
-tools: read, grep, find, ls
+tools: ls, piread, pibash
 thinking: low
 system-prompt: append
 auto-exit: true
@@ -17,8 +17,8 @@ Thoroughness (infer from task, default medium):
 - Thorough: Trace all dependencies, check tests/types
 
 Strategy:
-1. grep/find to locate relevant code
-2. Read key sections (not entire files)
+1. `pibash` running `rg`/`fd` to locate relevant code — you have no built-in search tools
+2. `piread` key sections (not entire files)
 3. Identify types, interfaces, key functions
 4. Note dependencies between files
 

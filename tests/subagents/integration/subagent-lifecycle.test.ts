@@ -67,7 +67,7 @@ for (const backend of backends) {
         `Call the subagent tool with these EXACT parameters:`,
         `  name: "Echo-${id}"`,
         `  agent: "test-echo"`,
-        `  task: "Run this bash command: echo 'PASS_${id}' > '${markerFile}'"`,
+        `  task: "Run this pibash command: echo 'PASS_${id}' > '${markerFile}'"`,
         `Do not do anything else. Just call the subagent tool once.`,
         `After you receive the subagent result, say INTEGRATION_COMPLETE.`,
       ].join("\n");
@@ -119,14 +119,14 @@ for (const backend of backends) {
         `Call the subagent tool with these EXACT parameters:`,
         `  name: "Status-${id}"`,
         `  agent: "test-echo"`,
-        `  task: "Run this bash command: echo 'START_${id}' > '${startFile}'; sleep 90; echo 'STATUS_${id}' > '${markerFile}'"`,
+        `  task: "Run this pibash command: echo 'START_${id}' > '${startFile}'; sleep 90; echo 'STATUS_${id}' > '${markerFile}'"`,
         `Do not do anything else. Just call the subagent tool once.`,
         `After you receive the subagent result, say STATUS_TEST_DONE.`,
       ].join("\n");
 
       startPi(surface, env.dir, task);
 
-      const activeScreen = await waitForScreen(surface, /active[\s\S]*bash|bash[\s\S]*active/i, PI_TIMEOUT, 300);
+      const activeScreen = await waitForScreen(surface, /active[\s\S]*pibash|pibash[\s\S]*active/i, PI_TIMEOUT, 300);
       assert.doesNotMatch(activeScreen, /Subagent status[\s\S]*stalled|stalled[\s\S]*Subagent status/i);
 
       await waitForFile(startFile, PI_TIMEOUT, /START_/);
@@ -202,7 +202,7 @@ for (const backend of backends) {
         `Call the subagent tool with these EXACT parameters:`,
         `  name: "Fork-${id}"`,
         `  agent: "test-fork"`,
-        `  task: "Run this bash command: echo 'FORK_OK_${id}' > '${markerFile}'"`,
+        `  task: "Run this pibash command: echo 'FORK_OK_${id}' > '${markerFile}'"`,
         `Do not set any other parameters. Just name, agent, and task.`,
         `After you receive the result, say FORK_COMPLETE.`,
       ].join("\n");
@@ -313,7 +313,7 @@ for (const backend of backends) {
         `  name: "SysP-${id}"`,
         `  agent: "test-echo"`,
         `  systemPrompt: "Always start your response with CUSTOM_PROMPT_ACTIVE."`,
-        `  task: "Write 'SYSPROMPT_${id}' to ${markerFile} using bash: echo 'SYSPROMPT_${id}' > '${markerFile}'"`,
+        `  task: "Write 'SYSPROMPT_${id}' to ${markerFile} using pibash: echo 'SYSPROMPT_${id}' > '${markerFile}'"`,
         `After the subagent completes, say SYSPROMPT_TEST_DONE.`,
       ].join("\n");
 

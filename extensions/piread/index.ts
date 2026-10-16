@@ -68,6 +68,35 @@ const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
 
 const extDir = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Announce this native tool's backing extension to the subagents extension.
+ *
+ * Subagent spawns run with `--no-extensions` + a `--tools` allowlist plus one
+ * `-e <path>` per tool-backing extension (extensions/subagents/index.ts,
+ * `applySandboxToParts`). Built-in pi tool names (`read`/`bash`/`edit`) resolve
+ * to no extension, so an agent definition listing only those gets the *built-in*
+ * implementation and never the native pipeline. Registering here (the documented
+ * `registerToolExtension` hook) lets `getToolExtensionPath` resolve this tool's
+ * name, so agent definitions that list it receive `-e` for this file.
+ *
+ * The hook is absent when the subagents extension is not loaded, and it throws
+ * when a name shadows a built-in or spawning tool — both are non-fatal here,
+ * since the native tool still works in top-level sessions.
+ */
+function announceNativeTool(name: string, extensionPath: string): void {
+  const registry = (
+    globalThis as {
+      __pi_interactive_subagents?: { registerToolExtension?: (n: string, p: string) => void };
+    }
+  ).__pi_interactive_subagents;
+  try {
+    registry?.registerToolExtension?.(name, extensionPath);
+  } catch {
+    // Contract violations are the subagents extension's to report; a failure
+    // here must not break this tool's own registration.
+  }
+}
+
 /** Violations (fallback-to-builtin) append to the existing gate log
  * logs/violation-memory.ndjson, reusing its {family, sid, ts} schema — no
  * new log file. Path derived from the extension dir (portability). */
@@ -362,6 +391,8 @@ async function oneshotDispatch(
 export default function pireadExtension(pi: ExtensionAPI): void {
   // Load guard (D5 flip, 2026-10-17): default on; PI_NATIVE_READ=0 opts out.
   if (process.env.PI_NATIVE_READ === "0") return;
+
+  announceNativeTool("piread", fileURLToPath(import.meta.url));
 
   const fallbackToBuiltin = async (
     toolCallId: string,

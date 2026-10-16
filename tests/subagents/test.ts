@@ -1206,7 +1206,9 @@ describe("subagent discovery", () => {
     for (const t of ["subagent", "subagent_message", "subagents_list"]) {
       assert.ok(tools.has(t), `expected spawning tool ${t} in worker allowlist`);
     }
-    assert.ok(tools.has("bash"), "expected worker to keep bash");
+    for (const t of ["pibash", "piread", "piedit"]) {
+      assert.ok(tools.has(t), `expected worker to keep native tool ${t}`);
+    }
   });
 
   it("scout and researcher are not granted spawning tools", () => {

@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Pre-commit reviewer — reviews the diff for correctness, races, and guard regressions before commit+push
-tools: read, bash, grep, find, ls
+tools: ls, piread, pibash
 skills: pre-push-review
 thinking: max
 system-prompt: append
@@ -16,7 +16,7 @@ You are strictly read-only with respect to repository state: never commit, push,
 
 Process:
 1. `git status` + `git diff HEAD` — see exactly what would be committed
-2. Read the surrounding code the diff touches; check callers of changed symbols (`rg`)
+2. `piread` the surrounding code the diff touches; check callers of changed symbols via `pibash` running `rg`
 3. Run the narrowest relevant check (targeted test / typecheck) if it is quick
 4. Apply the pre-push-review skill checklist (auto-loaded)
 
