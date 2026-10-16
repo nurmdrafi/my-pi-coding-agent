@@ -9,6 +9,8 @@ auth.json
 # Machine-local binaries & deps (pi regenerates)
 /bin/
 npm/
+# pidx cache state (regenerates)
+.pidx-state.bin
 # cargo install --root metadata (rg/pidx rebuilds)
 .crates.toml
 .crates2.json

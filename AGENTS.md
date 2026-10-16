@@ -1,65 +1,94 @@
 # Global Pi Instructions
 
-Personal pi coding-agent harness (`pi-native`): extensions (permission-gate, subagents, handoff), Rust native tools (piread, piedit, pibash, pidx), scripts, tests. npm; Node pinned by `.nvmrc`. Commands: `npm run check` (typecheck + agents lint + doc check + tests), `npm run gate:eval`.
+Personal pi coding-agent harness (`pi-native`).
+Stack: extensions (`permission-gate`, `subagents`, `handoff`), Rust tools (`piread`, `piedit`, `pibash`, `pidx`), scripts, tests.
+Package manager: npm. Node version: `.nvmrc`.
+Commands:
+- `npm run check`: typecheck + agents lint + doc check + tests
+- `npm run gate:eval`: permission-gate evaluation
+Always loaded. Task-specific rules: `docs/`; read linked doc only when task touches that area.
 
-Always loaded. Task rule sets live in `docs/` — follow the link when a task touches that area.
+## Clarity
 
-## Always-on rules
+- Target unclear or missing → ask and wait.
+- Any ambiguity that affects scope, data, security, cost deployment, or irreversibility → ask.
+- Batch questions in one message.
+- Plan/design requests → plan only (do not implement).
+- Ambiguous “continue” / “proceed” → confirm current scope first.
 
-### Clarity
+## Safety
 
-- Target unclear or missing → ask, wait. Never guess, never substitute nearest match.
-- Batch all open questions into one message.
-- Plan/design request → plan only.
-- Ambiguous "continue"/"proceed" → confirm scope first.
+- `permission-gate` is authoritative.
+- Ask before:
+  - package install
+  - destructive command
+  - out-of-scope edit
+  - `sudo`
+  - `curl | sh`
+  - secret access
+  - force git operation
+- On block: stop. Report reason. Fix cause. No equivalent workaround without approval.
 
-### Scope
+## Communication
 
-- Explicit instruction = approval for the named action + directly implied reads/searches.
-- Approved task → plan, do, verify, autonomously.
-- Ask before: package installs, destructive commands, out-of-scope changes, `sudo`, `curl | sh`. Full list: [docs/security.md](docs/security.md).
-- Chat "yes" or the invoking message = approval.
+- Short, complete sentences. Plain prose. No fragments. No emoji.
+- Prefer ≤ 5 lines for ordinary replies.
+- Longer replies only for proposals, reports, plans, or blockers.
+- Cite `path:line`.
+- Never restate file contents, command output, or diffs.
+- Between tool calls: at most one short interpretive sentence.
 
-### Precedence
+## Workflow
 
-- Global + repo context load together; neither replaces the other.
-- Conflict → repo `AGENTS.md`/`.pi` wins; this file fills gaps.
-- In-session user instruction outranks global/repo/template: apply the override, one-line deviation note, never relitigate.
+- TDD always: red → green → refactor. Failing test first, watch it fail, minimum code to pass, refactor. No implementation before a failing test. Bug fix starts with a failing repro test. Untestable (config/docs/pure infra) → state why before proceeding.
+- Plan → do → verify → repeat.
+- One issue/concern per session: ~50 turns or ~60K context → finish the issue, fresh session for the next.
 
-### Safety
+## Verification
 
-- Enforced by permission-gate; block reason = stop, fix the cause, never retry differently. Full list: [docs/security.md](docs/security.md).
+- Task completion: scoped tests + lint + tsc for changed files not after every edit. Scoped test runs inside the TDD loop are part of red→green; otherwise test once.
+- Always use the narrowest relevant check.
+- Full suite only when shared config, CI, build behavior, or a broad refactor is affected; otherwise targeted checks + Husky commit gate.
+- Build only after a risky structural edit or at task end.
+- Never claim something works without running verification; can't run → say why.
+- 3 unsuccessful / inconclusive tool calls per acceptance criterion, or two failed attempts at the same fix → stop and report. No loops.
+- Conclusion = passing targeted check, located root cause, or explicit user decision.
 
-### Communication
+## Tooling
 
-- Telegram style: short complete sentences, plain prose, no fragments/emoji.
-- Cap ~5 lines/reply.
-- Interstitial text between tool calls: ≤1 short sentence, interpret-only.
-- Cap may be exceeded only by Propose/Report/plan deliverables.
-- Analysis/audit deliverable → dated file under `audit-reports/`, plus ≤5-line chat summary and path.
+- Prefer native tools: `piread`, `piedit`, `pibash`, `pidx`.
+- Search: `rg`. File discovery: `fd`.
+- Built-in `grep` / `find`: only if `rg` / `fd` / native tool is unavailable or fails.
+- Native-tool failure: report, then use the narrowest built-in fallback.
+- Read only task-named files or files needed for acceptance criteria.
+- `rg -n` first; then read only the relevant hit or a narrow range.
+- Do not re-read context already present (exception: after compaction).
+- Batch independent tool calls.
+- Large/raw output: `pibash` + `jq` → `/tmp`; read only the needed fields.
+- Oversize output: tool writes an overflow file and returns a compact status + path.
+- Request a narrower command, filter, range, or fields. Do not read the full overflow.
+- Do not rerun an identical command (exact string) within 10 minutes without an intervening edit.
+- Codemode: multi-call scripted aggregation only. Its value is keeping bulk tool output out of history, not merely fewer turns.
+- One command / one read → direct `pibash` / `piread`.
 
-### Verification
+## Cost
 
-- Scoped tests + lint + tsc on changed files only, at task completion — not after every edit. Never the full suite: husky gates commits.
-- Build only after risky structural edits (new files, import-graph changes) or at task end; re-reading verifies plain edits.
+- Measured driver: prompt-cache reads are ~72% of spend and scale with conversation history, which is re-read every turn (avg 65k tokens/turn; grows ~7k at turn 10 to ~40k at turn 100). Cost is roughly quadratic in turns.
+- Highest-leverage actions, in order: keep tool output out of context (filter with `rg|head`, `jq` fields, `/tmp`); start a fresh session for a new issue; fewer turns per task.
+- Prefix size (AGENTS.md, system prompt, tool schemas) is a minor term (≤2–4% of a turn; total fixed prefix ≈1–3k vs 65k avg cacheRead). No ROI in trimming prefix or tool schemas. `codemode.inlineBudget` is likewise not worth tuning.
+- Do not churn AGENTS.md mid-session: editing the prefix invalidates the prompt cache. Batch prefix edits, apply them at session start.
+- Audit with the pidx cost query in [docs/cost-audit.md](docs/cost-audit.md).
 
-### Tooling defaults
+## Blocked / inconclusive
 
-- Rust tools first: [docs/tooling-defaults.md](docs/tooling-defaults.md). Search `rg`, file find `fd`. Never `grep`/`find` first — error-only fallbacks.
-- Codemode script → `tools.pibash`/`tools.piread`/`tools.piedit`/`tools.pidx`, never `tools.bash`/`tools.read` (gate P3). Script = async function body, must parse; gate blocks a non-parsing script with a `line:col` pointer (gate P4). Codemode for scripted aggregation across several calls only; one command or one read → `pibash`/`piread` direct.
-- Codemode is off by default: declaring it costs ~426 tokens of prefix every turn. Enable only when an aggregation task justifies it.
-- Output caps: bash/pibash 40 lines / 2KB (H1); read/piread over 300 lines / 8KB capped with a spill pointer (H1b) — keep calls targeted.
+Report only:
+- Goal / acceptance criterion
+- Actions tried (`path:line` or command)
+- Root cause / blocked reason
+- Next action or decision needed
 
-### GitHub issues
+## Scoped rules
 
-- Repo has gh issues → check the related issue, cover every acceptance criterion, state deviations. Flow: [docs/agent-hygiene.md](docs/agent-hygiene.md).
-
-## Scoped rule sets
-
-- [docs/change-discipline.md](docs/change-discipline.md) — ponytail ladder, root-cause fixes, deployment constraints
-- [docs/agent-hygiene.md](docs/agent-hygiene.md) — toolchain pins, edit anchors, issue/commit discipline
-- [docs/security.md](docs/security.md) — ask-list, secrets, git protections
-- [docs/portability.md](docs/portability.md) — macOS+Linux shell subset, no absolute user paths
-- [docs/tooling-defaults.md](docs/tooling-defaults.md) — Rust-first: piread/piedit/pidx, rg/fd, fallback etiquette
-- [docs/token-economy.md](docs/token-economy.md) — read/run discipline, batching, session budget
-- [docs/workflow.md](docs/workflow.md) — TDD, plan/do/verify cadence, session length
+- [docs/change-discipline.md](docs/change-discipline.md): change ladder, root cause, deployment
+- [docs/portability.md](docs/portability.md): macOS + Linux shell subset, no user-specific paths
+- [docs/cost-audit.md](docs/cost-audit.md): measured token-cost audit query

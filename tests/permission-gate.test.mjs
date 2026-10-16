@@ -3915,7 +3915,7 @@ const cases = [
     'pibash: mutating command bumps mutationSeq (R10 re-arms)',
     'pass',
     async (pi) => {
-      // A mutating pibash run must count as an edit for token-economy rules:
+      // A mutating pibash run must count as an edit for the re-run economy rules:
       // run a benign command twice, with a mutating one in between.
       await pibash(pi, "fd -e ts . custom-tools/pibash");
       const mid = await pibash(pi, "touch /tmp/pibash-mutation-probe");

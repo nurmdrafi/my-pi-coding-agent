@@ -18,7 +18,8 @@
   "compaction": {
     "enabled": true,
     "midTurnEnabled": true,
-    "strategy": "shake"
+    "strategy": "shake",
+    "keepRecentTokens": 12000
   },
   "packages": [],
   "extensions": [
