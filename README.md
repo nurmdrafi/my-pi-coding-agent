@@ -24,6 +24,7 @@ A portable, git-synced configuration for the [pi coding agent](https://github.co
 ## Table of contents
 
 - [Quick start](#quick-start)
+- [Terminal (Ghostty recommended)](#terminal-ghostty-recommended)
 - [Requirements](#requirements)
 - [What's inside](#whats-inside)
 - [Skills](#skills)
@@ -77,6 +78,23 @@ Optional, for subagents: `brew install tmux` (macOS) or `sudo apt install tmux` 
 That's it for the bootstrap itself; one optional shell export pins the same
 tools in your own terminals — see [Custom tool binaries](#custom-tool-binaries).
 
+## Terminal (Ghostty recommended)
+
+Pi runs in any terminal. [Ghostty](https://ghostty.org) is recommended for
+interactive sessions — it handles the extended-key protocol Pi needs and renders
+inline images — but it is optional and existing terminals keep working.
+
+```sh
+sh ~/.pi/agent/scripts/setup-ghostty.sh          # configure (backs up, idempotent)
+sh ~/.pi/agent/scripts/setup-ghostty.sh --check  # verify
+sh ~/.pi/agent/scripts/pi-ghostty.sh             # start Pi via Ghostty
+```
+
+Installation, configuration, troubleshooting, and fallback behavior:
+[`docs/terminal-setup.md`](docs/terminal-setup.md). This is terminal
+configuration only — it does not affect the native `piread`/`piedit`/`pidx`
+daemons below.
+
 ## Custom tool binaries
 
 `bin/` is gitignored and regenerated; pi prepends it to `PATH` for every bash
@@ -100,6 +118,7 @@ macOS and Linux resolve identically:
 | ----------- | ----------------------------------------------------- |
 | Node.js     | ≥ 22.19 (`.nvmrc` pins 24, the current LTS)           |
 | OS          | macOS or Linux                                        |
+| Terminal    | Any modern terminal; [Ghostty recommended](#terminal-ghostty-recommended) (optional) |
 | tmux        | Only if using subagents — see [Subagents](#subagents) |
 | Rust (cargo) | Default requirement — builds the first-class native tools `piread` (text-file reader), `piedit` (text-file editor), and `pidx` (session-log indexer), registered under their own TUI labels; see [Extensions](#extensions). Opt out per tool with `PI_NATIVE_READ=0` / `PI_NATIVE_EDIT=0` / `PI_NATIVE_PIDX=0` (fails open to the built-in reader / editor / Node parser). Bootstrap prints the rustup command if cargo is missing |
 | Git         | For sync; `~/.pi/agent` is itself a repo              |
@@ -121,7 +140,7 @@ macOS and Linux resolve identically:
 ├── custom-tools/             # Rust workspace: native helper crates (pidx — session-log indexer; piread — native read tool; piedit — native edit tool)
 ├── benchmark/                # Model-graded benchmark tasks + validators
 ├── codemode/                 # Codemode scripts (non-LLM helpers)
-├── scripts/                  # Repo tooling (doc-check, agents-lint, gate-eval)
+├── scripts/                  # Repo tooling (doc-check, agents-lint, gate-eval, ghostty setup)
 ├── prompts/                  # /command prompt templates (/issue, /ship, /update-changelog)
 ├── tests/                    # Node test runner suite (permission-gate, doc-check)
 ├── .github/workflows/        # Release CI/CD
@@ -220,22 +239,22 @@ Always-on TypeScript modules in `extensions/` — loaded by pi, never in the mod
 
 Raw events (tool errors, guard blocks) land in pi's native `sessions/**/*.jsonl` — the audit toolkit derives every signal from there. Full docs: [`extensions/README.md`](extensions/README.md).
 
-**`piread/`** registers the Rust text-file reader as its own first-class tool labeled **`piread`** in the TUI (2026-10-18 redesign: it previously shadowed the built-in `read` under the same name). Parameters match the built-in reader verbatim; text files route to the native pipeline, images stay on `read`. Dispatch goes through a persistent `--serve` daemon (lazy-started, id-matched line protocol over stdio) so reads don't pay a process spawn per call; a one-shot CLI spawn and then the built-in implementation remain as fallback rungs. Default on; opt out with `PI_NATIVE_READ=0`, which registers nothing.
+**`piread/`** registers the Rust text-file reader as its own first-class tool labeled **`piread`** in the TUI (2026-10-16 redesign: it previously shadowed the built-in `read` under the same name). Parameters match the built-in reader verbatim; text files route to the native pipeline, images stay on `read`. Dispatch goes through a persistent `--serve` daemon (lazy-started, id-matched line protocol over stdio) so reads don't pay a process spawn per call; a one-shot CLI spawn and then the built-in implementation remain as fallback rungs. Default on; opt out with `PI_NATIVE_READ=0`, which registers nothing.
 
-**`piedit/`** registers the Rust text-file editor as its own first-class tool labeled **`piedit`**. Parameters, schema, argument normalization, and TUI renderers match the built-in `edit` verbatim; the Rust side owns read → normalize → match → apply → write, and diff/patch rendering stays on the exported TypeScript `generateDiffString`/`generateUnifiedPatch` helpers so `details` is byte-identical by construction. Dispatch goes through a persistent `--serve` daemon (lazy-started, id-matched NDJSON over stdio) so edits don't pay a process spawn per call; a one-shot CLI spawn and then the built-in implementation remain as fallback rungs, all inside the exported `withFileMutationQueue`. Any transport or envelope failure falls back to the built-in executor plus one stderr line (fail-open). permission-gate treats `piedit` calls as edit-kind, so Anchor Guard, protected-path confirms, the M1/M2/M3 chain, and read→edit coverage binding all apply exactly as for `edit`. Default on; opt out with `PI_NATIVE_EDIT=0`, which registers nothing. Parity is enforced by `tests/piedit-parity.test.mjs` (40 cases: corpus, errors, unicode/CRLF/BOM, daemon client, gate lock-ins).
+**`piedit/`** registers the Rust text-file editor as its own first-class tool labeled **`piedit`**. Parameters, schema, argument normalization, and TUI renderers match the built-in `edit` verbatim; the Rust side owns read → normalize → match → apply → write, and diff/patch rendering stays on the exported TypeScript `generateDiffString`/`generateUnifiedPatch` helpers so `details` is byte-identical by construction. Dispatch goes through a persistent `--serve` daemon (lazy-started, id-matched NDJSON over stdio) so edits don't pay a process spawn per call; a one-shot CLI spawn and then the built-in implementation remain as fallback rungs, all inside the exported `withFileMutationQueue`. Any transport or envelope failure falls back to the built-in executor plus one stderr line (fail-open). permission-gate treats `piedit` calls as edit-kind, so Anchor Guard, protected-path confirms, the M1/M2/M3 chain, and read→edit coverage binding all apply exactly as for `edit`. Default on; opt out with `PI_NATIVE_EDIT=0`, which registers nothing. Parity is enforced by `tests/piedit-parity.test.mjs` (51 cases: corpus, errors, unicode/CRLF/BOM, daemon client, gate lock-ins).
 
 **`pidx/`** registers the Rust session-log indexer as its own first-class tool labeled **`pidx`** — parses session transcripts into compact per-session extracts (turns, tool calls with param hashes, tool results, compactions, skill loads), incremental via a (size, mtime) cache so warm runs are O(changes). Session-audit's fast path and session-history analysis call it directly; failures throw and fall back to the Node parser. Default on; opt out with `PI_NATIVE_PIDX=0`.
 
 ### Native tool performance
 
-Every number below is measured, not guessed — methodology and raw runs live in `benchmark/runs/*-microbench-*.md` and `CHANGELOG.md`.
+Every number below is measured, not guessed — methodology and raw runs live in `benchmark/runs/*-microbench-*.md` and `CHANGELOG.md`. The read/edit/index numbers are Linux x64 (the current benchmark host); macOS and Linux path/keyboard parity is covered by the test suites, not by a second benchmark host.
 
-**`pidx` — session-log indexing** (Rust vs the prior Node parser; this repo's archive, 474 sessions / 85 MB of transcripts, verified 2026-10-18):
+**`pidx` — session-log indexing** (Rust vs the prior Node parser; this repo's archive, 474 sessions / 85 MB of transcripts, verified 2026-10-16):
 
 | Run | Node parser | Rust `pidx` | Speedup |
 | --- | ---: | ---: | ---: |
 | Warm (cache hit, 474/474 reused) | ~0.28 s | ~0.01 s (14 ms measured) | **~28×** |
-| Cold (full re-parse, 474 sessions) | ~0.45 s | ~0.22 s (0.80 s measured on a slower host; 0.22 s on the original) | **~2×** |
+| Cold (full re-parse, 474 sessions) | ~0.45 s | ~0.22 s (original host 0.22 s; slower host 0.80 s) | **~2×** |
 | Warm peak RSS | ~290 MB | ~17 MB | **~17× less memory** |
 
 Warm runs are O(changes), not O(archive): the state store replays unchanged sessions from cached byte ranges without re-parsing or re-serializing.
@@ -252,7 +271,7 @@ Warm runs are O(changes), not O(archive): the state store replays unchanged sess
 | 60 KB single blob | 0.629 | 0.703 | ~1× (parity) |
 | 60 KB head slice | 0.416 | 0.238 | **1.7×** |
 
-The 60 KB single-blob class sits at parity (residual Δ ≤ +0.07 ms ≈ noise floor; the earlier regression is closed). The persistent daemon removes the **3.4–3.6 ms per-call spawn floor** the one-shot CLI arm pays (3.1–5.7 ms); daemon RSS is 2 MB. Structural floor: ~0.083 ms round-trip scheduling + ~0.10 ms Node-side `JSON.parse` of large envelopes — pinned by result parity with the built-in.
+The 60 KB single-blob class sits at measured parity: the residual Δ ≤ +0.07 ms is within run-to-run variance (noise floor), separate from the structural costs described next, and the earlier regression is closed. The persistent daemon removes the **3.4–3.6 ms per-call spawn floor** the one-shot CLI arm pays (3.1–5.7 ms); daemon RSS is 2 MB. Structural floor (not variance): ~0.083 ms round-trip scheduling + ~0.10 ms Node-side `JSON.parse` of large envelopes — pinned by result parity with the built-in.
 
 **`piedit` — text-file edits** (daemon dispatch vs the built-in `edit`; linux x64, node v24, N=100/arm, p50 ms, `benchmark/runs/piedit-microbench-2026-10-16.md`, after the native Rust diff/patch render `17e4792`):
 

@@ -7,6 +7,16 @@ dated entries above it.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0] - 16-10-2026
+
+### Added
+
+- **Ghostty recommended terminal + setup/launch tooling** (feedback.md task). `scripts/setup-ghostty.sh` detects macOS/Linux, locates Ghostty, resolves the config file Ghostty actually loads (`config.ghostty` current, legacy `config` reused; XDG + macOS Application Support paths), ensures `keybind = alt+backspace=text:\x1b\x7f`, backs up before editing, preserves unrelated settings, and is idempotent (no write/backup when already correct). It warns — without changing — about the legacy `shift+enter=text:\n` mapping and `shell-integration = none`; `--check` / `--dry-run` / `--remove-legacy` / `--config` plus `GHOSTTY_CONFIG` / `GHOSTTY_BIN` give safe control. It never installs Ghostty and prints the official install link when absent. `scripts/pi-ghostty.sh` runs Pi in place when a terminal is attached and otherwise hands off to a Ghostty window in the current directory, forcing no `TERM`/keyboard/image/color variables. New `docs/terminal-setup.md` (install, config, troubleshooting, validation, fallback) plus a README quick-start section. `scripts/doc-check.mjs` now treats `ghostty` as an optional toolchain (docs referencing it are info-only). Tests: `tests/setup-ghostty.test.mjs` (17 cases — idempotency, preservation + backup, macOS/legacy path resolution, `--check`/`--dry-run`, absent-Ghostty behavior, launcher hand-off). `permission-gate` and the `piread`/`piedit`/`pidx` daemons are untouched.
+
+### Changed
+
+- README doc corrections from the same review: future-dated `2026-10-18` verification/redesign stamps → `2026-10-16`; `piedit` parity count in the Extensions section 40 → 51 (matches the perf section and the release entry); native-tool performance tables now labeled Linux x64 with macOS/Linux parity pinned by the test suites rather than a second benchmark host; the `pidx` cold-run cell labels both hosts explicitly (original 0.22 s, slower 0.80 s); and the 60 KB read note separates measured run variance from the identified structural floor.
+
 ## [1.42.0] - 16-10-2026
 
 ### Changed

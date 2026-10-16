@@ -76,9 +76,10 @@ export function checkMdCommands(root) {
   const INTERPRETERS = new Set(['node','npm','npx','python','python3','bash','sh','env','deno','bun']); // flags belong to scripts/subcommands we can't introspect
   const MAC_ONLY = new Set(['pbcopy','pbpaste','osascript','launchctl','security','codesign','mdfind','open','defaults','brew','say','caffeinate','networksetup','screencapture','textutil','pluid','xcodebuild','swift','sw_vers','softwareupdate','pmset','system_profiler','diskutil','hdiutil','installer','port']);
   const SOURCED = new Set(['nvm']); // shell functions from init scripts — never visible to command -v
-  // Toolchains this harness documents but does not require on every machine (e.g. the
-  // optional Rust toolchain). Absent binaries are info-only, like MAC_ONLY.
-  const OPTIONAL_TOOLCHAINS = new Set(['cargo', 'rustc', 'rustup', 'rustfmt', 'perf', 'valgrind', 'hyperfine', 'llvm-profdata', 'llvm-bolt', 'inferno-collapse-perf', 'inferno-flamegraph', 'loom']);
+  // Toolchains/clients this harness documents but does not require on every machine
+  // (e.g. the optional Rust toolchain, the optional Ghostty terminal). Absent
+  // binaries are info-only, like MAC_ONLY.
+  const OPTIONAL_TOOLCHAINS = new Set(['cargo', 'rustc', 'rustup', 'rustfmt', 'perf', 'valgrind', 'hyperfine', 'llvm-profdata', 'llvm-bolt', 'inferno-collapse-perf', 'inferno-flamegraph', 'loom', 'ghostty']);
   // Docs that legitimately example foreign build artifacts (e.g. `./target/release/app`) —
   // reference/ docs are on-demand material, not harness runbooks.
   const isReferenceDoc = (md) => /\/references\//.test(md.slice(root.length + 1));
