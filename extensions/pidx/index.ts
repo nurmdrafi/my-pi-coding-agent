@@ -96,7 +96,7 @@ const pidxTool = defineTool({
     if (args.sessionsDir) bits.push(args.sessionsDir);
     if (args.max !== undefined) bits.push(`max=${args.max}`);
     if (args.force) bits.push("--force");
-    text += theme.fg("accent", bits.join(" ") || "sessions");
+    text += theme.fg("text", bits.join(" ") || "sessions");
     return new Text(text, 0, 0);
   },
 });

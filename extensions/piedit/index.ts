@@ -517,7 +517,7 @@ export default function pieditExtension(pi: ExtensionAPI): void {
       // renderToolPath placeholder semantics).
       const count = Array.isArray(args.edits) ? args.edits.length : 0;
       let text = theme.fg("success", theme.bold("piedit "));
-      text += typeof args.path === "string" ? theme.fg("accent", args.path) : theme.fg("dim", "...");
+      text += typeof args.path === "string" ? theme.fg("text", args.path) : theme.fg("dim", "...");
       if (count > 0) text += theme.fg("dim", ` (${count} edit${count === 1 ? "" : "s"})`);
       return new Text(text, 0, 0);
     },

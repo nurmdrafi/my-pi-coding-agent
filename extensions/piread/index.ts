@@ -439,7 +439,7 @@ export default function pireadExtension(pi: ExtensionAPI): void {
       let range = `:${start}`;
       if (args.limit) range = `:${start}-${start + args.limit - 1}`;
       let text = theme.fg("success", theme.bold("piread "));
-      text += theme.fg("accent", `${args.path}${range}`);
+      text += theme.fg("text", `${args.path}${range}`);
       return new Text(text, 0, 0);
     },
   });
