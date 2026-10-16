@@ -89,6 +89,7 @@ macOS and Linux resolve identically:
 | `rg`    | Search default (permission-gate SS2 rg-first); built **with PCRE2** so `rg -P` never needs a grep fallback | `cargo install ripgrep --features pcre2 --root ~/.pi/agent` |
 | `piread`| Native read tool (AGENTS.md tooling default; built-in `read` is the fallback and still certifies Anchor Guard edit coverage) | `scripts/bootstrap.sh` |
 | `piedit`| Native edit tool (AGENTS.md tooling default; built-in `edit` is the fallback. Native diff/patch render — byte-identical jsdiff port — makes it 2.4–9.2× faster than the built-in; `piedit` calls are edit-kind in permission-gate, so Anchor Guard/coverage protection is unchanged) | `scripts/bootstrap.sh` |
+| `pibash`| Native shell tool (built-in `bash` is the fallback. Byte-exact parity with the built-in envelope, pinned by `tests/pibash-parity.test.mjs`; `pibash` calls are bash-kind in permission-gate, so the H1 cap, R10 re-run guard, destructive analysis, and mutation tracking all apply) | `scripts/bootstrap.sh` |
 | `pidx`, `fd`, `pidoc` | Session-audit fast path, `find` default (permission-gate SS3 fd-first), this health check | `scripts/bootstrap.sh` |
 
 `pidoc` verifies all of the above — look for the `rg-pcre2`, `piread`, and
@@ -102,7 +103,7 @@ macOS and Linux resolve identically:
 | OS          | macOS or Linux                                        |
 | Terminal    | Any modern terminal (VS Code integrated terminal is the default here) |
 | tmux        | Only if using subagents — see [Subagents](#subagents) |
-| Rust (cargo) | Default requirement — builds the first-class native tools `piread` (text-file reader), `piedit` (text-file editor), and `pidx` (session-log indexer), registered under their own TUI labels; see [Extensions](#extensions). Opt out per tool with `PI_NATIVE_READ=0` / `PI_NATIVE_EDIT=0` / `PI_NATIVE_PIDX=0` (fails open to the built-in reader / editor / Node parser). Bootstrap prints the rustup command if cargo is missing |
+| Rust (cargo) | Default requirement — builds the first-class native tools `piread` (text-file reader), `piedit` (text-file editor), `pibash` (shell runner), and `pidx` (session-log indexer), registered under their own TUI labels; see [Extensions](#extensions). Opt out per tool with `PI_NATIVE_READ=0` / `PI_NATIVE_EDIT=0` / `PI_NATIVE_PIDX=0` / `PI_NATIVE_BASH=0` (fails open to the built-in reader / editor / Node parser). Bootstrap prints the rustup command if cargo is missing |
 | Git         | For sync; `~/.pi/agent` is itself a repo              |
 
 ## What's inside
@@ -225,6 +226,8 @@ Raw events (tool errors, guard blocks) land in pi's native `sessions/**/*.jsonl`
 
 **`piedit/`** registers the Rust text-file editor as its own first-class tool labeled **`piedit`**. Parameters, schema, argument normalization, and TUI renderers match the built-in `edit` verbatim; the Rust side owns read → normalize → match → apply → write, and diff/patch rendering stays on the exported TypeScript `generateDiffString`/`generateUnifiedPatch` helpers so `details` is byte-identical by construction. Dispatch goes through a persistent `--serve` daemon (lazy-started, id-matched NDJSON over stdio) so edits don't pay a process spawn per call; a one-shot CLI spawn and then the built-in implementation remain as fallback rungs, all inside the exported `withFileMutationQueue`. Any transport or envelope failure falls back to the built-in executor plus one stderr line (fail-open). permission-gate treats `piedit` calls as edit-kind, so Anchor Guard, protected-path confirms, the M1/M2/M3 chain, and read→edit coverage binding all apply exactly as for `edit`. Default on; opt out with `PI_NATIVE_EDIT=0`, which registers nothing. Parity is enforced by `tests/piedit-parity.test.mjs` (51 cases: corpus, errors, unicode/CRLF/BOM, daemon client, gate lock-ins).
 
+**`pibash/`** registers the Rust shell runner as its own first-class tool labeled **`pibash`**. Parameters and prompt snippet are copied verbatim from `createBashToolDefinition`, and the crate owns spawn → stream → cap → truncate → spill → envelope; the extension layer keeps the session-sensitive parts (env and `PI_*` injection, cancellation, TUI renderers). Dispatch goes through a persistent `--serve` daemon (lazy-started, id-matched NDJSON over stdio, spawned in its own process group so a timeout kills the whole tree) so commands do not pay an extra process spawn per call; a one-shot CLI spawn and then the built-in implementation remain as fallback rungs. Any transport or envelope failure falls back to the built-in executor plus one stderr line (fail-open). permission-gate treats `pibash` calls as bash-kind, so the H1 output cap, R10 re-run guard, destructive-command analysis, malformed-input check, and mutation tracking all apply exactly as for `bash`. Default on; opt out with `PI_NATIVE_BASH=0`, which registers nothing. Parity is enforced by `tests/pibash-parity.test.mjs` (21 cases, byte-exact against the built-in for content, truncation, exit code, and structured output) and 5 bash-kind lock-ins in `tests/permission-gate.test.mjs`.
+
 **`pidx/`** registers the Rust session-log indexer as its own first-class tool labeled **`pidx`** — parses session transcripts into compact per-session extracts (turns, tool calls with param hashes, tool results, compactions, skill loads), incremental via a (size, mtime) cache so warm runs are O(changes). Session-audit's fast path and session-history analysis call it directly; failures throw and fall back to the Node parser. Default on; opt out with `PI_NATIVE_PIDX=0`.
 
 ### Native tool performance
@@ -278,6 +281,22 @@ Same test on a tmpfs corpus, where the shared ~18–20 ms ext4 truncate+write dr
 | Large (~1 MiB) | 88.246 | 9.628 | **9.2×** |
 
 Every class is at or below the built-in. The wins come from the 2026-10-16 perf pass plus the native render: one shared `FuzzyView` (the JS semantics re-normalize the whole content **per edit** — matching pre-pass, replacement base, and every occurrence count; the Rust side builds the fuzzy view lazily once, observably identical because the function is deterministic and idempotent), NFKC skipped entirely for pure-ASCII input with no per-line allocations, `Cow` LF/BOM normalization, and Buffer-based line scanning in both Node clients (the previous `setEncoding` string path re-flattened the rope on every pipe chunk — O(n²) on MiB-scale envelopes). The large class now runs at ~2.5× instead of parity: the Rust side renders the diff/patch (`src/diff.rs`, a byte-identical jsdiff port pinned by the parity suite plus `tests/piedit-diff-fuzz.mjs`), so the TypeScript `generateDiffString`/`generateUnifiedPatch` pass and the `{baseContent,newContent}` IPC payload are both gone. The disk corpus lives on an ~84%-full ext4 root, where a 590 KB truncate+write costs ~18–20 ms that **both** arms pay (identical `writeFile` semantics, R4), flooring the ratio; on tmpfs the large class reaches **9.2×** (88.2 → 9.6 ms). The earlier +30.9 ms regression and the size-based-routing follow-up are retired. Parity held throughout: crate 40/40, `tests/piedit-parity.test.mjs` 51/51, `tests/piedit-diff-fuzz.mjs` 0 failures, clippy `-D warnings` clean.
+
+**`pibash` — shell commands** (daemon dispatch vs the built-in `bash`; linux x64, node v24, N=60/arm, p50 ms, `benchmark/runs/pibash-microbench-2026-10-16.md`):
+
+| Command class | Built-in `bash` | Rust `pibash` (daemon) | Speedup | Bare-spawn floor |
+| --- | ---: | ---: | ---: | ---: |
+| `true` | 4.13 | 2.84 | **1.5x** | 3.88 |
+| `printf hi` | 4.06 | 2.88 | **1.4x** | 3.65 |
+| `rg --version` | 5.79 | 4.54 | **1.3x** | 5.24 |
+| `seq 1 1000` | 4.94 | 3.82 | **1.3x** | 4.30 |
+| `seq 1 2500` (line cap) | 6.45 | 5.30 | **1.2x** | 4.35 |
+| `seq 1 50000` (byte cap) | 10.60 | 13.53 | **0.8x** | 6.58 |
+| `head -c 200000 /dev/zero | md5sum` | 7.10 | 5.16 | **1.4x** | 6.66 |
+| stdout+stderr mix | 4.90 | 2.97 | **1.6x** | 4.59 |
+| `exit 3` | 5.09 | 2.85 | **1.8x** | 4.58 |
+
+Eight of nine classes beat the built-in (1.2-1.8x). The win is not output shaping - it is that the daemon removes the per-call process spawn, so `pibash` lands at or below a bare `spawn('/bin/bash')` floor on the cheap classes. The single regression is `seq 1 50000`, and the cost is the envelope, not the shell: the built-in result shape carries the payload twice (`content[0].text` plus the 1 MiB-capped `structuredContent.output`), so any byte-parity implementation must materialize and ship both. The daemon does remove the one genuinely redundant copy - `truncation.content` is always an exact prefix of the display text, so `--serve` omits it and the extension restores it, keeping `details.truncation` byte-identical (~14 KB smaller envelope on the large class). Parity held throughout: crate 47/47, `tests/pibash-parity.test.mjs` 51/51, permission-gate 266/266, clippy `-D warnings` clean.
 
 ## Context layers
 

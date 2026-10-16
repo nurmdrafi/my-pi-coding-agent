@@ -66,6 +66,17 @@ else
        "To enable: install Rust (rustup command above) and re-run"
 fi
 
-# 6. health check
+# 6. pibash (native shell tool, default-on — PI_NATIVE_BASH=0 opts out;
+#    the extension falls back to the built-in bash without the binary)
+if [ -n "$CARGO" ]; then
+  (cd custom-tools && "$CARGO" build --release -p pibash)
+  cp custom-tools/target/release/pibash bin/pibash
+  echo "== pibash: built + installed to bin/pibash"
+else
+  echo "== pibash: cargo not found — the shell tool stays on its built-in implementation." \
+       "To enable: install Rust (rustup command above) and re-run"
+fi
+
+# 7. health check
 node skills/pidoc/scripts/pidoc.mjs || true
 echo "== done. Put $ROOT/bin on PATH for pidoc/pidx."

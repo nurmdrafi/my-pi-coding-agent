@@ -27,6 +27,16 @@
  * Change history lives in git log; this table lists what is CURRENTLY enforced.
  */
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
+
+/** Bash-kind predicate: `bash` plus the native `pibash` tool (2026-10-18
+ * pibash adoption). Both share the bash schema and both must run the full
+ * bash rule set — H1 output cap, R10 re-run guard, destructive analysis,
+ * malformed-input check, and mutation tracking. `isToolCallEventType` has no
+ * `pibash` overload (pi only types built-in names), so the native name is
+ * checked alongside it; the input shape is the bash input shape. */
+function isBashKind(event: { toolName: string }): boolean {
+  return event.toolName === "bash" || event.toolName === "pibash";
+}
 import type { ExtensionAPI, ExtensionHandler } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "crypto";
 import { homedir } from "os";
@@ -658,8 +668,8 @@ export default function (pi: ExtensionAPI) {
       });
     }
 
-    if (!isToolCallEventType("bash", event)) return;
-    const cmd = event.input.command;
+    if (!isBashKind(event)) return;
+    const cmd = (event.input as { command?: unknown }).command;
     // S4 fix 3: malformed bash input — a missing/non-string command never
     // reaches the analyzers (splitSegments would throw → fail-open wrap)
     if (typeof cmd !== "string" || cmd.trim() === "")

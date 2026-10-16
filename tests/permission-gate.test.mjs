@@ -234,6 +234,31 @@ async function runBash(pi, command, { error = false, ctx } = {}) {
   });
   return { blocked: false };
 }
+/** Pibash (2026-10-18): the native bash tool. Same events, toolName `pibash`
+ * — the gate must treat it as bash-kind (H1 cap, R10, destructive, malformed). */
+async function pibash(pi, command, ctx) {
+  const toolCallId = `tc${++seqId}`;
+  const block = await pi.invoke(
+    "tool_call",
+    {
+      type: "tool_call",
+      toolName: "pibash",
+      toolCallId,
+      input: { command },
+    },
+    ctx,
+  );
+  if (block) return { blocked: true, reason: block.reason };
+  await pi.invoke("tool_result", {
+    type: "tool_result",
+    toolName: "pibash",
+    toolCallId,
+    input: { command },
+    content: textBlocks("out"),
+  });
+  return { blocked: false };
+}
+
 /** nested sub-call (codemode/executeTool child): parentToolCallId set, "<parent>/<n>" id */
 async function nestedBash(pi, command, { error = false } = {}) {
   const toolCallId = `cm0/${++seqId}`;
@@ -3485,6 +3510,158 @@ const cases = [
       } finally {
         delete process.env.HOME;
       }
+    },
+  ],
+  // ---- pibash (2026-10-18): the native bash tool must be bash-kind ----
+  // Each rule that fires on `bash` must fire identically on `pibash`.
+  [
+    'pibash: commitlint blocks a bad commit message',
+    'blocked',
+    async (pi) => pibash(pi, "git commit -m 'bad message'"),
+  ],
+  [
+    'pibash: re-run guard blocks an identical re-run',
+    'blocked',
+    async (pi) => {
+      await pibash(pi, 'fd -e ts . custom-tools');
+      return pibash(pi, 'fd -e ts . custom-tools');
+    },
+  ],
+  [
+    'pibash: malformed call (blank command) is blocked',
+    'blocked',
+    async (pi) => pibash(pi, '   '),
+  ],
+  [
+    'pibash: benign command passes the gate',
+    'pass',
+    async (pi) => pibash(pi, 'fd -e ts . custom-tools/pibash'),
+  ],
+  [
+    'pibash: H1 output cap applies to pibash results',
+    'pass',
+    async (pi) => {
+      const toolCallId = 'tc-cap-probe';
+      await pi.invoke('tool_call', {
+        type: 'tool_call',
+        toolName: 'pibash',
+        toolCallId,
+        input: { command: 'seq 1 200' },
+      });
+      const out = await pi.invoke('tool_result', {
+        type: 'tool_result',
+        toolName: 'pibash',
+        toolCallId,
+        input: { command: 'seq 1 200' },
+        content: textBlocks(lineText(200)),
+      });
+      const text = JSON.stringify(out ?? {});
+      // cap note proves the H1 handler treated pibash as bash-kind
+      if (!text.includes('output capped')) {
+        throw new Error('H1 cap did not apply to pibash output');
+      }
+      return { blocked: false };
+    },
+  ],
+  // ---- pibash: deeper bash-kind coverage (destructive, mutation, malformed) ----
+  [
+    'pibash: destructive rm -rf is blocked/confirmed like bash',
+    'blocked',
+    async (pi) => pibash(pi, 'rm -rf /tmp/nonexistent-pibash-probe'),
+  ],
+  [
+    // Not a destructive rule in destructive.ts — verified against plain `bash`
+    // (identical result), so this pins that pibash is neither more nor less
+    // strict than bash on the same command.
+    'pibash: git push --force matches bash (neither blocks)',
+    'pass',
+    async (pi) => pibash(pi, 'git push --force origin main'),
+  ],
+  [
+    'pibash: reset --hard is destructive like bash',
+    'blocked',
+    async (pi) => pibash(pi, 'git reset --hard HEAD~1'),
+  ],
+  [
+    'pibash: rg-first rule fires on a pibash grep',
+    'blocked',
+    async (pi) => pibash(pi, "grep -rn 'PATTERN' src/"),
+  ],
+  [
+    'pibash: fd-first rule fires on a pibash find',
+    'blocked',
+    async (pi) => pibash(pi, "find . -name '*.ts'"),
+  ],
+  [
+    'pibash: mutating command bumps mutationSeq (R10 re-arms)',
+    'pass',
+    async (pi) => {
+      // A mutating pibash run must count as an edit for token-economy rules:
+      // run a benign command twice, with a mutating one in between.
+      await pibash(pi, "fd -e ts . custom-tools/pibash");
+      const mid = await pibash(pi, "touch /tmp/pibash-mutation-probe");
+      if (mid.blocked) return { blocked: true, reason: mid.reason };
+      const again = await pibash(pi, "fd -e ts . custom-tools/pibash");
+      return again;
+    },
+  ],
+  [
+    'pibash: missing command field is malformed-blocked',
+    'blocked',
+    async (pi) => {
+      const block = await pi.invoke('tool_call', {
+        type: 'tool_call',
+        toolName: 'pibash',
+        toolCallId: `tc${++seqId}`,
+        input: {},
+      });
+      return block ? { blocked: true, reason: block.reason } : { blocked: false };
+    },
+  ],
+  [
+    'pibash: non-string command is malformed-blocked',
+    'blocked',
+    async (pi) => {
+      const block = await pi.invoke('tool_call', {
+        type: 'tool_call',
+        toolName: 'pibash',
+        toolCallId: `tc${++seqId}`,
+        input: { command: 12345 },
+      });
+      return block ? { blocked: true, reason: block.reason } : { blocked: false };
+    },
+  ],
+  [
+    'pibash: read-only command passes and is not over-blocked',
+    'pass',
+    async (pi) => pibash(pi, 'printf hello'),
+  ],
+  [
+    'pibash: output cap keeps the head and spills the flood',
+    'pass',
+    async (pi) => {
+      const toolCallId = 'tc-cap-2';
+      await pi.invoke('tool_call', {
+        type: 'tool_call',
+        toolName: 'pibash',
+        toolCallId,
+        input: { command: 'seq 1 500' },
+      });
+      const out = await pi.invoke('tool_result', {
+        type: 'tool_result',
+        toolName: 'pibash',
+        toolCallId,
+        input: { command: 'seq 1 500' },
+        content: textBlocks(lineText(500)),
+      });
+      const serialized = JSON.stringify(out ?? {});
+      if (!serialized.includes('output capped')) {
+        throw new Error('H1 cap did not fire for pibash output');
+      }
+      if (!serialized.includes('line 1')) {
+        throw new Error('cap did not keep the head of the output');
+      }
+      return { blocked: false };
     },
   ],
 ];

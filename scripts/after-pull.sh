@@ -96,7 +96,35 @@ if [ -d "$PIEDIT_CRATE/src" ] && [ -f "$PIEDIT_CRATE/Cargo.toml" ]; then
   fi
 fi
 
-# 5. Full health check; --fix rebuilds pidx when missing/stale and applies
+# 5. pibash (native shell tool, default-on — PI_NATIVE_BASH=0 opts out;
+#    falls back to the built-in bash without the binary). Same staleness
+#    rule as piread/piedit; builds from the custom-tools workspace (-p).
+PIBASH_CRATE=custom-tools/pibash
+PIBASH_TARGET=custom-tools/target/release/pibash
+if [ -d "$PIBASH_CRATE/src" ] && [ -f "$PIBASH_CRATE/Cargo.toml" ]; then
+  CARGO=$(command -v cargo || true)
+  [ -z "$CARGO" ] && [ -x "$HOME/.cargo/bin/cargo" ] && CARGO="$HOME/.cargo/bin/cargo"
+  stale=0
+  if [ ! -x bin/pibash ]; then
+    stale=1
+  elif [ -n "$(find "$PIBASH_CRATE/src" -name '*.rs' -newer bin/pibash -print 2>/dev/null | head -n 1)" ] \
+    || [ -n "$(find "$PIBASH_CRATE/Cargo.toml" -newer bin/pibash -print 2>/dev/null)" ]; then
+    stale=1
+  fi
+  if [ "$stale" = 1 ]; then
+    if [ -n "$CARGO" ]; then
+      if (cd custom-tools && "$CARGO" build --release -p pibash) && cp "$PIBASH_TARGET" bin/pibash; then
+        echo "== pibash: rebuilt + installed to bin/pibash"
+      else
+        echo "!! pibash rebuild failed — extension falls back to the built-in bash" >&2
+      fi
+    else
+      echo "== pibash: stale/missing and cargo not found — extension falls back to the built-in bash"
+    fi
+  fi
+fi
+
+# 6. Full health check; --fix rebuilds pidx when missing/stale and applies
 #    any other safe fix. FAIL/WARN rows print their own fix hints.
 if command -v node >/dev/null 2>&1; then
   node skills/pidoc/scripts/pidoc.mjs --fix || true
