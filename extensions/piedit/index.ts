@@ -511,10 +511,14 @@ export default function pieditExtension(pi: ExtensionAPI): void {
     ],
     execute: execute as typeof definition.execute,
     renderCall(args, theme, _context) {
-      const count = Array.isArray(args.edits) ? args.edits.length : 1;
+      // Streaming guard: renderCall runs on partial args before the JSON
+      // completes, so path/edits may be absent — show "..." and hide the
+      // count instead of printing "undefined" (mirrors built-in str()/
+      // renderToolPath placeholder semantics).
+      const count = Array.isArray(args.edits) ? args.edits.length : 0;
       let text = theme.fg("toolTitle", theme.bold("piedit "));
-      text += theme.fg("accent", args.path);
-      text += theme.fg("dim", ` (${count} edit${count === 1 ? "" : "s"})`);
+      text += typeof args.path === "string" ? theme.fg("accent", args.path) : theme.fg("dim", "...");
+      if (count > 0) text += theme.fg("dim", ` (${count} edit${count === 1 ? "" : "s"})`);
       return new Text(text, 0, 0);
     },
   });
