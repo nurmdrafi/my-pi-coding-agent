@@ -123,6 +123,16 @@ function logViolation(reason: string, path: string): void {
 const PIREAD_BIN = resolve(extDir, "../../bin/piread");
 
 /**
+ * Path to the piread binary. Defaults to the built `bin/piread`; `PI_READ_BIN`
+ * overrides it. Resolved per call (not at import) so tests can point the
+ * extension at a throwaway binary instead of swapping the checked-in one, which
+ * lets the one-shot rung be exercised deterministically.
+ */
+function pireadBin(): string {
+  return process.env.PI_READ_BIN || PIREAD_BIN;
+}
+
+/**
  * Per-line character cap, from `PI_READ_LINE_CAP`. Default OFF (unset, 0, or
  * non-numeric): every line stays byte-identical to the built-in read, which
  * `edit`'s exact matching depends on. When set to a positive integer, selected
@@ -238,7 +248,7 @@ let exitHooked = false;
 function startDaemon(): DaemonState | null {
   let proc: ChildProcess;
   try {
-    proc = spawn(PIREAD_BIN, ["--serve"], { stdio: ["pipe", "pipe", "inherit"] });
+    proc = spawn(pireadBin(), ["--serve"], { stdio: ["pipe", "pipe", "inherit"] });
   } catch {
     return null; // sync spawn failure (rare); async ones arrive via 'error'
   }
@@ -390,7 +400,7 @@ async function oneshotDispatch(
   if (lineCap !== undefined) args.push("--line-cap", String(lineCap));
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync(PIREAD_BIN, args, {
+    ({ stdout } = await execFileAsync(pireadBin(), args, {
       cwd: spawnCwd,
       signal,
       maxBuffer: 16 * 1024 * 1024,

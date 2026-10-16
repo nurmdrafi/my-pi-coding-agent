@@ -22,6 +22,12 @@ matching, so the cap is opt-in only and never rewrites normal lines.
 oversized-line share (≈1.5% of read bytes corpus-wide; lines up to 40,010
 chars were observed).
 
+**Decision (2026-10-17): stays OFF by default.** `edit` matches `oldText`
+against the file base content, not read output, so a model that reads a capped
+line and then edits exactly that line would produce a non-matching `oldText`.
+The cap is therefore a deliberate opt-in for read-only exploration, not a
+default. This is a recorded decision, not an unfinished flag.
+
 **Affected assertions.** `tests/piread-parity.test.mjs`:
 - `line-cap: default OFF keeps long lines byte-identical to the oracle`
   (the default path is unchanged).

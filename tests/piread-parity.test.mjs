@@ -19,7 +19,7 @@
  * Run: node tests/piread-parity.test.mjs   (exit 0 = all pass)
  */
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, chmodSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -281,80 +281,98 @@ add("fallback: garbage stdout → oracle result + stderr line", async () => {
 // offset/limit window, a missing file, a directory, a binary (NUL) file, an
 // offset beyond EOF, and CRLF text.
 
-/** Make exactly ONE call through the one-shot rung: replace `bin/piread` with
- * a wrapper that fails `--serve` but execs the real binary for one-shot
- * invocations, issue the call, then restore. */
-
-/** Make exactly ONE call with the binary renamed away, i.e. through the
- * built-in rung (daemon and one-shot both fail). Rename ⇒ call ⇒ restore,
- * with a short settle on each side so the killed daemon releases the renamed
- * inode before the next spawn (an immediate spawn can otherwise race the
- * teardown). This is the established forcing pattern used by the fallback
- * tests above. */
-const settle = () => new Promise((r) => setTimeout(r, 25));
-
-async function builtinOnce(params) {
-  const bak = `${BIN}.cr-bak`;
-  resetDaemon();
-  await settle();
-  renameSync(BIN, bak);
+/** Standalone child script for the cross-rung check. Runs in its own process
+ * so no daemon state leaks between rungs; prints one JSON array of
+ * `{label, d, o, b}` where each arm is `{rej, text, via, fr}`. */
+const CROSS_RUNG_CHILD_SRC = String.raw`
+import { writeFileSync, chmodSync, mkdtempSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+const [ROOT, REAL_BIN] = process.argv.slice(2);
+const m = await import(join(ROOT, "extensions/piread/index.ts"));
+const pi = { tools: new Map(), registerTool: (d) => pi.tools.set(d.name, d), on: () => () => {} };
+process.env.PI_NATIVE_READ = "1"; m.default(pi);
+const t = pi.tools.get("piread"); const reset = m.__resetDaemonForTest;
+const dir = mkdtempSync(join(tmpdir(), "cr-"));
+mkdirSync(join(dir, "a-directory"));
+writeFileSync(join(dir, "mid30"), Array.from({ length: 30 }, (_, i) => "L" + i).join("\n"));
+writeFileSync(join(dir, "nul-text"), "ab\u0000cd\u0000ef\n");
+writeFileSync(join(dir, "crlf"), "one\r\ntwo\r\nthree\r\n");
+const WRAP = join(dir, "wrap");
+writeFileSync(WRAP, "#!/bin/sh\ncase \"$1\" in\n  --serve) exit 1 ;;\nesac\nexec \"" + REAL_BIN + "\" \"$@\"\n");
+chmodSync(WRAP, 0o755);
+const MISSING = join(dir, "no-such-bin");
+const ctx = { cwd: dir };
+async function arm(p) {
   try {
-    return await armResult(wrapped, params);
-  } finally {
-    renameSync(bak, BIN);
-    resetDaemon();
-    await settle();
+    const v = await t.execute("x", p, undefined, undefined, ctx);
+    return { rej: false, text: (v.content ?? []).map((c) => c.text ?? "").join(""), via: v.details?.via, fr: v.details?.fallbackReason };
+  } catch (e) {
+    return { rej: true, text: "REJECT: " + String(e.message), via: undefined, fr: undefined };
   }
 }
+async function withBin(bin, p) { reset(); process.env.PI_READ_BIN = bin; return arm(p); }
+const inputs = [
+  ["plain", { path: join(dir, "mid30") }],
+  ["offset/limit", { path: join(dir, "mid30"), offset: 5, limit: 4 }],
+  ["crlf", { path: join(dir, "crlf") }],
+  ["missing", { path: join(dir, "nope") }],
+  ["directory", { path: join(dir, "a-directory") }],
+  ["binary", { path: join(dir, "nul-text") }],
+  ["offset beyond EOF", { path: join(dir, "mid30"), offset: 10000 }],
+];
+const out = [];
+for (const [label, p] of inputs) {
+  const d = await withBin(REAL_BIN, p);
+  const o = await withBin(WRAP, p);
+  const b = await withBin(MISSING, p);
+  out.push({ label, d, o, b });
+}
+console.log(JSON.stringify(out));
+`;
 
-/** The content text of a result, or the rejection message. */
-const contentOf = (r) =>
-  r.rejected ? `REJECT: ${r.error}` : (r.value?.content ?? []).map((c) => c.text ?? "").join("");
-
-// Content parity across rungs. The one-shot rung is intentionally NOT forced
-// here: swapping `bin/piread` for a `--serve`-failing wrapper and issuing an
-// immediate call races the daemon teardown non-deterministically (observed
-// hang / ETXTBSY), which would make this suite flaky and can corrupt the
-// checked-in binary on a crash. The daemon and built-in rungs are both forced
-// deterministically below; the one-shot rung shares the exact same envelope
-// → details path and is covered by the fallback tests above.
-add("cross-rung: daemon and built-in produce byte-identical content", async () => {
-  const inputs = [
-    ["plain", { path: join(dir, "mid30") }, true],
-    ["offset/limit", { path: join(dir, "mid30"), offset: 5, limit: 4 }, true],
-    ["crlf", { path: join(dir, "crlf") }, true],
-    ["missing", { path: missingPath }, false],
-    ["directory", { path: join(dir, "a-directory") }, false],
-    ["binary", { path: join(dir, "nul-text") }, false],
-    ["offset beyond EOF", { path: join(dir, "mid30"), offset: 10_000 }, false],
-  ];
-
-  for (const [label, params, serve] of inputs) {
-    // daemon rung: warm it explicitly, then measure.
-    resetDaemon();
-    const d = await armResult(wrapped, { ...params });
-    // built-in rung: forced by renaming the binary away for one call.
-    const b = await builtinOnce({ ...params });
-
-    const dc = contentOf(d);
-    const bc = contentOf(b);
-    // The invariant: content/errors are byte-identical no matter which rung
-    // served the call (a failed daemon must never change the bytes).
-    assert.equal(bc, dc, `built-in content differs from daemon for ${label}`);
-    // Every non-rejected result carries a valid rung on details.via.
-    const validVia = (v) => v === "daemon" || v === "oneshot" || v === "builtin";
-    if (!d.rejected) assert.ok(validVia(d.value?.details?.via), `daemon via for ${label} (got ${d.value?.details?.via})`);
-    if (!b.rejected) assert.ok(validVia(b.value?.details?.via), `built-in via for ${label} (got ${b.value?.details?.via})`);
-    // The daemon rung carries no fallbackReason only when it actually served
-    // the call; an error/binary envelope falls through to builtin, which sets
-    // fallbackReason (the terminal rung's contract).
-    if (d.value?.details?.via === "daemon") {
-      assert.equal(d.value?.details?.fallbackReason, undefined, `daemon fallbackReason for ${label}`);
+// Content parity across the three rungs. Each rung is forced through the
+// `PI_READ_BIN` override (resolved per call) rather than by swapping the
+// checked-in `bin/piread`:
+//   daemon/one-shot  -> a copy of the real binary (one-shot: a wrapper whose
+//                       `--serve` fails so dispatch falls to the one-shot spawn)
+//   built-in         -> a path that does not exist (daemon + one-shot fail)
+// The check runs in a CHILD process: rapidly switching PI_READ_BIN and
+// resetting the daemon inside one long-lived process wedges on the failed
+// child's inherited stdio (observed reliably), whereas a fresh process with a
+// clean daemon lifecycle is deterministic. The child prints one JSON blob;
+// this test asserts on it. This is the only place the one-shot rung is
+// exercised end to end.
+add("cross-rung: content is byte-identical across daemon/one-shot/built-in", () => {
+  if (!existsSync(BIN)) return { ok: false, diff: `missing binary ${BIN}` };
+  const childSrc = join(dir, "cross-rung-child.mjs");
+  writeFileSync(childSrc, CROSS_RUNG_CHILD_SRC);
+  const res = spawnSync(process.execPath, [childSrc, ROOT, BIN], { encoding: "utf8" });
+  if (res.status !== 0) {
+    return { ok: false, diff: `child exited ${res.status}\n${(res.stderr ?? "").slice(-400)}` };
+  }
+  let rows;
+  try {
+    rows = JSON.parse(res.stdout);
+  } catch (e) {
+    return { ok: false, diff: `child stdout not JSON: ${e.message}\n${res.stdout.slice(0, 200)}` };
+  }
+  const validVia = (v) => v === "daemon" || v === "oneshot" || v === "builtin";
+  for (const { label, d, o, b } of rows) {
+    // Byte-identical content/errors no matter which rung served the call.
+    if (o.text !== d.text) return { ok: false, diff: `one-shot content differs from daemon for ${label}` };
+    if (b.text !== d.text) return { ok: false, diff: `built-in content differs from daemon for ${label}` };
+    for (const [name, r] of [["daemon", d], ["one-shot", o], ["built-in", b]]) {
+      if (!r.rej && !validVia(r.via)) return { ok: false, diff: `${name} via for ${label} (got ${r.via})` };
     }
-    if (serve) {
-      assert.equal(d.value?.details?.via, "daemon", `daemon via for ${label}`);
-      assert.equal(b.value?.details?.via, "builtin", `built-in via for ${label}`);
-      assert.equal(typeof b.value?.details?.fallbackReason, "string", `built-in fallbackReason for ${label}`);
+    // A successful envelope is served by its own rung: daemon and one-shot
+    // carry no fallbackReason; built-in is itself a fallback.
+    if (!d.rej && d.via === "daemon") {
+      if (d.fr !== undefined) return { ok: false, diff: `daemon fallbackReason for ${label}` };
+      if (o.via !== "oneshot") return { ok: false, diff: `one-shot via for ${label} (got ${o.via})` };
+      if (o.fr !== undefined) return { ok: false, diff: `one-shot fallbackReason for ${label}` };
+      if (b.via !== "builtin") return { ok: false, diff: `built-in via for ${label} (got ${b.via})` };
+      if (typeof b.fr !== "string") return { ok: false, diff: `built-in fallbackReason for ${label}` };
     }
   }
   return { ok: true };
