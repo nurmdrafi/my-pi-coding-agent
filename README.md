@@ -236,7 +236,7 @@ Every number below is measured, not guessed — methodology and raw runs live in
 
 **`pidx` — session-log indexing** (Rust vs the prior Node parser; this repo's archive, 474 sessions / 85 MB of transcripts, verified 2026-10-16):
 
-| Run | Node parser | Rust `pidx` | Speedup |
+| Corpus class | Built-in parser | Rust `pidx` | Speedup |
 | --- | ---: | ---: | ---: |
 | Warm (cache hit, 474/474 reused) | ~0.28 s | ~0.01 s (14 ms measured) | **~28×** |
 | Cold (full re-parse, 474 sessions) | ~0.45 s | ~0.22 s (original host 0.22 s; slower host 0.80 s) | **~2×** |

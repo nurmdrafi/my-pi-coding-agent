@@ -57,6 +57,31 @@ type PidxParams = {
   stdout?: boolean;
 };
 
+/**
+ * Accepted parameter names — single source of truth for the schema below and
+ * for the runtime guard in execute(). Keep in sync with Type.Object({...}).
+ */
+const PIDX_PARAM_KEYS = ['sessionsDir', 'state', 'out', 'max', 'force', 'stdout'] as const;
+
+/**
+ * Reject unknown parameters instead of silently dropping them.
+ *
+ * Root-cause guard for session 01a14440 (2026-10-16): a call shaped
+ * pidx({ pattern, path }) had both args dropped by schema tolerance, so every
+ * `if (params.X)` guard fell through and the tool ran its default
+ * behaviour, returning the whole session index. That entered context at ~40KB
+ * (3.5M raw tokens before truncation) with isError === false, so nothing
+ * signalled the call was malformed. A hard error is far cheaper than a silent
+ * wrong-success.
+ *
+ * Deliberately enforced at runtime, not by schema alone: additionalProperties
+ * is advisory at this boundary and cannot be relied on to fire.
+ */
+function rejectUnknownParams(params: Record<string, unknown>): string[] {
+  const allowed: readonly string[] = PIDX_PARAM_KEYS;
+  return Object.keys(params).filter((k) => !allowed.includes(k));
+}
+
 const pidxTool = defineTool({
   name: "pidx",
   label: "pidx",
@@ -77,10 +102,22 @@ const pidxTool = defineTool({
     stdout: Type.Optional(
       Type.Boolean({ description: "Return the raw extracts in context instead of only a pointer (hard-capped; default false)" }),
     ),
-  }),
+  }, { additionalProperties: false }),
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 
   async execute(_toolCallId, params: PidxParams, signal) {
+    // Fail closed on unknown params before doing any work. Without this, a
+    // malformed call silently degrades to default behaviour and can return the
+    // entire session index — see rejectUnknownParams() for the incident.
+    const unknown = rejectUnknownParams(params as Record<string, unknown>);
+    if (unknown.length > 0) {
+      throw new Error(
+        `pidx: unknown parameter(s): ${unknown.join(', ')}. ` +
+          `Accepted: ${PIDX_PARAM_KEYS.join(', ')}. ` +
+          'If you meant to search file contents, use rg/piread — pidx only indexes session logs.',
+      );
+    }
+
     // Token economy: extracts go to a file unless the caller explicitly opts
     // into the (capped) inline path. This keeps the per-call context cost at
     // one short line instead of a full JSONL dump of every session.

@@ -10,10 +10,10 @@
     "deepseek/deepseek-v4-pro": "off"
   },
   "hideThinkingBlock": true,
-  "defaultTools": ["+codemode"],
+  "defaultTools": ["-bash", "-read", "-edit", "+codemode", "+pibash", "+piread", "+piedit", "+pidx"],
   "codemode": {
-    "mode": "only",
-    "inlineBudget": 0
+    "mode": "on",
+    "inlineBudget": 3000
   },
   "compaction": {
     "enabled": true,

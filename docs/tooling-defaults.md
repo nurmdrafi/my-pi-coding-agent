@@ -12,6 +12,13 @@ Rust-based tools first at every layer; non-Rust fallbacks only on error.
 - `piedit {path, edits: [{oldText, newText}]}` — exact anchors, same contract as `edit` (byte-identical errors/results, permission-gate edit-kind protection); native match→apply→write→diff pipeline; every failure falls back to the built-in editor automatically — never fall back manually.
 - `pibash {command, timeout}` — the default shell tool, same standing as piread/piedit. Runs through the native pipeline with full built-in bash semantics (env/PI_* injection, truncation/spill, streaming, cancellation) and falls back to the built-in bash executor automatically on any pipeline failure — never fall back manually.
 
+## Codemode scripts
+Inside a codemode script the same defaults hold: call `tools.pibash`, `tools.piread`, `tools.piedit`, `tools.pidx` — never `tools.bash`/`tools.read` (permission-gate P3 blocks the built-in names in script source; the rule only fires while the native tool is registered).
+
+Tool visibility also matters: settings.json must declare the native tools (`defaultTools: ["-bash","-read","-edit","+codemode","+pibash","+piread","+piedit","+pidx"]`) and run codemode with `"mode": "on"` (not `"only"`). With `"only"` the model sees codemode alone and falls back to built-in names it already knows, which P3 then blocks.
+
+`-bash`/`-read`/`-edit` drop the three built-ins the native tools replace, so the declared set is exactly what the harness expects (`write`, codemode, and the four natives). Caveat: unlike P1/P2 there is no gate rule blocking built-in `edit`, so removing it is a visibility choice, not an enforced block. If you opt a native tool out (`PI_NATIVE_READ=0` / `PI_NATIVE_EDIT=0` / `PI_NATIVE_BASH=0`), re-add the matching built-in to `defaultTools` or that capability is stranded — with both `-edit` and `PI_NATIVE_EDIT=0` the only way to change an existing file is a full-file `write` overwrite.
+
 ## Search discipline
 - Reach for `rg` first, every time — `grep` is not an alternative spelling for it. Never reach for `grep`/`find` first; they are error-only fallbacks (see §2).
 - Never repo-wide `rg`/`grep` with no path + broad pattern — scope to a path or add a timeout.

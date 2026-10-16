@@ -265,6 +265,35 @@ async function pibash(pi, command, ctx) {
   return { blocked: false };
 }
 
+/** P3 (2026-10-21): the codemode tool — input carries the script source under
+ * `code`. The gate scans it for built-in bash/read calls and redirects to the
+ * native names. */
+async function codemode(pi, code, ctx) {
+  const block = await pi.invoke(
+    "tool_call",
+    {
+      type: "tool_call",
+      toolName: "codemode",
+      toolCallId: `tc${++seqId}`,
+      input: { code },
+    },
+    ctx,
+  );
+  return block ? { blocked: true, reason: block.reason } : { blocked: false };
+}
+
+/** AT1: a completed native-tool call appends an adoption line to the store. */
+async function nativeResult(pi, toolName) {
+  await pi.invoke("tool_result", {
+    type: "tool_result",
+    toolName,
+    toolCallId: `tc${++seqId}`,
+    input: {},
+    content: textBlocks("out"),
+    isError: false,
+  });
+}
+
 /** nested sub-call (codemode/executeTool child): parentToolCallId set, "<parent>/<n>" id */
 async function nestedBash(pi, command, { error = false } = {}) {
   const toolCallId = `cm0/${++seqId}`;
@@ -3591,6 +3620,101 @@ const cases = [
     'P2: built-in bash passes when pibash is opted out (PI_NATIVE_BASH=0)',
     'pass',
     async (pi) => bash(pi, 'fd -e ts . custom-tools'),
+  ],
+  // ---- P3 (2026-10-21): codemode sandbox cannot sidestep pibash/piread-first ----
+  [
+    'P3: codemode script calling tools.bash is blocked (pibash-first)',
+    'blocked',
+    async (pi) => {
+      const prev = process.env.PI_NATIVE_BASH;
+      delete process.env.PI_NATIVE_BASH;
+      try {
+        const r = await codemode(pi, "const r = await tools.bash({ command: 'ls' }); return r;");
+        return r.blocked && r.reason.startsWith('Token Economy (Pibash-first)')
+          ? r
+          : { blocked: false, reason: `wrong family: ${String(r.reason).slice(0, 70)}` };
+      } finally {
+        if (prev === undefined) delete process.env.PI_NATIVE_BASH;
+        else process.env.PI_NATIVE_BASH = prev;
+      }
+    },
+  ],
+  [
+    'P3: codemode script calling tools.read is blocked (piread-first)',
+    'blocked',
+    async (pi) => {
+      const prev = process.env.PI_NATIVE_READ;
+      delete process.env.PI_NATIVE_READ;
+      try {
+        const r = await codemode(pi, "return await tools.read({ path: 'a.ts' });");
+        return r.blocked && r.reason.startsWith('Token Economy (Piread-first)')
+          ? r
+          : { blocked: false, reason: `wrong family: ${String(r.reason).slice(0, 70)}` };
+      } finally {
+        if (prev === undefined) delete process.env.PI_NATIVE_READ;
+        else process.env.PI_NATIVE_READ = prev;
+      }
+    },
+  ],
+  [
+    'P3: codemode script using the native names passes',
+    'pass',
+    async (pi) => {
+      const prev = process.env.PI_NATIVE_BASH;
+      delete process.env.PI_NATIVE_BASH;
+      try {
+        return await codemode(
+          pi,
+          "const r = await tools.pibash({ command: 'ls' }); return await tools.piread({ path: 'a.ts' });",
+        );
+      } finally {
+        if (prev === undefined) delete process.env.PI_NATIVE_BASH;
+        else process.env.PI_NATIVE_BASH = prev;
+      }
+    },
+  ],
+  [
+    'P3: codemode without a code string passes (nothing to scan)',
+    'pass',
+    async (pi) => codemode(pi, undefined),
+  ],
+  [
+    'P3: codemode tools.bash passes when pibash is opted out (PI_NATIVE_BASH=0)',
+    'pass',
+    async (pi) => codemode(pi, "return await tools.bash({ command: 'ls' });"),
+  ],
+  [
+    'AT1: a completed native-tool call records an adoption line',
+    'pass',
+    async (pi) => {
+      // the store is shared and accumulates across cases → compare deltas
+      const count = (tool) =>
+        readFileSync(process.env.PGATE_MEMORY, 'utf8')
+          .trim().split('\n').filter(Boolean)
+          .map((l) => JSON.parse(l))
+          .filter((e) => e.kind === 'adoption' && e.tool === tool).length;
+      const before = count('pibash');
+      await nativeResult(pi, 'pibash');
+      if (count('pibash') !== before + 1) {
+        throw new Error('adoption line not recorded for pibash');
+      }
+      return { blocked: false };
+    },
+  ],
+  [
+    'AT1: a built-in tool result records no adoption line',
+    'pass',
+    async (pi) => {
+      const count = () =>
+        readFileSync(process.env.PGATE_MEMORY, 'utf8')
+          .trim().split('\n').filter(Boolean)
+          .map((l) => JSON.parse(l))
+          .filter((e) => e.kind === 'adoption').length;
+      const before = count();
+      await nativeResult(pi, 'bash');
+      if (count() !== before) throw new Error('built-in result wrote an adoption line');
+      return { blocked: false };
+    },
   ],
   // ---- pibash: deeper bash-kind coverage (destructive, mutation, malformed) ----
   [

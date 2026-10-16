@@ -11,6 +11,7 @@
  * | R1b | Token Economy (Big read)      | first whole-file-ish (>=500-line window) read of a >24KB file blocked with a targeted-window fix |
  * | P1  | Token Economy (Piread-first)  | built-in read of a text file blocked — use the piread tool; images keep `read` (piread delegates them internally) |
  * | P2  | Token Economy (Pibash-first)  | built-in bash blocked — use the pibash tool (same schema, full bash-kind rules; pibash falls back itself) |
+ * | P3  | Token Economy (Pibash/Piread-first) | a codemode script that calls built-in `tools.bash`/`tools.read` is blocked — call `tools.pibash`/`tools.piread` (the sandbox used to sidestep P1/P2 entirely) |
  * | H1  | output cap (non-blocking)     | bash output capped at 100 lines / 4KB UTF-8; oversized first line head+tail; tail spilled to $TMPDIR/pgate-spill; errors capped too |
  * | H2  | Permission Gate (Destructive) | destructive commands need approval: chat yes / UI confirm; fail closed headless; re-send re-prompts |
  * | R9  | Commitlint                    | conventional-commit headers, subject case, body line length (incl. heredoc bodies), pre-hook |
@@ -22,6 +23,7 @@
  * | R10 | Token Economy (Re-run)         | identical command re-run within 10 min without an edit/write/mutating-bash since is blocked |
  * | RB  | Token Economy (Re-block)      | verbatim re-send of a just-blocked command escalates (never armed for H2) |
  * | VM  | violation memory              | cross-session per-family block counts inject lessons into the next system prompt (threshold: 5 distinct sessions / 30d) |
+ * | AT1 | adoption telemetry            | a completed native-tool call (pibash/piread/piedit/pidx) appends a `{kind:"adoption"}` line — non-adoption was invisible when only blocks were logged |
  * | CN  | cadence nudge (non-blocking)  | tool_result note at ~200 user turns / ~150K context tokens (AGENTS.md Token Economy); resets on compaction |
  *
  * Destructive matching is a TRIPWIRE, not a boundary — see destructive.ts.
@@ -293,6 +295,27 @@ export default function (pi: ExtensionAPI) {
     }
     return { block: true, reason };
   };
+  // AT1 (2026-10-21 audit): adoption telemetry. The NDJSON above only records
+  // BLOCKS, so the store made silent non-adoption invisible — 1 "Pibash-first"
+  // line against 27 "Pibash (fallback)" lines read as "pibash is used but
+  // degrading" when the truth was "pibash is never called". A successful call
+  // to a native tool now appends a lightweight `{kind:"adoption"}` line, so a
+  // session's native-tool usage is countable next to the built-in usage the
+  // P1/P2/P3 families already capture. Same append-only store, same
+  // best-effort discipline; loadCounts ignores non-family lines.
+  const NATIVE_TOOLS = new Set(["pibash", "piread", "piedit", "pidx"]);
+  const recordAdoption = (toolName: string): void => {
+    if (!NATIVE_TOOLS.has(toolName)) return;
+    try {
+      mkdirSync(dirname(memoryNdjson), { recursive: true });
+      appendFileSync(
+        memoryNdjson,
+        `${JSON.stringify({ kind: "adoption", tool: toolName, sid, ts: Date.now() })}\n`,
+      );
+    } catch {
+      // telemetry must never break the agent loop
+    }
+  };
   // S4 fix 1 (2026-10-15, spec §5.2): fail-closed handler wrap — an unexpected
   // exception in ANY handler must never fail open. tool_call → generic internal
   // block (the call never runs; a rejected handler otherwise lets the tool
@@ -474,6 +497,35 @@ export default function (pi: ExtensionAPI) {
   });
 
   on("tool_call", async (event, ctx) => {
+    // P3 (2026-10-21 audit): codemode reaches every tool from a sandbox, so the
+    // model-facing names below are never the ones a script uses. A script that
+    // calls the BUILT-IN `bash`/`read` instead of the native `pibash`/
+    // `piread` sidesteps P1/P2 entirely — this scoped check re-applies the
+    // same rule inside the script source. The check only fires when the
+    // corresponding native extension is live (its opt-out env var removes the
+    // tool, so blocking would strand the agent), and never matches the native
+    // names (`tools.pibash`/`tools.piread` do not match `tools.bash`/
+    // `tools.read` under the word-boundary regex).
+    if (event.toolName === "codemode") {
+      const code = (event.input as { code?: unknown }).code;
+      if (typeof code === "string") {
+        if (
+          process.env.PI_NATIVE_BASH !== "0" &&
+          /\btools\s*\.\s*bash\s*\(/.test(code)
+        )
+          return blockCall(
+            "Token Economy (Pibash-first): this codemode script calls the built-in bash tool — call tools.pibash({command, timeout}) instead (same schema, same rules; it falls back itself).",
+          );
+        if (
+          process.env.PI_NATIVE_READ !== "0" &&
+          /\btools\s*\.\s*read\s*\(/.test(code)
+        )
+          return blockCall(
+            "Token Economy (Piread-first): this codemode script calls the built-in read tool — call the native tools.piread({path, offset, limit}) instead for text files (images still use the read tool).",
+          );
+      }
+    }
+
     if (isToolCallEventType("edit", event) || isToolCallEventType("piedit", event)) {
       // S4 fix 3: malformed edit input — explicit block, never an analyzer throw
       if (typeof event.input.path !== "string" || !event.input.path.trim())
@@ -802,6 +854,9 @@ export default function (pi: ExtensionAPI) {
   // and this one's RETURN value overlays the truncated content onto what the
   // model sees while bookkeeping (R10 records, Re-block arming) still runs.
   on("tool_result", async (event) => {
+    // AT1: a completed native-tool call is the adoption signal (blocked calls
+    // never reach tool_result, and the gate's own blocks carry a family).
+    if (!event.isError) recordAdoption(event.toolName);
     if (
       !pendingBashFull.has(event.toolCallId) &&
       !pendingBash.has(event.toolCallId)
