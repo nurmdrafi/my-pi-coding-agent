@@ -17,14 +17,18 @@
  * NDJSON over stdio; restarts on death) removes the per-call process-spawn
  * floor, then a one-shot `bin/piedit` spawn, then the built-in executor — the
  * fail-open ladder. Every native rung runs inside the exported
- * `withFileMutationQueue` so same-path serialization matches the built-in. The
- * Rust side owns read → normalize → match → apply → write and returns
- * `{baseContent, newContent}` (LF, BOM-stripped); the extension builds
- * `details` with the exported `generateDiffString`/`generateUnifiedPatch` so
- * the diff/patch output is byte-identical by construction. Any transport or
- * envelope failure falls back to the built-in executor plus one stderr line —
- * fail-open to correctness. Validation failures (`ok:false`) throw the exact
- * built-in message so the model sees identical text and retry semantics.
+ * `withFileMutationQueue` so same-path serialization matches the built-in.
+ * The Rust side owns read → normalize → match → apply → write → render: it
+ * returns the natively rendered `{diff, patch, firstChangedLine}` (a
+ * byte-identical jsdiff port, `src/diff.rs` — pinned by the parity suite and
+ * `tests/piedit-diff-fuzz.mjs`), so neither the content pair nor a TypeScript
+ * diff pass crosses the boundary (the D2 speed amendment); the legacy
+ * `{baseContent, newContent}` envelope remains as the mixed-version rung and
+ * falls back to the exported `generateDiffString`/`generateUnifiedPatch`.
+ * Any transport or envelope failure falls back to the built-in executor plus
+ * one stderr line — fail-open to correctness. Validation failures (`ok:false`)
+ * throw the exact built-in message so the model sees identical text and retry
+ * semantics.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync } from "node:fs";
@@ -87,11 +91,16 @@ const builtinExecute = createEditTool(process.cwd()).execute as (
   ctx?: unknown,
 ) => Promise<EditResult>;
 
-/** piedit's stdout contract (crate docs, `custom-tools/piedit`). */
+/** piedit's stdout contract (crate docs, `custom-tools/piedit`). The
+ * rendered shape (`renderDiff: true`) carries the native diff/patch; the
+ * legacy shape carries the content pair (mixed-version compat rung). */
 type PieditEnvelope = {
   ok: boolean;
   baseContent?: string;
   newContent?: string;
+  diff?: string;
+  patch?: string;
+  firstChangedLine?: number;
   error?: { kind: string; message: string };
 };
 
@@ -287,7 +296,7 @@ function daemonRequest(
     state.pending.set(id, settle);
     state.stdin.ref(); // hold the loop until this response settles
     state.stdout.ref();
-    const request = JSON.stringify({ id, path: displayPath, resolved: absPath, edits });
+    const request = JSON.stringify({ id, path: displayPath, resolved: absPath, edits, renderDiff: true });
     state.stdin.write(`${request}\n`, (err) => {
       if (err && state.pending.delete(id)) {
         maybeUnrefStreams(state);
@@ -311,7 +320,7 @@ async function oneshotDispatch(
 ): Promise<PieditEnvelope> {
   // `--path` is the resolved path I/O acts on; the request JSON carries the
   // tool-level path so error messages match the built-in verbatim.
-  const request = JSON.stringify({ path: displayPath, edits });
+  const request = JSON.stringify({ path: displayPath, edits, renderDiff: true });
   return new Promise<PieditEnvelope>((resolveCall, rejectCall) => {
     if (signal?.aborted) {
       rejectCall(abortError());
@@ -442,12 +451,30 @@ export default function pieditExtension(pi: ExtensionAPI): void {
         if (typeof message === "string") throw new Error(message);
         return { fallback: "malformed envelope" };
       }
+
+      // Fast path (D2 speed amendment): the daemon rendered the diff/patch
+      // natively (byte-identical port, pinned by the parity suite + the
+      // differential fuzz) — use it verbatim; no content crosses the IPC
+      // boundary and no TypeScript diff pass runs. `firstChangedLine` is
+      // omitted when absent so `details` deep-equals the built-in's.
+      if (typeof envelope.diff === "string" && typeof envelope.patch === "string") {
+        return {
+          content: [{ type: "text", text: `Successfully replaced ${edits.length} block(s) in ${path}.` }],
+          details: {
+            diff: envelope.diff,
+            patch: envelope.patch,
+            ...(typeof envelope.firstChangedLine === "number"
+              ? { firstChangedLine: envelope.firstChangedLine }
+              : {}),
+          },
+        };
+      }
+
+      // Legacy envelope (older binary): {baseContent, newContent} — render
+      // with the exported TS helpers, byte-identical by construction.
       if (typeof envelope.baseContent !== "string" || typeof envelope.newContent !== "string") {
         return { fallback: "incomplete envelope" };
       }
-
-      // Diff/patch rendering stays on the exported TS helpers (D2) — this is
-      // what makes `details` byte-identical to the built-in by construction.
       const diffResult = generateDiffString(envelope.baseContent, envelope.newContent);
       const patch = generateUnifiedPatch(path, envelope.baseContent, envelope.newContent);
       return {

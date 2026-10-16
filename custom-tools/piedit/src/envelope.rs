@@ -1,8 +1,16 @@
 //! JSON envelope types — the wire contract between piedit and the extension.
 //!
-//! Request (stdin):  { "edits": [ { "oldText": "…", "newText": "…" } ] }
-//! Response (stdout): success → { ok, baseContent, newContent }
-//!                    failure → { ok, error: { kind, message } }
+//! Request (stdin):  { "edits": [ { "oldText": "…", "newText": "…" } ],
+//!                     "renderDiff"?: boolean }
+//! Response, legacy (renderDiff absent/false):
+//!   success → { ok, baseContent, newContent }
+//!   failure → { ok, error: { kind, message } }
+//! Response, rendered (renderDiff true):
+//!   success → { ok, diff, patch, firstChangedLine? }   (daemon: + echoed id)
+//!   failure → { ok, error: { kind, message } }
+//!
+//! The rendered shape is the fast path: the two full-content strings never
+//! cross the boundary, only the small rendered `details` fields do.
 //!
 //! Field order matches the spec (`ok` first). Serialization is hand-rolled so
 //! the two large string fields cross the boundary without a per-field
@@ -31,6 +39,10 @@ pub struct Request {
     #[serde(default)]
     pub path: Option<String>,
     pub edits: Vec<Edit>,
+    /// When true, the response carries natively rendered `{diff, patch,
+    /// firstChangedLine}` instead of `{baseContent, newContent}`.
+    #[serde(rename = "renderDiff", default)]
+    pub render_diff: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -167,6 +179,14 @@ pub fn success_envelope(base_content: &str, new_content: &str) -> String {
     String::from_utf8(buf).expect("success envelope is UTF-8")
 }
 
+/// Rendered-path success for the one-shot CLI: `{ok, diff, patch,
+/// firstChangedLine}` (no id — one request, one response).
+pub fn success_rendered_envelope(rendered: &crate::pipeline::Rendered) -> String {
+    let mut buf = Vec::new();
+    write_success_rendered_with_id(&mut buf, None, rendered);
+    String::from_utf8(buf).expect("success envelope is UTF-8")
+}
+
 pub fn fail_envelope(err: &ToolError) -> String {
     let mut buf = Vec::new();
     write_fail_with_id(&mut buf, None, err);
@@ -193,6 +213,47 @@ pub fn write_success_with_id(
     buf.extend_from_slice(b",\"newContent\":");
     write_json_str(buf, new_content);
     buf.push(b'}');
+}
+
+/// Rendered-path success (daemon): `{id?, ok, diff, patch,
+/// firstChangedLine?}` — the two content strings never cross the boundary.
+pub fn write_success_rendered_with_id(
+    buf: &mut Vec<u8>,
+    id: Option<&Value>,
+    rendered: &crate::pipeline::Rendered,
+) {
+    buf.extend_from_slice(b"{");
+    if let Some(id) = id {
+        buf.extend_from_slice(b"\"id\":");
+        serde_json::to_writer(&mut *buf, id).expect("id serializes");
+        buf.extend_from_slice(b",");
+    }
+    buf.extend_from_slice(b"\"ok\":true,\"diff\":");
+    write_json_str(buf, &rendered.diff);
+    buf.extend_from_slice(b",\"patch\":");
+    write_json_str(buf, &rendered.patch);
+    if let Some(line) = rendered.first_changed_line {
+        buf.extend_from_slice(b",\"firstChangedLine\":");
+        let mut num = [0u8; 20];
+        buf.extend_from_slice(write_uint(&mut num, line as u64));
+    }
+    buf.push(b'}');
+}
+
+/// Decimal render of `n` into `buf`; returns the written slice.
+fn write_uint(buf: &mut [u8; 20], n: u64) -> &[u8] {
+    if n == 0 {
+        buf[0] = b'0';
+        return &buf[..1];
+    }
+    let mut i = buf.len();
+    let mut n = n;
+    while n > 0 {
+        i -= 1;
+        buf[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+    }
+    &buf[i..]
 }
 
 /// Daemon response: the one-shot failure envelope plus the echoed request id.

@@ -1,10 +1,13 @@
 # piedit — native edit pipeline (S8)
 
 Rust crate behind the `piedit` tool: read → LF/BOM normalize → exact/fuzzy match →
-uniqueness/overlap/no-change validation → apply → write, with the result returned as
-`{baseContent, newContent}` over a JSON envelope. Diff/patch rendering stays in the
-extension (the exported TypeScript `generateDiffString`/`generateUnifiedPatch` helpers),
-so `details` is byte-identical to the built-in `edit` by construction.
+uniqueness/overlap/no-change validation → apply → write → **native diff/patch render**,
+with the result returned as `{diff, patch, firstChangedLine}` over a JSON envelope
+(byte-identical jsdiff port, `src/diff.rs`; `renderDiff: true` requests it). The legacy
+`{baseContent, newContent}` envelope remains for mixed-version compatibility, and the
+extension renders it with the exported TypeScript `generateDiffString`/
+`generateUnifiedPatch` helpers — either way `details` is byte-identical to the built-in
+`edit`, pinned by the parity suite and the differential fuzz.
 
 - Spec: `docs/specs/2026-10-16-s8-piedit-design.md`
 - Plan: `docs/specs/2026-10-16-s8-piedit-plan.md`
@@ -189,17 +192,30 @@ later session can retrace the path without re-deriving it.
 
 ## Contract
 
-CLI: `piedit --path <P>` reading `{"edits":[{"oldText":"…","newText":"…"}]}` on stdin;
+CLI: `piedit --path <P>` reading `{"edits":[{"oldText":"…","newText":"…"}], "renderDiff"?:true}` on stdin;
 `--serve` for the NDJSON daemon. Exit 0 ok · 2 usage · 3 I/O or validation error.
 
 ```jsonc
-// success
+// success (renderDiff absent — legacy envelope, content pair crosses the boundary)
 { "ok": true, "baseContent": "<LF, BOM-stripped>", "newContent": "<LF, BOM-stripped>" }
+// success (renderDiff true — native render; byte-identical to the TS helpers)
+{ "ok": true, "diff": "…", "patch": "…", "firstChangedLine": 3 }
 // failure
 { "ok": false, "error": { "kind": "ENOENT|EACCES|ENOTDIR|EMPTY_OLDTEXT|NOT_FOUND|DUPLICATE|OVERLAP|NO_CHANGE|io", "message": "<byte-identical to the built-in>" } }
 ```
 
 Daemon request adds `id` (echoed) and optional `resolved` (absolute I/O path).
+The extension always sends `renderDiff: true`; the legacy shape stays for
+older-extension/older-binary mixed versions (the extension falls back to the
+exported `generateDiffString`/`generateUnifiedPatch` when it receives it).
+
+`src/diff.rs` (the native render) is a byte-identical port of the bundled
+jsdiff v8 — line tokenizer, greedy Myers walk with jsdiff's exact tie-break
+and component coalescing, `structuredPatch`/`formatPatch` with
+`FILE_HEADERS_ONLY` — plus pi's `generateDiffString` rendering. One
+`diff_lines` pass feeds both renders. Parity is pinned by the TS oracle:
+`tests/piedit-parity.test.mjs` (51/51, diff-adversarial corpus) and
+`tests/piedit-diff-fuzz.mjs` (deterministic differential fuzz).
 
 ## Not done
 

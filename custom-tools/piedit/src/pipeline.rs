@@ -46,6 +46,17 @@ pub struct Applied {
     pub new_content: String,
 }
 
+/// Outcome of a successful apply with native diff/patch rendering: the
+/// rendered `details` fields, byte-identical to the TS helpers (see
+/// `crate::diff`). `baseContent`/`newContent` never cross the wire on this
+/// path — that is the IPC win on large files.
+#[derive(Debug)]
+pub struct Rendered {
+    pub diff: String,
+    pub patch: String,
+    pub first_changed_line: Option<usize>,
+}
+
 // ---- normalization ----
 
 /// Mirror `normalizeToLF`. Returns a borrowed view when no `\r` is
@@ -211,10 +222,11 @@ impl<'a> FuzzyView<'a> {
     fn count(&mut self, old_text: &str) -> usize {
         let fuzzy_old = normalize_for_fuzzy_match(old_text);
         if fuzzy_old.is_empty() {
-            // JS: "abc".split("").length - 1 == len; normalizeForFuzzyMatch("")
-            // yields "" so split("") splits per char. We never reach here
-            // with an empty oldText (guarded earlier), but keep JS semantics.
-            return self.content().chars().count() + 1;
+            // JS: "abc".split("").length - 1 == N-1 — the empty separator
+            // splits per UTF-16 code unit (surrogate pairs count twice),
+            // hence `encode_utf16`, and subtracts one. A whitespace-only
+            // oldText normalizes to empty and lands here.
+            return self.content().encode_utf16().count().saturating_sub(1);
         }
         self.content().matches(&fuzzy_old).count()
     }
@@ -617,6 +629,21 @@ pub fn edit_file(path: &str, resolved: &str, edits: &[crate::envelope::Edit]) ->
     Ok(applied)
 }
 
+/// `edit_file` plus native diff/patch rendering: returns the rendered
+/// `details` fields instead of the content pair. The patch header carries
+/// the tool-level `path`, exactly as the TS `generateUnifiedPatch(path, …)`
+/// call does in the extension.
+pub fn edit_file_rendered(
+    path: &str,
+    resolved: &str,
+    edits: &[crate::envelope::Edit],
+) -> Result<Rendered, ToolError> {
+    let applied = edit_file(path, resolved, edits)?;
+    let (diff, patch, first_changed_line) =
+        crate::diff::render_details(path, &applied.base_content, &applied.new_content);
+    Ok(Rendered { diff, patch, first_changed_line })
+}
+
 /// Raw Node-style I/O message (read/write path): `<CODE>: <libuv message>`.
 fn raw_io_error(err: io::Error) -> ToolError {
     ToolError {
@@ -670,6 +697,18 @@ mod tests {
         let r = apply("alpha\nbeta\ngamma\n", &[edit("beta", "BETA")]).unwrap();
         assert_eq!(r.base_content, "alpha\nbeta\ngamma\n");
         assert_eq!(r.new_content, "alpha\nBETA\ngamma\n");
+    }
+
+    #[test]
+    fn whitespace_only_old_text_counts_like_js_split() {
+        // A whitespace-only oldText normalizes to "" and JS counts
+        // occurrences as content.split("").length - 1 = utf16 units - 1
+        // ("a\n\n\n\nb\n" → 6), not chars + 1 (was 8 — a parity bug).
+        let err = apply("a\n\n \n  \nb\n", &[edit(" ", "SP")]).unwrap_err();
+        assert_eq!(
+            err.message,
+            "Found 6 occurrences of the text in /tmp/f. The text must be unique. Please provide more context to make it unique."
+        );
     }
 
     #[test]

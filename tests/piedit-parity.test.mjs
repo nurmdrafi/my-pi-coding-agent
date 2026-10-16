@@ -219,6 +219,29 @@ const corpus = [
   ["replace-with-empty", "a\nb\nc\n", [{ oldText: "b", newText: "" }]],
   ["multi-same-line", "one two three\n", [{ oldText: "one", newText: "1" }, { oldText: "three", newText: "3" }]],
   ["large-1mib", Array.from({ length: 60000 }, (_, i) => `line${i}`).join("\n") + "\n", [{ oldText: "line59999", newText: "LAST" }]],
+  // ---- diff/patch render adversarial corpus (native render parity) ----
+  // multi-hunk: two changes 26 lines apart → two @@ hunks + display elision
+  ["multi-hunk", Array.from({ length: 30 }, (_, i) => `l${i}`).join("\n") + "\n", [{ oldText: "l1", newText: "X" }, { oldText: "l28", newText: "Z" }]],
+  // gap of exactly 2×context between changes (display shows whole, patch closes one hunk)
+  ["gap-8-lines", Array.from({ length: 14 }, (_, i) => `g${i}`).join("\n") + "\n", [{ oldText: "g0", newText: "A" }, { oldText: "g9", newText: "B" }]],
+  // change at the very top: leading-context-only hunk
+  ["change-at-top", Array.from({ length: 12 }, (_, i) => `t${i}`).join("\n") + "\n", [{ oldText: "t0", newText: "TOP" }]],
+  // pure insertion (adds only, no removed line)
+  ["pure-insertion", "a\nb\nc\n", [{ oldText: "b", newText: "b1\nb2\nb3" }]],
+  // pure deletion (newText empty)
+  ["pure-deletion", "a\nb\nc\n", [{ oldText: "b", newText: "" }]],
+  // change that removes the trailing newline (old has none) → no-newline markers
+  ["no-eof-newline", "alpha\nbeta\ngamma", [{ oldText: "gamma", newText: "GAMMA" }]],
+  // replacement introduces no trailing newline where the file had one
+  ["eof-newline-dropped", "a\nb\n", [{ oldText: "b\n", newText: "B" }]],
+  // repeated identical lines around the change (Myers tie-break)
+  ["repeated-lines", "x\nx\nx\ny\nx\nx\nx\n", [{ oldText: "y", newText: "z" }]],
+  // blank + whitespace-only lines
+  ["blank-lines", "a\n\n \n  \nb\n", [{ oldText: " ", newText: "SP" }]],
+  // large-block multi-line replacement (multiline-block class from the bench)
+  ["multiline-block", `${Array.from({ length: 2000 }, (_, i) => `block${i}`).join("\n")}\n`, [{ oldText: "block1000\nblock1001\nblock1002", newText: "BLOCKS" }]],
+  // same-line multi-edit (two edits, one line)
+  ["two-edits-one-line", "one two three four\n", [{ oldText: "one", newText: "1" }, { oldText: "three four", newText: "3 4" }]],
 ];
 for (const [name, body, edits] of corpus) {
   add(`parity: ${name}`, () => parityBody(name, body, edits));

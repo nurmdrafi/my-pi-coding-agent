@@ -88,7 +88,7 @@ macOS and Linux resolve identically:
 | ------- | ------- | ------- |
 | `rg`    | Search default (permission-gate SS2 rg-first); built **with PCRE2** so `rg -P` never needs a grep fallback | `cargo install ripgrep --features pcre2 --root ~/.pi/agent` |
 | `piread`| Native read tool (AGENTS.md tooling default; built-in `read` is the fallback and still certifies Anchor Guard edit coverage) | `scripts/bootstrap.sh` |
-| `piedit`| Native edit tool (built-in `edit` is the fallback; `piedit` calls are edit-kind in permission-gate, so Anchor Guard/coverage protection is unchanged) | `scripts/bootstrap.sh` |
+| `piedit`| Native edit tool (AGENTS.md tooling default; built-in `edit` is the fallback. Native diff/patch render — byte-identical jsdiff port — makes it 2.4–9.2× faster than the built-in; `piedit` calls are edit-kind in permission-gate, so Anchor Guard/coverage protection is unchanged) | `scripts/bootstrap.sh` |
 | `pidx`, `fd`, `pidoc` | Session-audit fast path, `find` default (permission-gate SS3 fd-first), this health check | `scripts/bootstrap.sh` |
 
 `pidoc` verifies all of the above — look for the `rg-pcre2`, `piread`, and

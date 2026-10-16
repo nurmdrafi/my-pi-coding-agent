@@ -67,10 +67,11 @@ function loadWrappedTool() {
 const oracle = createEditTool(process.cwd());
 const wrapped = loadWrappedTool();
 
-/** Raw one-shot arm: spawn bin/piedit directly, isolating transport cost. */
+/** Raw one-shot arm: spawn bin/piedit directly, isolating transport cost
+ *  (same rendered protocol as the daemon arm). */
 const raw = {
   execute: async (_id, { path, edits }) => {
-    const request = JSON.stringify({ edits });
+    const request = JSON.stringify({ edits, renderDiff: true });
     const { stdout } = await new Promise((res, rej) => {
       const child = execFile(BIN, ["--path", path], { maxBuffer: 64 * 1024 * 1024 }, (err, stdout) => {
         if (err && !stdout) rej(err);
@@ -205,7 +206,7 @@ const out = [
   "",
   `Host ${host} · node ${nodeV} · ${pieditVersion} · N=${N}/arm (${WARMUP} warmup) · local wall-clock, single process.`,
   "",
-  "Arms: oracle = built-in `edit` (in-process) · piedit = extension dispatch via the persistent `--serve` daemon (spawn `bin/piedit`, NDJSON id-matched over stdio, TS diff/patch) · oneshot = per-call `bin/piedit` spawn (the pre-daemon dispatch, now the protocol-fallback rung).",
+  "Arms: oracle = built-in `edit` (in-process) · piedit = extension dispatch via the persistent `--serve` daemon (spawn `bin/piedit`, NDJSON id-matched over stdio, native Rust diff/patch render) · oneshot = per-call `bin/piedit` spawn (the pre-daemon dispatch, now the protocol-fallback rung).",
   "",
   "Edits are destructive: every iteration runs on a fresh copy of the corpus body, so the written file is included in the measured arm on all three sides.",
   "",
@@ -228,9 +229,8 @@ const out = [
   "",
   "## Notes",
   "",
-  "- Daemon dispatch closes the spawn floor, and the native pipeline stays under the in-process oracle on every class: the shared fuzzy view (one normalize per call, not one per edit), the ASCII fast path in normalizeForFuzzyMatch, copy-free LF/BOM normalization, and Buffer-based line scanning in both clients keep small/mid/multiline 11–50% below the built-in.",
-  "- The large-1MiB class is diff-dominated: ~74 ms of the ~88 ms total is the TypeScript generateDiffString + generateUnifiedPatch pair (spec D2 pins rendering there, and the oracle pays the same cost), so the arms land at parity — the native read/match/apply/write round-trip itself is a fraction of the oracle's in-process I/O (see the isolated oneshot arm).",
-  "- The Rust side owns match + apply + write; diff/patch rendering stays in TypeScript (spec D2), so the oracle's diff cost is also paid by the piedit arm.",
+  "- Native render (D2 speed amendment): the daemon renders diff+patch in Rust (byte-identical jsdiff port, `src/diff.rs`; pinned by the parity suite + `tests/piedit-diff-fuzz.mjs`), so the TS `generateDiffString`/`generateUnifiedPatch` pass and the `{baseContent,newContent}` IPC payload are both gone — the response envelope is a few KB even for 1 MiB files.",
+  "- Daemon dispatch closes the spawn floor; the shared fuzzy view (one normalize per call, not one per edit), the ASCII fast path in normalizeForFuzzyMatch, copy-free LF/BOM normalization, single-parse serve loop with reused line/response buffers, and the in-Rust Myers diff keep every class far under the in-process oracle.",
   "- Single-machine sanity numbers (Step 6); the adoption verdict uses the S2 pair (Step 7), not this table.",
   "",
 ].join("\n");

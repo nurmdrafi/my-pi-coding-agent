@@ -1,16 +1,18 @@
 //! piedit — native edit pipeline for the pi agent harness (S8).
 //!
-//! One invocation reads a JSON request (`{edits:[{oldText,newText}]}`) from
-//! stdin, applies the edits to `--path` with the built-in `edit` tool's exact
-//! matching semantics, writes the file, and prints one JSON envelope:
+//! One invocation reads a JSON request (`{edits:[{oldText,newText}],
+//! renderDiff?}`) from stdin, applies the edits to `--path` with the
+//! built-in `edit` tool's exact matching semantics, writes the file, and
+//! prints one JSON envelope:
 //!
-//!   success: {ok, baseContent, newContent}
+//!   success: {ok, baseContent, newContent}           (renderDiff absent)
+//!   success: {ok, diff, patch, firstChangedLine}     (renderDiff true —
+//!             natively rendered, byte-identical to the TS helpers; the
+//!             content pair never crosses the boundary)
 //!   failure: {ok, error: {kind, message}}
 //!
-//! The extension owns diff/patch rendering (`generateDiffString` /
-//! `generateUnifiedPatch`) — only the LF-normalized base and result cross this
-//! boundary, keeping jsdiff byte-parity on the original TypeScript. Parity is
-//! enforced by `tests/piedit-parity.test.mjs`.
+//! Parity is enforced by `tests/piedit-parity.test.mjs` (deterministic
+//! corpus + seeded differential fuzz against the exported TS helpers).
 //!
 //! Exit codes: 0 ok · 2 usage (stderr message, no JSON) · 3 I/O or validation
 //! error (JSON on stdout).
@@ -20,12 +22,13 @@ use std::io::Read;
 use std::process::ExitCode;
 
 mod cli;
+mod diff;
 mod envelope;
 mod pipeline;
 mod serve;
 
 use cli::{parse_args, Parsed};
-use envelope::{ErrorKind, Request, fail_envelope, success_envelope};
+use envelope::{ErrorKind, Request, fail_envelope, success_envelope, success_rendered_envelope};
 
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
@@ -53,14 +56,27 @@ fn main() -> ExitCode {
                 }
             };
             let display = request.path.as_deref().unwrap_or(&run.path);
-            match pipeline::edit_file(display, &run.path, &request.edits) {
-                Ok(applied) => {
-                    println!("{}", success_envelope(&applied.base_content, &applied.new_content));
-                    ExitCode::SUCCESS
+            if request.render_diff == Some(true) {
+                match pipeline::edit_file_rendered(display, &run.path, &request.edits) {
+                    Ok(rendered) => {
+                        println!("{}", success_rendered_envelope(&rendered));
+                        ExitCode::SUCCESS
+                    }
+                    Err(err) => {
+                        println!("{}", fail_envelope(&err));
+                        ExitCode::from(3)
+                    }
                 }
-                Err(err) => {
-                    println!("{}", fail_envelope(&err));
-                    ExitCode::from(3)
+            } else {
+                match pipeline::edit_file(display, &run.path, &request.edits) {
+                    Ok(applied) => {
+                        println!("{}", success_envelope(&applied.base_content, &applied.new_content));
+                        ExitCode::SUCCESS
+                    }
+                    Err(err) => {
+                        println!("{}", fail_envelope(&err));
+                        ExitCode::from(3)
+                    }
                 }
             }
         }

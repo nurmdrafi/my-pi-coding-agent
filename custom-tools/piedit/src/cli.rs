@@ -23,13 +23,15 @@ usage: piedit --path <P>
        piedit --serve
 
   --path <P>    file to edit; the request object is read from stdin:
-                { \"edits\": [ { \"oldText\": \"…\", \"newText\": \"…\" } ] }
+                { \"edits\": [ { \"oldText\": \"…\", \"newText\": \"…\" } ],
+                  \"renderDiff\"?: boolean }
   --serve       daemon mode: newline-delimited JSON requests on stdin, one
                 response line per request (same envelope plus an echoed
                 `id`); exits on stdin EOF
 
 Prints one JSON object on stdout:
-  success: {ok, baseContent, newContent}
+  success: {ok, baseContent, newContent}              (renderDiff absent)
+  success: {ok, diff, patch, firstChangedLine}        (renderDiff true)
   failure: {ok, error: {kind, message}}
 
 Exit codes: 0 ok · 2 usage (stderr) · 3 I/O or validation error (JSON on stdout)
