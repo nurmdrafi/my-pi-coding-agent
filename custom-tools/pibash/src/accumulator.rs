@@ -10,6 +10,84 @@ use std::path::{Path, PathBuf};
 
 use crate::truncate::{js_byte_length, truncate_tail, Truncation};
 
+/// Streaming UTF-8 decoder — the port of `TextDecoder` with `{stream: true}`.
+///
+/// A multi-byte character can straddle two `read()` chunks, because a pipe
+/// delivers whatever bytes are ready. The oracle's streaming decoder buffers the
+/// incomplete trailing sequence until the next chunk, so the character decodes
+/// once; a per-chunk `from_utf8_lossy` instead emitted a replacement character
+/// per half of the character and corrupted the output. That was the largest
+/// parity gap in the accumulator.
+#[derive(Default)]
+struct Utf8Stream {
+    pending: [u8; 4],
+    pending_len: usize,
+}
+
+impl Utf8Stream {
+    fn is_clean(&self) -> bool {
+        self.pending_len == 0
+    }
+
+    /// Append decoded text for `data`, buffering an incomplete trailing
+    /// sequence (if any) for the next chunk.
+    fn decode_into(&mut self, data: &[u8], out: &mut String) {
+        if self.pending_len == 0 {
+            self.decode_slice(data, out);
+            return;
+        }
+        // A UTF-8 character is at most 4 bytes, so at most three leading bytes
+        // of `data` are needed to complete the pending sequence.
+        let needed = 4 - self.pending_len;
+        let take = data.len().min(needed);
+        let head_len = self.pending_len + take;
+        let mut head = [0u8; 4];
+        head[..self.pending_len].copy_from_slice(&self.pending[..self.pending_len]);
+        head[self.pending_len..head_len].copy_from_slice(&data[..take]);
+        self.pending_len = 0;
+        self.decode_slice(&head[..head_len], out);
+        self.decode_slice(&data[take..], out);
+    }
+
+    fn decode_slice(&mut self, bytes: &[u8], out: &mut String) {
+        let mut rest = bytes;
+        loop {
+            match std::str::from_utf8(rest) {
+                Ok(text) => {
+                    out.push_str(text);
+                    return;
+                }
+                Err(err) => {
+                    // Everything before `valid_up_to` is known-good UTF-8.
+                    out.push_str(std::str::from_utf8(&rest[..err.valid_up_to()]).unwrap_or(""));
+                    match err.error_len() {
+                        Some(len) => {
+                            out.push(char::REPLACEMENT_CHARACTER);
+                            rest = &rest[err.valid_up_to() + len..];
+                        }
+                        None => {
+                            let leftover = &rest[err.valid_up_to()..];
+                            debug_assert!(leftover.len() <= self.pending.len());
+                            self.pending[..leftover.len()].copy_from_slice(leftover);
+                            self.pending_len = leftover.len();
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Flush an unfinished sequence as a single replacement character, matching
+    /// `TextDecoder.decode()` at end of stream.
+    fn finish_into(&mut self, out: &mut String) {
+        if self.pending_len > 0 {
+            out.push(char::REPLACEMENT_CHARACTER);
+            self.pending_len = 0;
+        }
+    }
+}
+
 /// Built-in defaults (`dist/core/tools/truncate.js`).
 pub const DEFAULT_MAX_LINES: usize = 2000;
 pub const DEFAULT_MAX_BYTES: usize = 50 * 1024;
@@ -36,6 +114,7 @@ pub struct OutputAccumulator {
     current_line_bytes: usize,
     has_open_line: bool,
     finished: bool,
+    decoder: Utf8Stream,
     temp_file_path: Option<PathBuf>,
     temp_writer: Option<BufWriter<File>>,
     /// Raw bytes kept only while a spill file may still be needed. Held as one
@@ -63,18 +142,29 @@ impl OutputAccumulator {
             current_line_bytes: 0,
             has_open_line: false,
             finished: false,
+            decoder: Utf8Stream::default(),
             temp_file_path: None,
             temp_writer: None,
             raw: Vec::new(),
         }
     }
 
-    /// Feed one raw chunk. Decoding is lossy per-chunk, which is what the
-    /// extension pins against the oracle for the byte sequences that matter.
+    /// Feed one raw chunk. UTF-8 is decoded with a streaming decoder, so a
+    /// character split across two chunks decodes once instead of producing a
+    /// replacement character per half (oracle parity).
     pub fn append(&mut self, data: &[u8]) {
         self.total_raw_bytes += data.len();
-        let decoded = String::from_utf8_lossy(data).into_owned();
-        self.append_decoded_text(&decoded);
+        // Fast path: nothing pending and the chunk is valid UTF-8 (the common
+        // case), so decode in place with no temporary allocation.
+        if self.decoder.is_clean()
+            && let Ok(text) = std::str::from_utf8(data)
+        {
+            self.append_decoded_text(text);
+        } else {
+            let mut decoded = String::with_capacity(data.len() + 4);
+            self.decoder.decode_into(data, &mut decoded);
+            self.append_decoded_text(&decoded);
+        }
 
         if self.temp_writer.is_some() || self.should_use_temp_file() {
             self.ensure_temp_file();
@@ -92,6 +182,13 @@ impl OutputAccumulator {
             return;
         }
         self.finished = true;
+        // Flush any half-decoded character at end of stream, as the oracle's
+        // streaming decoder does in `finish()`.
+        let mut flushed = String::new();
+        self.decoder.finish_into(&mut flushed);
+        if !flushed.is_empty() {
+            self.append_decoded_text(&flushed);
+        }
         if self.should_use_temp_file() {
             self.ensure_temp_file();
         }
@@ -143,27 +240,28 @@ impl OutputAccumulator {
     /// is dropped with an omission marker, first/last halves kept — the
     /// oracle's `readFullOutput`.
     #[must_use]
-    pub fn read_full_output(&self, max_bytes: usize) -> (String, bool) {
-        let Some(path) = self.temp_file_path.as_ref() else {
-            // No spill: the contiguous raw buffer is the full output, so this
-            // is a single lossy decode with no intermediate copy.
-            return (String::from_utf8_lossy(&self.raw).into_owned(), false);
+    pub fn read_full_output(&mut self, max_bytes: usize) -> (String, bool) {
+        // No spill: the contiguous raw buffer is the full output. Moving the
+        // buffer into `String::from_utf8` is a zero-copy reinterpretation on the
+        // common valid-UTF-8 case; only invalid bytes pay for a lossy rebuild.
+        let Some(path) = self.temp_file_path.clone() else {
+            let raw = std::mem::take(&mut self.raw);
+            return (from_utf8_owned(raw), false);
         };
-        let Ok(bytes) = std::fs::read(path) else {
+        let Ok(bytes) = std::fs::read(&path) else {
             return (String::new(), false);
         };
         if bytes.len() <= max_bytes {
-            return (String::from_utf8_lossy(&bytes).into_owned(), false);
+            return (from_utf8_owned(bytes), false);
         }
         let head_bytes = max_bytes / 2;
         let tail_bytes = max_bytes - head_bytes;
-        let head = &bytes[..head_bytes];
-        let mut tail_start = bytes.len() - tail_bytes;
-        while tail_start < bytes.len() && (bytes[tail_start] & 0xc0) == 0x80 {
-            tail_start += 1;
-        }
-        let head_text = String::from_utf8_lossy(head);
-        let tail_text = String::from_utf8_lossy(&bytes[tail_start..]);
+        // Head: streaming-decode and drop an incomplete trailing sequence,
+        // matching `new TextDecoder().decode(head, { stream: true })`.
+        let mut head_text = String::with_capacity(head_bytes);
+        Utf8Stream::default().decode_into(&bytes[..head_bytes], &mut head_text);
+        let tail_start = skip_continuation(&bytes, bytes.len() - tail_bytes);
+        let tail_text = String::from_utf8_lossy(&bytes[tail_start..]).into_owned();
         let omitted = bytes.len() - head_bytes - tail_bytes;
         (
             format!("{head_text}\n\n[... {omitted} bytes omitted ...]\n\n{tail_text}"),
@@ -243,6 +341,23 @@ impl OutputAccumulator {
         self.temp_file_path = Some(path);
         self.temp_writer = Some(writer);
     }
+}
+
+/// Consume a byte buffer as UTF-8, replacing invalid sequences only when the
+/// buffer is not valid UTF-8. String::from_utf8 reuses the allocation, so the
+/// common all-valid case is a zero-copy reinterpretation.
+fn from_utf8_owned(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes)
+        .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into_owned())
+}
+
+/// Move start forward past UTF-8 continuation bytes so a tail slice begins on a
+/// character boundary (the oracle's truncateStringToBytesFromEnd skip).
+fn skip_continuation(bytes: &[u8], mut start: usize) -> usize {
+    while start < bytes.len() && (bytes[start] & 0xc0) == 0x80 {
+        start += 1;
+    }
+    start
 }
 
 /// Create the spill file under the system temp dir, 0600, prefix-tagged.
@@ -389,5 +504,101 @@ mod tests {
         let mut acc = OutputAccumulator::new("pi-output");
         acc.append(b"abc\nde");
         assert_eq!(acc.last_line_bytes(), 2);
+    }
+
+    #[test]
+    fn last_line_bytes_resets_after_a_trailing_newline() {
+        let mut acc = OutputAccumulator::new("pi-output");
+        acc.append(b"abc\n");
+        assert_eq!(acc.last_line_bytes(), 0);
+    }
+
+    #[test]
+    fn multibyte_character_split_across_chunks_decodes_once() {
+        // A pipe hands over whatever bytes are ready, so a 3-byte character can
+        // straddle two reads. The streaming decoder must not emit a replacement
+        // character per half (the pre-decoder behavior).
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        acc.append(&[0xE8]);
+        acc.append(&[0xAA, 0x9E, b'\n']);
+        acc.finish();
+        let snap = acc.snapshot(false);
+        assert_eq!(snap.content, "語\n");
+        assert_eq!(snap.truncation.total_bytes, 4);
+    }
+
+    #[test]
+    fn four_byte_character_split_two_ways_decodes_once() {
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        acc.append(&[0xF0, 0x9F]);
+        acc.append(&[0x8E, 0x89]);
+        acc.finish();
+        let snap = acc.snapshot(false);
+        assert_eq!(snap.content, "🎉");
+        assert_eq!(snap.truncation.total_bytes, 4);
+    }
+
+    #[test]
+    fn incomplete_sequence_at_end_of_stream_is_one_replacement() {
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        acc.append(&[0xE8, 0xAA]); // start of a 3-byte char, never completed
+        acc.finish();
+        assert_eq!(acc.snapshot(false).content, "\u{FFFD}");
+    }
+
+    #[test]
+    fn read_full_output_without_spill_returns_the_raw_bytes() {
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        acc.append(b"hello ");
+        acc.append("wörld".as_bytes());
+        acc.finish();
+        let (full, truncated) = acc.read_full_output(1024);
+        assert!(!truncated);
+        assert_eq!(full, "hello wörld");
+    }
+
+    #[test]
+    fn read_full_output_marks_first_and_last_halves_with_a_byte_count() {
+        // The head/tail split only applies once the output spilled to a file
+        // (the oracle returns the raw buffer untruncated when it did not).
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        acc.append("a".repeat(60 * 1024).as_bytes());
+        acc.finish();
+        let (full, truncated) = acc.read_full_output(100);
+        assert!(truncated);
+        assert!(full.starts_with(&"a".repeat(50)));
+        assert!(full.ends_with(&"a".repeat(50)));
+        assert!(full.contains("[... 61340 bytes omitted ...]")); // 61440 - 100
+    }
+
+    #[test]
+    fn read_full_output_head_drops_an_incomplete_trailing_character() {
+        // The head cut lands mid-character; a streaming decode drops the partial
+        // sequence instead of emitting a replacement character. The trailing
+        // bulk forces the spill path (read_full_output's head/tail branch).
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        let body = format!("aaa語語{}", "a".repeat(60 * 1024));
+        acc.append(body.as_bytes());
+        acc.finish();
+        let (full, truncated) = acc.read_full_output(8); // head=4, tail=4
+        assert!(truncated);
+        assert!(full.starts_with("aaa\n\n"), "head must drop the partial char");
+        assert!(!full.contains('\u{FFFD}'));
+    }
+
+    #[test]
+    fn spill_file_is_created_with_private_permissions() {
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        acc.append("x".repeat(60 * 1024).as_bytes());
+        acc.finish();
+        let snap = acc.snapshot(true);
+        let path = snap.full_output_path.clone().expect("spilled");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "spill file must not be world-readable");
+        }
+        let _ = std::fs::remove_file(&path);
     }
 }

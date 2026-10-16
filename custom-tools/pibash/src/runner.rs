@@ -19,25 +19,66 @@ pub struct RunOutcome {
 /// known POSIX-ish shell, else `bash`, else `sh` from PATH.
 #[must_use]
 pub fn resolve_shell() -> String {
-    if let Ok(shell) = std::env::var("PI_BASH_SHELL")
-        && !shell.is_empty()
-    {
-        return shell;
-    }
-    if let Ok(shell) = std::env::var("SHELL") {
-        let name = Path::new(&shell)
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        if matches!(name.as_str(), "bash" | "sh" | "zsh" | "dash") {
-            return shell;
-        }
-    }
-    "bash".to_string()
+    let override_shell = std::env::var("PI_BASH_SHELL").ok();
+    choose_shell(
+        override_shell.as_deref(),
+        Path::new("/bin/bash").exists(),
+        which("bash"),
+    )
 }
 
-/// Run `req.command` under the shell, feeding every chunk to `accumulator`.
+/// The built-in's getShellConfig ignores $SHELL: a zsh login shell does not
+/// change which shell tools run under. It prefers /bin/bash, then bash on PATH,
+/// then sh. PI_BASH_SHELL is pibash's own test/deployment override.
+fn choose_shell(override_shell: Option<&str>, bin_bash: bool, bash_on_path: bool) -> String {
+    if let Some(shell) = override_shell.filter(|shell| !shell.is_empty()) {
+        return shell.to_string();
+    }
+    if bin_bash {
+        return "/bin/bash".to_string();
+    }
+    if bash_on_path {
+        return "bash".to_string();
+    }
+    "sh".to_string()
+}
+
+/// Minimal PATH lookup for a bare executable name (the oracle shells out to
+/// which; a stat per entry is cheaper and has no locale/timeout surface).
+fn which(program: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path).any(|dir| dir.join(program).is_file())
+}
+
+/// Observer the runner notifies while a command runs. The daemon uses it to
+/// report the child pid (so a client can cancel) and throttled partial output;
+/// the one-shot path and unit tests pass NoObserver.
+pub trait RunObserver {
+    /// Called once, right after the shell spawns, with its pid.
+    fn started(&mut self, _pid: u32) {}
+    /// Called whenever new output was appended to the accumulator.
+    fn update(&mut self, _accumulator: &mut OutputAccumulator) {}
+}
+
+/// A RunObserver that ignores everything.
+pub struct NoObserver;
+
+impl RunObserver for NoObserver {}
+
+/// Convenience wrapper for tests: run with no observer.
+#[cfg(test)]
 pub fn run(req: &Request, accumulator: &mut OutputAccumulator) -> RunOutcome {
+    run_observed(req, accumulator, &mut NoObserver)
+}
+
+/// Run with an observer, which may emit the pid and partial-output snapshots.
+pub fn run_observed(
+    req: &Request,
+    accumulator: &mut OutputAccumulator,
+    observer: &mut dyn RunObserver,
+) -> RunOutcome {
     let started = Instant::now();
     if !req.cwd.is_dir() {
         return RunOutcome {
@@ -60,6 +101,12 @@ pub fn run(req: &Request, accumulator: &mut OutputAccumulator) -> RunOutcome {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // The daemon client sends the full environment (PI_* injection + managed
+    // PATH); the one-shot CLI leaves it unset and inherits its own.
+    if let Some(env) = &req.env {
+        command.env_clear();
+        command.envs(env);
+    }
     // Put the shell in its own process group so a timeout can kill the whole
     // tree (shell + descendants) rather than just the direct child.
     #[cfg(unix)]
@@ -81,15 +128,15 @@ pub fn run(req: &Request, accumulator: &mut OutputAccumulator) -> RunOutcome {
     };
 
     let pid = child.id();
+    observer.started(pid);
     // Drain both pipes on their own threads so a full pipe never deadlocks the
     // wait below; chunks are forwarded in arrival order.
     let (tx, rx) = mpsc::channel::<(Stream, Vec<u8>)>();
-    let mut readers = Vec::new();
     if let Some(stdout) = child.stdout.take() {
-        readers.push(spawn_reader(stdout, Stream::Stdout, tx.clone()));
+        let _ = spawn_reader(stdout, Stream::Stdout, tx.clone());
     }
     if let Some(stderr) = child.stderr.take() {
-        readers.push(spawn_reader(stderr, Stream::Stderr, tx.clone()));
+        let _ = spawn_reader(stderr, Stream::Stderr, tx.clone());
     }
     drop(tx);
 
@@ -119,7 +166,9 @@ pub fn run(req: &Request, accumulator: &mut OutputAccumulator) -> RunOutcome {
                 Stream::Stderr => pending_err.push(chunk),
             }
         }
-        flush_pending(&mut pending_out, &mut pending_err, accumulator);
+        if flush_pending(&mut pending_out, &mut pending_err, accumulator) {
+            observer.update(accumulator);
+        }
 
         match done_rx.recv_timeout(Duration::from_millis(1)) {
             Ok(exit_status) => {
@@ -143,16 +192,12 @@ pub fn run(req: &Request, accumulator: &mut OutputAccumulator) -> RunOutcome {
         }
     }
 
-    for reader in readers {
-        let _ = reader.join();
-    }
-    while let Ok((stream, chunk)) = rx.try_recv() {
-        match stream {
-            Stream::Stdout => pending_out.push(chunk),
-            Stream::Stderr => pending_err.push(chunk),
-        }
-    }
-    flush_pending(&mut pending_out, &mut pending_err, accumulator);
+    // A descendant the shell backgrounded can hold the pipe open (a background
+    // sleep), so waiting for EOF would block until that process exits. The
+    // built-in resolves the moment the shell exits; drain only in-flight bytes
+    // and then abandon readers that never see EOF.
+    drain_readers(&rx, &mut pending_out, &mut pending_err);
+    let _ = flush_pending(&mut pending_out, &mut pending_err, accumulator);
 
     let exit_code = status.map(|s| exit_code_of(&s));
     RunOutcome {
@@ -170,6 +215,35 @@ enum Stream {
     Stderr,
 }
 
+/// How long to keep draining reader threads that may never see EOF because a
+/// detached descendant inherited the pipe. Readers on a normal command hit EOF
+/// and disconnect the channel immediately, so this only bounds the rare case.
+const READER_GRACE: Duration = Duration::from_millis(30);
+
+/// Drain in-flight chunks until the readers finish or the grace period lapses.
+fn drain_readers(
+    rx: &mpsc::Receiver<(Stream, Vec<u8>)>,
+    out: &mut Vec<Vec<u8>>,
+    err: &mut Vec<Vec<u8>>,
+) {
+    let deadline = Instant::now() + READER_GRACE;
+    while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+        match rx.recv_timeout(remaining) {
+            Ok((stream, chunk)) => match stream {
+                Stream::Stdout => out.push(chunk),
+                Stream::Stderr => err.push(chunk),
+            },
+            Err(_) => break,
+        }
+    }
+    while let Ok((stream, chunk)) = rx.try_recv() {
+        match stream {
+            Stream::Stdout => out.push(chunk),
+            Stream::Stderr => err.push(chunk),
+        }
+    }
+}
+
 /// Emit everything that has arrived. Within one drained batch stdout is kept
 /// ahead of stderr so a command that prints then fails reads in that order;
 /// both streams keep their own relative ordering.
@@ -177,13 +251,17 @@ fn flush_pending(
     out: &mut Vec<Vec<u8>>,
     err: &mut Vec<Vec<u8>>,
     accumulator: &mut OutputAccumulator,
-) {
+) -> bool {
+    let mut appended = false;
     for chunk in out.drain(..) {
         accumulator.append(&chunk);
+        appended = true;
     }
     for chunk in err.drain(..) {
         accumulator.append(&chunk);
+        appended = true;
     }
+    appended
 }
 
 fn spawn_reader<R: Read + Send + 'static>(
@@ -274,6 +352,7 @@ mod tests {
             command: command.to_string(),
             cwd: std::env::temp_dir(),
             timeout_seconds: None,
+            env: None,
         }
     }
 
@@ -304,6 +383,7 @@ mod tests {
             command: "echo hi".to_string(),
             cwd: std::path::PathBuf::from("/definitely/not/here"),
             timeout_seconds: None,
+            env: None,
         };
         let outcome = run(&req, &mut acc);
         assert!(outcome.spawn_error.is_some());
@@ -317,6 +397,7 @@ mod tests {
             command: "sleep 30".to_string(),
             cwd: std::env::temp_dir(),
             timeout_seconds: Some(0.4),
+            env: None,
         };
         let started = Instant::now();
         let outcome = run(&req, &mut acc);
@@ -334,11 +415,100 @@ mod tests {
             command: "sleep 45 & sleep 45".to_string(),
             cwd: std::env::temp_dir(),
             timeout_seconds: Some(0.4),
+            env: None,
         };
         let started = Instant::now();
         let outcome = run(&req, &mut acc);
         assert!(outcome.timed_out);
         assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn shell_choice_prefers_bin_bash_and_ignores_shell_env() {
+        // The built-in never consults $SHELL; a zsh login shell is irrelevant.
+        assert_eq!(choose_shell(None, true, false), "/bin/bash");
+        assert_eq!(choose_shell(Some(""), true, false), "/bin/bash");
+        assert_eq!(choose_shell(None, false, true), "bash");
+        assert_eq!(choose_shell(None, false, false), "sh");
+    }
+
+    #[test]
+    fn shell_choice_honors_the_explicit_override() {
+        assert_eq!(choose_shell(Some("/opt/bash"), true, true), "/opt/bash");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signal_killed_shell_reports_128_plus_signal() {
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        let outcome = run(&request("kill -TERM $$"), &mut acc);
+        acc.finish();
+        assert_eq!(outcome.exit_code, Some(143)); // 128 + SIGTERM(15)
+    }
+
+    #[test]
+    fn explicit_env_replaces_the_inherited_environment() {
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        let mut env = std::collections::HashMap::new();
+        env.insert("PIBASH_TEST".to_string(), "yes".to_string());
+        env.insert("PATH".to_string(), "/usr/bin:/bin".to_string());
+        let req = Request {
+            command: "printf '%s|%s' \"$PIBASH_TEST\" \"${HOME:-unset}\"".to_string(),
+            cwd: std::env::temp_dir(),
+            timeout_seconds: None,
+            env: Some(env),
+        };
+        let outcome = run(&req, &mut acc);
+        acc.finish();
+        assert_eq!(outcome.exit_code, Some(0));
+        assert_eq!(acc.snapshot(false).content, "yes|unset");
+    }
+
+    #[test]
+    fn detached_child_does_not_block_the_run() {
+        // The background sleep inherits the pipe; the run must return when the
+        // shell exits rather than waiting for that descendant to close it.
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        let started = Instant::now();
+        let outcome = run(&request("sleep 30 & echo done"), &mut acc);
+        acc.finish();
+        assert_eq!(outcome.exit_code, Some(0));
+        assert_eq!(acc.snapshot(false).content, "done\n");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "must not wait on a detached child"
+        );
+    }
+
+    #[test]
+    fn observer_receives_the_pid_and_output_updates() {
+        struct Recorder {
+            started: Option<u32>,
+            updates: usize,
+            last: String,
+        }
+        impl RunObserver for Recorder {
+            fn started(&mut self, pid: u32) {
+                self.started = Some(pid);
+            }
+            fn update(&mut self, accumulator: &mut OutputAccumulator) {
+                self.updates += 1;
+                self.last = accumulator.snapshot(false).content;
+            }
+        }
+
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        let mut recorder = Recorder {
+            started: None,
+            updates: 0,
+            last: String::new(),
+        };
+        let outcome = run_observed(&request("printf 'hello\n'"), &mut acc, &mut recorder);
+        acc.finish();
+        assert_eq!(outcome.exit_code, Some(0));
+        assert!(recorder.started.is_some_and(|pid| pid > 0));
+        assert!(recorder.updates >= 1);
+        assert!(recorder.last.contains("hello"));
     }
 }
 

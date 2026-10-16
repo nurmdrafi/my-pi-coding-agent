@@ -108,6 +108,20 @@ async function run(tool, params, ctx) {
   }
 }
 
+/** Run with a live signal, aborting after delayMs. */
+async function runAbortable(tool, params, ctx, delayMs) {
+  const controller = new AbortController();
+  const call = tool
+    .execute("abort", params, controller.signal, undefined, ctx)
+    .then(
+      (value) => ({ rejected: false, value }),
+      (e) => ({ rejected: true, error: String(e?.message ?? e) }),
+    );
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+  controller.abort();
+  return call;
+}
+
 /** The oracle's execute reads sessionManager for PI_* injection; the harness
  * supplies a minimal stub so the built-in runs outside a live pi session. */
 function makeCtx(cwd = process.cwd()) {
@@ -370,6 +384,131 @@ await checkAsync("parity: timeout parameter shape is accepted like the oracle", 
   const theirs = await run(oracle, { command: "printf 'quick'", timeout: 30 }, NO_UI_CTX);
   assert.equal(mine.value.content[0].text, theirs.value.content[0].text);
   assert.equal(mine.value.structuredContent.exit_code, theirs.value.structuredContent.exit_code);
+});
+
+// ---- operations parity: streaming decode, session env, timeout validation ----
+
+await checkAsync("parity: a character split across reads decodes once", async () => {
+  resetDaemon();
+  // Two writes with a gap force the pipe to deliver a partial character; the
+  // streaming decoder must reassemble it instead of emitting replacement chars.
+  const command = "printf '語' | head -c 1; sleep 0.05; printf '語' | tail -c 2; echo";
+  const mine = await run(wrapped, { command }, NO_UI_CTX);
+  const theirs = await run(oracle, { command }, NO_UI_CTX);
+  assert.deepStrictEqual(normalize(mine), normalize(theirs));
+  assert.equal(mine.value.content[0].text, "語\n");
+});
+
+await checkAsync("parity: PI_SESSION_ID is injected like the built-in", async () => {
+  resetDaemon();
+  const command = "printf '%s' \"$PI_SESSION_ID\"";
+  const mine = await run(wrapped, { command }, NO_UI_CTX);
+  const theirs = await run(oracle, { command }, NO_UI_CTX);
+  assert.equal(mine.value.content[0].text, theirs.value.content[0].text);
+  assert.equal(mine.value.content[0].text, "parity-session");
+});
+
+await checkAsync("parity: the managed bin dir is prepended to PATH", async () => {
+  resetDaemon();
+  const command = "case \":$PATH:\" in */.pi/agent/bin:*) printf yes;; *) printf no;; esac";
+  const mine = await run(wrapped, { command }, NO_UI_CTX);
+  const theirs = await run(oracle, { command }, NO_UI_CTX);
+  assert.equal(mine.value.content[0].text, theirs.value.content[0].text);
+});
+
+await checkAsync("parity: PI_* is clear when the context omits it", async () => {
+  resetDaemon();
+  const command = "printf '%s' \"\${PI_MODEL:-unset}\"";
+  const bare = makeCtx();
+  const mine = await run(wrapped, { command }, bare);
+  const theirs = await run(oracle, { command }, bare);
+  assert.equal(mine.value.content[0].text, theirs.value.content[0].text);
+});
+
+await checkAsync("parity: invalid timeout rejects like the built-in", async () => {
+  resetDaemon();
+  const mine = await run(wrapped, { command: "true", timeout: 0 }, NO_UI_CTX);
+  const theirs = await run(oracle, { command: "true", timeout: 0 }, NO_UI_CTX);
+  assert.equal(mine.rejected, true);
+  assert.equal(theirs.rejected, true);
+  assert.equal(mine.error, theirs.error);
+});
+
+await checkAsync("parity: timeout above the 32-bit ms ceiling rejects like the built-in", async () => {
+  resetDaemon();
+  const mine = await run(wrapped, { command: "true", timeout: 3_000_000 }, NO_UI_CTX);
+  const theirs = await run(oracle, { command: "true", timeout: 3_000_000 }, NO_UI_CTX);
+  assert.equal(mine.rejected, true);
+  assert.equal(theirs.rejected, true);
+  assert.equal(mine.error, theirs.error);
+});
+
+await checkAsync("parity: a detached child does not block the call", async () => {
+  resetDaemon();
+  // The background sleep inherits the pipe; the call must return when the shell
+  // exits, exactly as the in-process built-in does.
+  const command = "sleep 30 & echo done";
+  const mine = await run(wrapped, { command }, NO_UI_CTX);
+  const theirs = await run(oracle, { command }, NO_UI_CTX);
+  assert.deepStrictEqual(normalize(mine), normalize(theirs));
+});
+
+await checkAsync("parity: a pre-aborted signal rejects like the built-in", async () => {
+  resetDaemon();
+  const controller = new AbortController();
+  controller.abort();
+  const call = async (tool) => {
+    try {
+      const value = await tool.execute(
+        "abort-test",
+        { command: "echo hi" },
+        controller.signal,
+        undefined,
+        NO_UI_CTX,
+      );
+      return { rejected: false, value };
+    } catch (e) {
+      return { rejected: true, error: String(e?.message ?? e) };
+    }
+  };
+  const mine = await call(wrapped);
+  const theirs = await call(oracle);
+  assert.equal(mine.rejected, true);
+  assert.equal(theirs.rejected, true);
+  assert.equal(mine.error, theirs.error);
+});
+
+// ---- live streaming + mid-run cancellation ----
+
+await checkAsync("streaming: onUpdate receives partial output", async () => {
+  resetDaemon();
+  const updates = [];
+  const command = "for i in 1 2 3 4 5 6 7 8; do printf '%s\n' \"$i\"; sleep 0.06; done";
+  const result = await wrapped.execute(
+    "stream-test",
+    { command },
+    undefined,
+    (update) => updates.push(update),
+    NO_UI_CTX,
+  );
+  assert.ok(updates.length >= 2, "expected streamed updates, got " + updates.length);
+  const texts = updates.map((u) => u.content?.[0]?.text ?? "");
+  assert.ok(
+    texts.some((text) => text.length > 0),
+    "no partial text: " + JSON.stringify(texts),
+  );
+  assert.ok(result.content[0].text.includes("8"), "final result keeps the full output");
+});
+
+await checkAsync("cancel: an aborted call rejects like the built-in", async () => {
+  resetDaemon();
+  const command = "printf before; sleep 10";
+  const mine = await runAbortable(wrapped, { command }, NO_UI_CTX, 300);
+  const theirs = await runAbortable(oracle, { command }, NO_UI_CTX, 300);
+  assert.equal(mine.rejected, true);
+  assert.equal(theirs.rejected, true);
+  assert.match(String(mine.error), /Command aborted/);
+  assert.equal(mine.error, theirs.error);
 });
 
 console.log(`\n${passed}/${passed + failed} ${failed === 0 ? "PASS" : "FAILED"}`);

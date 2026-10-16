@@ -96,36 +96,45 @@ pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> Trunc
         };
     }
 
-    let mut kept: Vec<String> = Vec::new();
+    // Walk backwards to find the slice of `lines` that fits, then join it
+    // once. The earlier shape pushed each kept line into a `Vec<String>` with an
+    // `insert(0, ...)`, allocating a String per line and shifting the whole
+    // vector each iteration — O(n²) on line-capped output.
+    let mut start = lines.len();
+    let mut kept = 0usize;
     let mut output_bytes_count: usize = 0;
     let mut truncated_by: &'static str = "lines";
     let mut last_line_partial = false;
+    let mut partial: Option<String> = None;
 
-    let mut index = lines.len();
-    while index > 0 && kept.len() < max_lines {
-        index -= 1;
-        let line = lines[index];
-        // +1 for the newline, except for the first line added.
-        let line_bytes = js_byte_length(line) + usize::from(!kept.is_empty());
+    while start > 0 && kept < max_lines {
+        let line = lines[start - 1];
+        // +1 for the newline, except for the last line (added first).
+        let line_bytes = js_byte_length(line) + usize::from(start != lines.len());
         if output_bytes_count + line_bytes > max_bytes {
             truncated_by = "bytes";
-            if kept.is_empty() {
+            if kept == 0 {
                 let truncated_line = truncate_string_to_bytes_from_end(line, max_bytes);
                 output_bytes_count = js_byte_length(&truncated_line);
-                kept.insert(0, truncated_line);
+                partial = Some(truncated_line);
                 last_line_partial = true;
+                kept += 1;
             }
             break;
         }
-        kept.insert(0, line.to_string());
+        start -= 1;
+        kept += 1;
         output_bytes_count += line_bytes;
     }
 
-    if kept.len() >= max_lines && output_bytes_count <= max_bytes {
+    if kept >= max_lines && output_bytes_count <= max_bytes {
         truncated_by = "lines";
     }
 
-    let joined = kept.join("\n");
+    let joined = match partial {
+        Some(line) => line,
+        None => lines[start..].join("\n"),
+    };
     let final_output_bytes = js_byte_length(&joined);
 
     Truncation {
@@ -134,7 +143,7 @@ pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> Trunc
         truncated_by: Some(truncated_by),
         total_lines,
         total_bytes,
-        output_lines: kept.len(),
+        output_lines: kept,
         output_bytes: final_output_bytes,
         last_line_partial,
         first_line_exceeds_limit: false,
@@ -276,5 +285,31 @@ b", 2000, 50 * 1024);
         let t = truncate_tail("é\né\né", MAX_LINES, 7);
         assert!(t.truncated);
         assert_eq!(t.content, "é\né");
+    }
+
+    #[test]
+    fn truncate_string_to_bytes_from_end_skips_to_a_char_boundary() {
+        assert_eq!(truncate_string_to_bytes_from_end("abcdef", 3), "def");
+        // 4 bytes cuts inside the first 3-byte char, so it skips to the next.
+        assert_eq!(truncate_string_to_bytes_from_end("語語", 4), "語");
+    }
+
+    #[test]
+    fn partial_line_reports_one_output_line_and_no_head_flag() {
+        let t = truncate_tail("0123456789", 2000, 4);
+        assert!(t.truncated);
+        assert!(t.last_line_partial);
+        assert!(!t.first_line_exceeds_limit, "tail truncation never sets the head flag");
+        assert_eq!(t.output_lines, 1);
+        assert_eq!(t.content, "6789");
+    }
+
+    #[test]
+    fn exactly_the_line_cap_within_bytes_is_not_truncated() {
+        let content = (0..2000).map(|i| i.to_string()).collect::<Vec<_>>().join("\n");
+        let t = truncate_tail(&content, 2000, 50 * 1024);
+        assert!(!t.truncated);
+        assert_eq!(t.total_lines, 2000);
+        assert_eq!(t.output_lines, 2000);
     }
 }

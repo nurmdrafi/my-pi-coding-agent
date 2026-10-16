@@ -36,14 +36,16 @@ pub fn format_size(bytes: usize) -> String {
 #[must_use]
 pub fn format_output(
     accumulator: &mut OutputAccumulator,
-    snapshot: &Snapshot,
+    snapshot: Snapshot,
     empty_text: &str,
 ) -> (String, Option<Truncation>) {
     let truncation = &snapshot.truncation;
+    // Move the snapshot's content into the display text instead of cloning it;
+    // the snapshot is consumed here and the caller reads the other fields first.
     let mut text = if snapshot.content.is_empty() {
         empty_text.to_string()
     } else {
-        snapshot.content.clone()
+        snapshot.content
     };
     if !truncation.truncated {
         return (text, None);
@@ -88,7 +90,7 @@ mod tests {
         let mut acc = OutputAccumulator::new("pi-output-test");
         acc.finish();
         let snapshot = acc.snapshot(false);
-        let (text, truncation) = format_output(&mut acc, &snapshot, "(no output)");
+        let (text, truncation) = format_output(&mut acc, snapshot, "(no output)");
         assert_eq!(text, "(no output)");
         assert!(truncation.is_none());
     }
@@ -103,7 +105,7 @@ mod tests {
         acc.append(body.as_bytes());
         acc.finish();
         let snapshot = acc.snapshot(true);
-        let (text, truncation) = format_output(&mut acc, &snapshot, "(no output)");
+        let (text, truncation) = format_output(&mut acc, snapshot, "(no output)");
         let truncation = truncation.expect("truncated");
         assert_eq!(truncation.truncated_by, Some("lines"));
         assert!(text.contains("[Showing lines 101-2100 of 2100."));
@@ -120,5 +122,50 @@ mod tests {
     fn append_status_separates_with_a_blank_line() {
         assert_eq!(append_status("out", "Command exited with code 1"), "out\n\nCommand exited with code 1");
         assert_eq!(append_status("", "Command exited with code 1"), "Command exited with code 1");
+    }
+
+    #[test]
+    fn partial_last_line_note_reports_the_line_size() {
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        acc.append("x".repeat(60 * 1024).as_bytes());
+        acc.finish();
+        let snapshot = acc.snapshot(true);
+        let path = snapshot.full_output_path.clone();
+        let (text, truncation) = format_output(&mut acc, snapshot, "(no output)");
+        let truncation = truncation.expect("truncated");
+        assert_eq!(truncation.truncated_by, Some("bytes"));
+        assert!(truncation.last_line_partial);
+        assert!(text.contains("[Showing last "));
+        assert!(text.contains("line is 60.0KB"));
+        if let Some(path) = path {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn byte_limited_note_names_the_byte_limit() {
+        use std::path::PathBuf;
+        let content = "bbbb\ncccc";
+        let truncation = Truncation {
+            content: content.to_string(),
+            truncated: true,
+            truncated_by: Some("bytes"),
+            total_lines: 3,
+            total_bytes: 14,
+            output_lines: 2,
+            output_bytes: 9,
+            last_line_partial: false,
+            first_line_exceeds_limit: false,
+            max_lines: 2000,
+            max_bytes: 9,
+        };
+        let snapshot = Snapshot {
+            content: content.to_string(),
+            truncation,
+            full_output_path: Some(PathBuf::from("/tmp/pibash-test")),
+        };
+        let mut acc = OutputAccumulator::new("pi-output-test");
+        let (text, _) = format_output(&mut acc, snapshot, "(no output)");
+        assert!(text.contains("[Showing lines 2-3 of 3 (9B limit). Full output: /tmp/pibash-test]"));
     }
 }

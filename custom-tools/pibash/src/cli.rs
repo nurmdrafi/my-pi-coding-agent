@@ -16,6 +16,10 @@ pub struct Request {
     pub command: String,
     pub cwd: PathBuf,
     pub timeout_seconds: Option<f64>,
+    /// Explicit child environment. None inherits the daemon's own environment;
+    /// the daemon client sends the full map so PI_* injection and the managed
+    /// PATH match the built-in's getShellEnv() + resolveSpawnContext().
+    pub env: Option<std::collections::HashMap<String, String>>,
 }
 
 pub const USAGE: &str = "usage: pibash --command <C> [--cwd <DIR>] [--timeout <SEC>]\n       pibash --serve\n       pibash --version | --help";
@@ -67,6 +71,7 @@ pub fn parse(args: &[String]) -> Result<Mode, String> {
         command,
         cwd: cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
         timeout_seconds: timeout,
+        env: None,
     }))
 }
 
@@ -141,5 +146,26 @@ mod tests {
     #[test]
     fn non_positive_timeout_is_rejected() {
         assert!(parse(&args(&["--command", "ls", "--timeout", "0"])).is_err());
+    }
+
+    #[test]
+    fn infinite_and_nan_timeouts_are_rejected() {
+        assert!(parse(&args(&["--command", "ls", "--timeout", "inf"])).is_err());
+        assert!(parse(&args(&["--command", "ls", "--timeout", "NaN"])).is_err());
+        assert!(parse(&args(&["--command", "ls", "--timeout", "-1"])).is_err());
+    }
+
+    #[test]
+    fn repeated_flags_use_the_last_value() {
+        let mode = parse(&args(&["--command", "a", "--command", "b"])).unwrap();
+        let Mode::OneShot(req) = mode else { panic!("one-shot") };
+        assert_eq!(req.command, "b");
+    }
+
+    #[test]
+    fn relative_cwd_is_preserved_verbatim() {
+        let mode = parse(&args(&["--command", "ls", "--cwd", "sub/dir"])).unwrap();
+        let Mode::OneShot(req) = mode else { panic!("one-shot") };
+        assert_eq!(req.cwd, PathBuf::from("sub/dir"));
     }
 }

@@ -78,13 +78,25 @@ pub fn execute_with(
     request: &Request,
     omit_truncation_content: bool,
 ) -> Result<Success, envelope::Failure> {
-    let mut accumulator = OutputAccumulator::new("pi-output");
-    let outcome = runner::run(request, &mut accumulator);
+    execute_observed(request, omit_truncation_content, &mut runner::NoObserver)
+}
+
+/// Like execute_with, with a runner::RunObserver the daemon uses to report the
+/// child pid and throttled partial output while the command runs.
+pub fn execute_observed(
+    request: &Request,
+    omit_truncation_content: bool,
+    observer: &mut dyn runner::RunObserver,
+) -> Result<Success, envelope::Failure> {
+    // Same tempFilePrefix the built-in bash tool passes (pi-bash), so a spill
+    // path is byte-identical modulo the unique suffix.
+    let mut accumulator = OutputAccumulator::new("pi-bash");
+    let outcome = runner::run_observed(request, &mut accumulator, observer);
     accumulator.finish();
 
     if let Some(message) = outcome.spawn_error {
         let snapshot = accumulator.snapshot(false);
-        let (text, _) = format_output(&mut accumulator, &snapshot, "");
+        let (text, _) = format_output(&mut accumulator, snapshot, "");
         let detail = if text.trim().is_empty() {
             message
         } else {
@@ -94,7 +106,7 @@ pub fn execute_with(
     }
     if outcome.timed_out {
         let snapshot = accumulator.snapshot(false);
-        let (text, _) = format_output(&mut accumulator, &snapshot, "");
+        let (text, _) = format_output(&mut accumulator, snapshot, "");
         let secs = request.timeout_seconds.unwrap_or_default();
         let status = format!("Command timed out after {secs} seconds");
         return Err(envelope::failure(
@@ -110,7 +122,13 @@ pub fn execute_with(
     };
 
     let snapshot = accumulator.snapshot(true);
-    let (text, mut truncation) = format_output(&mut accumulator, &snapshot, "(no output)");
+    // Read the fields that survive the move before format_output consumes it.
+    let truncated = snapshot.truncation.truncated;
+    let full_output_path = snapshot
+        .full_output_path
+        .as_ref()
+        .map(|path| path.to_string_lossy().into_owned());
+    let (text, mut truncation) = format_output(&mut accumulator, snapshot, "(no output)");
     // `truncation.content` is always an exact prefix of `text` (the note is
     // appended after it), so the daemon re-sends the same bytes twice. Drop the
     // copy on the wire; the extension restores it from `text`. The one-shot CLI
@@ -123,15 +141,11 @@ pub fn execute_with(
     let last_line_bytes = accumulator.last_line_bytes();
     let (structured_output, structured_truncated) =
         accumulator.read_full_output(structured_limit());
-    let full_output_path = snapshot
-        .full_output_path
-        .as_ref()
-        .map(|path| path.to_string_lossy().into_owned());
 
     Ok(Success {
         ok: true,
         text,
-        truncated: snapshot.truncation.truncated,
+        truncated,
         full_output_path,
         exit_code,
         wall_time_seconds: outcome.wall_time_seconds,

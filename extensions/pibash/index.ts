@@ -16,6 +16,12 @@
  *   3. built-in bash implementation — fail-open to correctness — plus ONE
  *      stderr fallback line (the terminal reason) per call.
  *
+ * The session-sensitive parts live here: the full spawn environment (PI_* keys
+ * and the managed PATH) is rebuilt per call and sent with each request, the
+ * daemon reports the child pid plus throttled partial output (stream:true) so
+ * live output can be rendered, and an AbortSignal kills the whole process group
+ * mid-run.
+ *
  * Default on: the load guard registers unless PI_NATIVE_BASH=0 (explicit
  * opt-out — the ladder still guarantees the built-in path when the native
  * binary is missing).
@@ -23,7 +29,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createBashTool,
@@ -61,6 +68,77 @@ const PIBASH_BIN = resolve(extDir, "../../bin/pibash");
 const PGATE_NDJSON = resolve(extDir, "../../logs/violation-memory.ndjson");
 const SESSION_ID = randomUUID();
 
+/** The built-in's MAX_TIMEOUT_MS / 1000. */
+const MAX_TIMEOUT_SECONDS = 2_147_483_647 / 1000;
+
+/** Session env keys the built-in deletes, then re-sets from ctx. */
+const PI_ENV_KEYS = [
+  "PI_SESSION_ID",
+  "PI_SESSION_FILE",
+  "PI_PROVIDER",
+  "PI_MODEL",
+  "PI_REASONING_LEVEL",
+] as const;
+
+/** The built-in's getBinDir() — ~/.pi/agent/bin, with the env override. */
+function agentBinDir(): string {
+  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+  return join(agentDir, "bin");
+}
+
+/** The bits of the SDK tool context the spawn environment depends on. */
+type ExecContext = {
+  cwd?: string;
+  sessionManager?: {
+    getSessionId(): string;
+    getSessionFile(): string | undefined;
+  };
+  model?: { provider: string; id: string };
+  thinkingLevel?: string;
+};
+
+/** Port of the built-in's resolveTimeoutMs: validate before spawning. */
+function resolveTimeout(timeout: number | undefined): void {
+  if (timeout === undefined) return;
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new Error("Invalid timeout: must be a finite number of seconds");
+  }
+  if (timeout * 1000 > 2_147_483_647) {
+    throw new Error("Invalid timeout: maximum is " + MAX_TIMEOUT_SECONDS + " seconds");
+  }
+}
+
+/**
+ * Port of the built-in's resolveSpawnContext + getShellEnv: a full copy of the
+ * parent environment with the PI_* session keys removed (then re-set from ctx)
+ * and the managed bin dir prepended to PATH. Sent with every request so the
+ * daemon — whose own environment is frozen at startup — runs commands exactly
+ * as the in-process built-in would.
+ */
+function buildEnv(ctx: ExecContext | undefined): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) env[key] = value;
+  }
+  for (const key of PI_ENV_KEYS) delete env[key];
+  const sessionId = ctx?.sessionManager?.getSessionId();
+  if (sessionId) env.PI_SESSION_ID = sessionId;
+  const sessionFile = ctx?.sessionManager?.getSessionFile();
+  if (sessionFile) env.PI_SESSION_FILE = sessionFile;
+  if (ctx?.model) {
+    env.PI_PROVIDER = ctx.model.provider;
+    env.PI_MODEL = ctx.model.id;
+  }
+  if (ctx?.thinkingLevel) env.PI_REASONING_LEVEL = ctx.thinkingLevel;
+  const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const binDir = agentBinDir();
+  const entries = (env[pathKey] ?? "").split(delimiter).filter(Boolean);
+  if (!entries.includes(binDir)) {
+    env[pathKey] = [binDir, ...entries].join(delimiter);
+  }
+  return env;
+}
+
 function logFallback(reason: string, command: string): void {
   try {
     appendFileSync(
@@ -85,6 +163,17 @@ type PibashEnvelope = {
   structured_truncated?: boolean;
   truncation?: unknown;
   error?: { kind: string; message: string };
+};
+
+/** A streamed partial line emitted for a stream:true request. */
+type PibashPartial = {
+  id?: number;
+  partial?: boolean;
+  started?: boolean;
+  pid?: number;
+  text?: string;
+  truncation?: unknown;
+  fullOutputPath?: string;
 };
 
 type BashParams = { command: string; timeout?: number };
@@ -115,6 +204,11 @@ const builtinExecute = createBashTool(process.cwd()).execute as (
 type DaemonPending = {
   resolve: (envelope: PibashEnvelope) => void;
   reject: (err: Error) => void;
+  onUpdate?: (update: BashResult) => void;
+  /** Settle refcounts and drop the abort listener. */
+  cleanup: () => void;
+  pid?: number;
+  aborted?: boolean;
 };
 
 type DaemonState = {
@@ -145,10 +239,12 @@ let daemon: DaemonState | undefined;
 
 function killDaemon(state: DaemonState, reason: string): void {
   if (daemon === state) daemon = undefined;
-  for (const [, pending] of state.pending) {
+  const pendingEntries = [...state.pending.values()];
+  state.pending.clear();
+  for (const pending of pendingEntries) {
+    pending.cleanup();
     pending.reject(new DaemonUnavailableError(reason));
   }
-  state.pending.clear();
   try {
     state.stdin.end();
     state.proc.kill();
@@ -175,9 +271,9 @@ function startDaemon(): DaemonState {
       const line = state.buffer.slice(0, newline);
       state.buffer = state.buffer.slice(newline + 1);
       if (!line.trim()) continue;
-      let parsed: (PibashEnvelope & { id?: number }) | undefined;
+      let parsed: (PibashEnvelope & PibashPartial) | undefined;
       try {
-        parsed = JSON.parse(line) as PibashEnvelope & { id?: number };
+        parsed = JSON.parse(line) as PibashEnvelope & PibashPartial;
       } catch {
         killDaemon(state, "unparseable response line");
         return;
@@ -186,8 +282,21 @@ function startDaemon(): DaemonState {
       if (id === undefined) continue;
       const pending = state.pending.get(id);
       if (!pending) continue;
+      if (parsed.partial) {
+        if (parsed.pid !== undefined) pending.pid = parsed.pid;
+        if (pending.aborted && pending.pid !== undefined) killProcessGroup(pending.pid);
+        if (!parsed.started && pending.onUpdate) pending.onUpdate(toPartialResult(parsed));
+        continue;
+      }
       state.pending.delete(id);
-      pending.resolve(parsed);
+      pending.cleanup();
+      if (pending.aborted) {
+        pending.reject(
+          new ParityError(new Error(appendStatus(parsed.text ?? "", "Command aborted"))),
+        );
+      } else {
+        pending.resolve(parsed);
+      }
     }
   });
   proc.on("error", (err: Error) => killDaemon(state, err.message));
@@ -210,9 +319,12 @@ function request(
   command: string,
   cwd: string,
   timeout: number | undefined,
+  env: Record<string, string>,
+  options: { signal?: AbortSignal; onUpdate?: (update: BashResult) => void } = {},
 ): Promise<PibashEnvelope> {
   const id = state.nextId++;
-  const payload = JSON.stringify({ id, command, cwd, timeout });
+  const stream = Boolean(options.signal || options.onUpdate);
+  const payload = JSON.stringify({ id, command, cwd, timeout, env, stream });
   return new Promise<PibashEnvelope>((resolve, reject) => {
     (state.stdin as unknown as Refable).ref();
     (state.stdout as unknown as Refable).ref();
@@ -223,31 +335,72 @@ function request(
       (state.stdout as unknown as Refable).unref();
       state.proc.unref();
     };
-    state.pending.set(id, {
-      resolve: (envelope) => {
+    const signal = options.signal;
+    const onAbort = (): void => {
+      const pending = state.pending.get(id);
+      if (!pending) return;
+      pending.aborted = true;
+      if (pending.pid !== undefined) killProcessGroup(pending.pid);
+    };
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
+    const pending: DaemonPending = {
+      resolve,
+      reject,
+      onUpdate: options.onUpdate,
+      cleanup: () => {
         settle();
-        resolve(envelope);
+        if (signal) signal.removeEventListener("abort", onAbort);
       },
-      reject: (err) => {
-        settle();
-        reject(err);
-      },
-    });
+    };
+    state.pending.set(id, pending);
     try {
-      state.stdin.write(`${payload}\n`);
+      state.stdin.write(payload + "\n");
     } catch (err) {
       state.pending.delete(id);
+      pending.cleanup();
       reject(new DaemonUnavailableError(err instanceof Error ? err.message : String(err)));
     }
   });
 }
 
 /** One-shot rung: a single `pibash` spawn per call. */
-function oneShot(command: string, cwd: string, timeout: number | undefined): Promise<PibashEnvelope> {
+/** Kill a shell's whole process group (runner spawns it detached). */
+function killProcessGroup(pid: number): void {
+  if (process.platform === "win32") return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
+/** The built-in's appendStatus. */
+function appendStatus(text: string, status: string): string {
+  return text ? text + "\n\n" + status : status;
+}
+
+/** Render a streamed partial line as the built-in's onUpdate payload shape. */
+function toPartialResult(partial: PibashPartial): BashResult {
+  const details = partial.truncation
+    ? { truncation: partial.truncation, fullOutputPath: partial.fullOutputPath }
+    : undefined;
+  return { content: [{ type: "text", text: partial.text ?? "" }], details };
+}
+
+function oneShot(
+  command: string,
+  cwd: string,
+  timeout: number | undefined,
+  env: Record<string, string>,
+): Promise<PibashEnvelope> {
   const args = ["--command", command, "--cwd", cwd];
   if (timeout !== undefined) args.push("--timeout", String(timeout));
   return new Promise<PibashEnvelope>((resolve, reject) => {
-    const proc = spawn(PIBASH_BIN, args, { stdio: ["ignore", "pipe", "ignore"] });
+    const proc = spawn(PIBASH_BIN, args, { stdio: ["ignore", "pipe", "ignore"], env });
     let stdout = "";
     proc.stdout?.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");
@@ -316,22 +469,32 @@ export default function pibashExtension(pi: ExtensionAPI): void {
     toolCallId: string,
     params: BashParams,
     signal?: AbortSignal,
-    onUpdate?: unknown,
-    ctx?: { cwd?: string },
+    onUpdate?: (update: BashResult) => void,
+    ctx?: ExecContext,
   ): Promise<BashResult> {
     const command = typeof params?.command === "string" ? params.command : "";
     if (!command.trim()) return builtinExecute(toolCallId, params, signal, onUpdate, ctx);
     const cwd = ctx?.cwd ?? process.cwd();
     const timeout = typeof params.timeout === "number" ? params.timeout : undefined;
+    // Validate before dispatching: the built-in rejects a bad timeout with a
+    // thrown error, which must not fall open to a second spawn attempt.
+    resolveTimeout(timeout);
+    // The built-in checks the signal before spawning and rejects with a bare
+    // "Command aborted"; mirror that for an already-aborted call. Mid-run
+    // cancellation still needs daemon-side support.
+    if (signal?.aborted) throw new Error("Command aborted");
+    const env = buildEnv(ctx);
+    // The built-in emits one empty update up front; mirror it.
+    if (onUpdate) onUpdate({ content: [], details: undefined });
     let reason = "unknown";
     try {
       let envelope: PibashEnvelope;
       try {
-        envelope = await request(ensureDaemon(), command, cwd, timeout);
+        envelope = await request(ensureDaemon(), command, cwd, timeout, env, { signal, onUpdate });
       } catch (err) {
         if (!(err instanceof DaemonUnavailableError)) throw err;
         reason = `daemon: ${err.message}`;
-        envelope = await oneShot(command, cwd, timeout);
+        envelope = await oneShot(command, cwd, timeout, env);
       }
       if (!envelope.ok) {
         // The built-in THROWS for a missing cwd and for a timeout (it does not
