@@ -24,7 +24,6 @@ A portable, git-synced configuration for the [pi coding agent](https://github.co
 ## Table of contents
 
 - [Quick start](#quick-start)
-- [Terminal (Ghostty recommended)](#terminal-ghostty-recommended)
 - [Requirements](#requirements)
 - [What's inside](#whats-inside)
 - [Skills](#skills)
@@ -78,23 +77,6 @@ Optional, for subagents: `brew install tmux` (macOS) or `sudo apt install tmux` 
 That's it for the bootstrap itself; one optional shell export pins the same
 tools in your own terminals — see [Custom tool binaries](#custom-tool-binaries).
 
-## Terminal (Ghostty recommended)
-
-Pi runs in any terminal. [Ghostty](https://ghostty.org) is recommended for
-interactive sessions — it handles the extended-key protocol Pi needs and renders
-inline images — but it is optional and existing terminals keep working.
-
-```sh
-sh ~/.pi/agent/scripts/setup-ghostty.sh          # configure (backs up, idempotent)
-sh ~/.pi/agent/scripts/setup-ghostty.sh --check  # verify
-sh ~/.pi/agent/scripts/pi-ghostty.sh             # start Pi via Ghostty
-```
-
-Installation, configuration, troubleshooting, and fallback behavior:
-[`docs/terminal-setup.md`](docs/terminal-setup.md). This is terminal
-configuration only — it does not affect the native `piread`/`piedit`/`pidx`
-daemons below.
-
 ## Custom tool binaries
 
 `bin/` is gitignored and regenerated; pi prepends it to `PATH` for every bash
@@ -118,7 +100,7 @@ macOS and Linux resolve identically:
 | ----------- | ----------------------------------------------------- |
 | Node.js     | ≥ 22.19 (`.nvmrc` pins 24, the current LTS)           |
 | OS          | macOS or Linux                                        |
-| Terminal    | Any modern terminal; [Ghostty recommended](#terminal-ghostty-recommended) (optional) |
+| Terminal    | Any modern terminal (VS Code integrated terminal is the default here) |
 | tmux        | Only if using subagents — see [Subagents](#subagents) |
 | Rust (cargo) | Default requirement — builds the first-class native tools `piread` (text-file reader), `piedit` (text-file editor), and `pidx` (session-log indexer), registered under their own TUI labels; see [Extensions](#extensions). Opt out per tool with `PI_NATIVE_READ=0` / `PI_NATIVE_EDIT=0` / `PI_NATIVE_PIDX=0` (fails open to the built-in reader / editor / Node parser). Bootstrap prints the rustup command if cargo is missing |
 | Git         | For sync; `~/.pi/agent` is itself a repo              |
@@ -140,7 +122,7 @@ macOS and Linux resolve identically:
 ├── custom-tools/             # Rust workspace: native helper crates (pidx — session-log indexer; piread — native read tool; piedit — native edit tool)
 ├── benchmark/                # Model-graded benchmark tasks + validators
 ├── codemode/                 # Codemode scripts (non-LLM helpers)
-├── scripts/                  # Repo tooling (doc-check, agents-lint, gate-eval, ghostty setup)
+├── scripts/                  # Repo tooling (doc-check, agents-lint, gate-eval)
 ├── prompts/                  # /command prompt templates (/issue, /ship, /update-changelog)
 ├── tests/                    # Node test runner suite (permission-gate, doc-check)
 ├── .github/workflows/        # Release CI/CD

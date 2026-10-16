@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.43.0] - 16-10-2026
 
-### Added
+### Removed
 
-- **Ghostty recommended terminal + setup/launch tooling** (feedback.md task). `scripts/setup-ghostty.sh` detects macOS/Linux, locates Ghostty, resolves the config file Ghostty actually loads (`config.ghostty` current, legacy `config` reused; XDG + macOS Application Support paths), ensures `keybind = alt+backspace=text:\x1b\x7f`, backs up before editing, preserves unrelated settings, and is idempotent (no write/backup when already correct). It warns — without changing — about the legacy `shift+enter=text:\n` mapping and `shell-integration = none`; `--check` / `--dry-run` / `--remove-legacy` / `--config` plus `GHOSTTY_CONFIG` / `GHOSTTY_BIN` give safe control. It never installs Ghostty and prints the official install link when absent. `scripts/pi-ghostty.sh` runs Pi in place when a terminal is attached and otherwise hands off to a Ghostty window in the current directory, forcing no `TERM`/keyboard/image/color variables. New `docs/terminal-setup.md` (install, config, troubleshooting, validation, fallback) plus a README quick-start section. `scripts/doc-check.mjs` now treats `ghostty` as an optional toolchain (docs referencing it are info-only). Tests: `tests/setup-ghostty.test.mjs` (17 cases — idempotency, preservation + backup, macOS/legacy path resolution, `--check`/`--dry-run`, absent-Ghostty behavior, launcher hand-off). `permission-gate` and the `piread`/`piedit`/`pidx` daemons are untouched.
+- **Ghostty terminal feature reverted.** The recommended-terminal work (`scripts/setup-ghostty.sh`, `scripts/pi-ghostty.sh`, `docs/terminal-setup.md`, `tests/setup-ghostty.test.mjs`) is deleted, along with its README section, `ghostty` in `doc-check.mjs`'s `OPTIONAL_TOOLCHAINS`, and the driving task brief in `feedback.md`. The harness now makes no terminal-emulator recommendation: Pi keeps running in any modern terminal, and the VS Code integrated terminal stays the default here. Nothing in `permission-gate` or the `piread`/`piedit`/`pidx` daemons was ever coupled to it, so no behavior changes beyond the removal.
 
 ### Changed
 
