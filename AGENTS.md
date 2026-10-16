@@ -1,5 +1,7 @@
 # Global Pi Instructions
 
+Personal pi coding-agent harness (`pi-agent-harness`): extensions (permission-gate, piedit, piread), Rust native tools (pidx, piedit), scripts, tests. npm with `.nvmrc`-pinned Node. Non-standard commands: `npm run typecheck` (links pi, then tsc), `npm run gate:eval`, `npm run doc:check`.
+
 Loaded every session. Task rule sets in `docs/` — follow link when task touches area.
 
 ## Always-on rules
@@ -13,12 +15,8 @@ Loaded every session. Task rule sets in `docs/` — follow link when task touche
 ### Scope
 - Explicit instruction approves named action + directly implied reads/searches.
 - Approved task → plan/do/verify autonomously.
-- Ask only for: installs, destructive ops, out-of-scope changes.
-
-### GitHub issues
-- Repo has gh issues → check related (`gh issue list -S '<keywords>' --state all`), cover acceptance criteria + suggested fix, state deviations.
-- Prevent known failure classes for touched domains — [docs/issue-classes.md](docs/issue-classes.md).
-- Cite issue number in commits/closes; detail in [docs/agent-hygiene.md](docs/agent-hygiene.md).
+- Ask before: installs/packages, destructive commands, out-of-scope changes, `sudo`, `curl | sh` — full list in [docs/security.md](docs/security.md).
+- Yes in chat or invoking message = approval.
 
 ### Precedence
 - Global + repo context load together; neither replaces other.
@@ -26,9 +24,7 @@ Loaded every session. Task rule sets in `docs/` — follow link when task touche
 - Explicit in-session user instruction outranks global/repo/template rules: apply override, one-line deviation note, never relitigate.
 
 ### Safety
-- Mirrored by `permission-gate` extension — keep lists in sync.
-- **Ask before installs, packages, destructive commands** — full list: [docs/security.md](docs/security.md).
-- Yes in chat or invoking message = approval.
+- Enforced by `permission-gate`; block reason = stop, apply fix, never retry differently. Full list: [docs/security.md](docs/security.md).
 
 ### Communication
 - Telegram style: short complete sentences, plain prose, no fragments/emoji.
@@ -36,21 +32,22 @@ Loaded every session. Task rule sets in `docs/` — follow link when task touche
 - Only Propose/Report/plan deliverables may exceed the cap.
 - Analysis/audit deliverables → dated file under `audit-reports/` + ≤5-line chat summary + path.
 
-### Mechanical checks
-- Re-reads, output caps, re-runs, commit format, edit anchors, destructive confirms, toolchain pins, search scope, node_modules reads — enforced by `permission-gate`; block reason carries fix.
-- Tests/lint/tsc: ALWAYS run, scoped to changed files. Never full suite — too slow. Full run only at task end or CI. `eslint <files>`, `tsc --noEmit` (whole project if no incremental), `vitest run <file>`.
-- Build: do NOT always run. Only at task end or after risky structural edits (new files, import graph changes, integration doubt) — not after every edit batch; edits are cheap to verify by re-read.
+### Verification
+- Scoped tests + lint + tsc on changed files only, at task completion — not after every single-file edit. Never full suite: husky gates commits.
+- Build only after risky structural edits (new files, import graph changes) or at task end; edits are cheap to verify by re-read.
 
 ### Tooling defaults
-- Search: `rg`. Fallback `grep` only when rg is missing or errors.
-- Find files: `fd`. Fallback `find` only when fd is missing or errors.
-- Text file reads: use the `piread` tool — `piread {path, offset, limit}` take `.content` (fallback: `~/.pi/agent/bin/piread --path <P> [--offset <N>] [--limit <N>]` via bash). Images always built-in `read` (piread is text-only). Enforced by permission-gate rule P1: a built-in `read` on a text file is blocked. piread falls back to the built-in reader on its own (missing binary, binary/image content), so no manual fallback is needed.
+- Rust-based tools first — [docs/tooling-defaults.md](docs/tooling-defaults.md).
+
+### GitHub issues
+- Repo has gh issues → check related, cover acceptance criteria, state deviations. Flow: [docs/agent-hygiene.md](docs/agent-hygiene.md). Failure classes: [docs/issue-classes.md](docs/issue-classes.md).
 
 ## Scoped rule sets
-- [docs/change-discipline.md](docs/change-discipline.md) — surgical scope, ponytail ladder, root-cause fixes
-- [docs/agent-hygiene.md](docs/agent-hygiene.md) — toolchain, edit anchors, issue/commit discipline
+- [docs/change-discipline.md](docs/change-discipline.md) — ponytail ladder, root-cause fixes, deployment constraints
+- [docs/agent-hygiene.md](docs/agent-hygiene.md) — toolchain pins, edit anchors, issue/commit discipline
 - [docs/issue-classes.md](docs/issue-classes.md) — failure-class catalog (secrets, auth, HTTP, CI, tests)
-- [docs/security.md](docs/security.md) — build-time auth checks, secrets server-side, guard-fix re-checks
+- [docs/security.md](docs/security.md) — ask-list, secrets, git protections
 - [docs/portability.md](docs/portability.md) — macOS+Linux shell subset, no absolute user paths
-- [docs/token-economy.md](docs/token-economy.md) — search discipline, batching, baselines, native-tooling policy, session limits
+- [docs/tooling-defaults.md](docs/tooling-defaults.md) — Rust-first: piread/piedit/pidx, rg/fd, fallback etiquette
+- [docs/token-economy.md](docs/token-economy.md) — read/run discipline, batching, session budget
 - [docs/workflow.md](docs/workflow.md) — TDD, plan/do/verify cadence, session length

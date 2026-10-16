@@ -8,10 +8,8 @@
 ## Ask before
 - Installing packages
 - Destructive commands
-- Outside repo (dotfiles, global config)
-- Network side effects
+- Outside repo / out-of-scope changes (dotfiles, global config)
 - `sudo`, `curl | sh`
-- Migrations, deploys
 
 ## Never
 - Overwrite uncommitted user changes

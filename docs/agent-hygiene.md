@@ -7,14 +7,12 @@ Toolchain, edits, issue/commit rules. Loaded via AGENTS.md link.
 - `Unsupported engine` error = skipped pin; switch, re-run.
 - Repo pkg manager only (`pnpm exec` in pnpm repo); never `npx`/`npm` against it.
 - Never read `node_modules`.
-- Never repo-wide `grep`/`rg` with no path + broad pattern — scope or timeout.
-- `rg` is the search default; `grep`/`egrep`/`fgrep` only when rg errored (say so in chat first).
-- `fd` is the file-find default; `find` only when fd errored (say so in chat first).
+- Search/find defaults and fallback etiquette live in [tooling-defaults.md](tooling-defaults.md).
 - TC1/TC2, SS1, SS2, SS3, PB1, NM1 enforced by permission-gate; block reason = stop, not retry differently.
 
 ## Edits
-- Re-read exact region immediately before editing.
-- Never reuse anchor captured before intervening edit.
+- Re-read a region only when its current content is not in context (post-compaction, external change, gate block) — never re-read a window already in context this session. Details: [token-economy.md](token-economy.md).
+- Never reuse an anchor captured before an intervening edit; after any edit/write to a file, re-read before re-anchoring on it.
 - `Anchor Guard` → read region, re-anchor; never retry same `oldText`.
 - No-op edit (`identical content`) → stop, re-read.
 

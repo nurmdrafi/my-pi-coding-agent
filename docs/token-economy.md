@@ -13,7 +13,7 @@
 - Pipe raw payloads through `jq` to `/tmp`, never into context; bash caps 100 lines/4 KB (oversize → pgate-spill; read spills offset/limit).
 
 ## Tests
-- Test: narrowest target once (`npm test -- <file>`); read failure block, fix, verify once. No full-suite runs during iteration.
+- Test: narrowest target once; read failure block, fix, verify once. Never full suite — husky gates commits.
 - Baseline: first verify run → `/tmp/<repo>-baseline.log`; diff later runs against it.
 
 ## Budget and replies
@@ -23,9 +23,8 @@
 - Reply: terse; never restate file contents/output/diffs in prose — cite path:line.
 
 ## Native tooling
-- `pidx` (Rust, `custom-tools/pidx/`, binary at `bin/pidx`): incremental session-log indexer feeding session-audit's L0 fast path — O(changes) via (size, mtime_ns) keys and a raw-byte-range store, OS-agnostic std-only, parity-gated 370/370 against the Node parser. Node fallback automatic if binary missing. Benchmark 2026-10-15 (375 sessions / 97MB, arm64): Node parse-only ~0.37s; pidx cold full digest ~0.20s; pidx warm incremental ~0.01s (unchanged extracts replayed as bytes — no re-parse or re-serialize). Value is the warm O(changes) path and process offload.
-- Future native tools follow the pidx bar: measured bottleneck, benchmark numbers in hand, user approves, parity gate against the JS path it replaces.
-- Never port simple file operations — built-in tools cover them; don't rebuild CLIs the system already has (`rg`, `fd`, `jq`).
+- `pidx` (Rust, `custom-tools/pidx/`, binary at `bin/pidx`): incremental session-log indexer feeding session-audit's L0 fast path; Node fallback automatic if binary missing. Usage rules: [tooling-defaults.md](tooling-defaults.md).
+- Future native tools follow the pidx bar: measured bottleneck, benchmark numbers in hand (see `docs/specs/`), user approves, parity gate against the JS path it replaces.
 
 ## Extensions and sessions
 - Load extensions per project, never globally (re-bills prompt every turn); exception: permission-gate, enforcement layer itself.
