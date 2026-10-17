@@ -43,9 +43,10 @@ tavily/session.json
 logs/
 # Autoresearch per-session scratch (workingDir pointer, rewritten each run)
 .auto/
-# Rust workspace build output (custom-tools/target); the workspace lockfile at
-# custom-tools/Cargo.lock IS tracked (binaries = reproducible builds).
-custom-tools/target/
+# Rust build output for every crate/workspace target dir (custom-tools/target,
+# tools/pidx/target, ...); the lockfile at custom-tools/Cargo.lock IS tracked
+# (binaries = reproducible builds).
+target/
 .cache/
 
 # S2 benchmark live workdirs
