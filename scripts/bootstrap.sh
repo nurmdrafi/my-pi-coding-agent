@@ -14,6 +14,9 @@ cd "$ROOT"
 
 echo "== bootstrap: $ROOT"
 
+# Shared installer: copy + chmod + macOS adhoc re-sign (see the helper header).
+. "$ROOT/scripts/lib/install-native.sh"
+
 # 1. node deps + pi package links (extensions resolve the host install)
 if command -v npm >/dev/null 2>&1; then
   npm install --no-audit --no-fund
@@ -37,7 +40,7 @@ CARGO=$(command -v cargo || true)
 [ -z "$CARGO" ] && [ -x "$HOME/.cargo/bin/cargo" ] && CARGO="$HOME/.cargo/bin/cargo"
 if [ -n "$CARGO" ]; then
   (cd custom-tools && "$CARGO" build --release -p pidx)
-  cp custom-tools/target/release/pidx bin/pidx
+  install_native custom-tools/target/release/pidx bin/pidx
   echo "== pidx: built + installed to bin/pidx"
 else
   echo "== pidx: cargo not found — session-audit uses the Node parser (slower)." \
@@ -48,7 +51,7 @@ fi
 #    the extension falls back to the built-in read without the binary)
 if [ -n "$CARGO" ]; then
   (cd custom-tools && "$CARGO" build --release -p piread)
-  cp custom-tools/target/release/piread bin/piread
+  install_native custom-tools/target/release/piread bin/piread
   echo "== piread: built + installed to bin/piread"
 else
   echo "== piread: cargo not found — the read tool stays on its built-in implementation." \
@@ -59,7 +62,7 @@ fi
 #    the extension falls back to the built-in edit without the binary)
 if [ -n "$CARGO" ]; then
   (cd custom-tools && "$CARGO" build --release -p piedit)
-  cp custom-tools/target/release/piedit bin/piedit
+  install_native custom-tools/target/release/piedit bin/piedit
   echo "== piedit: built + installed to bin/piedit"
 else
   echo "== piedit: cargo not found — the edit tool stays on its built-in implementation." \
@@ -70,7 +73,7 @@ fi
 #    the extension falls back to the built-in bash without the binary)
 if [ -n "$CARGO" ]; then
   (cd custom-tools && "$CARGO" build --release -p pibash)
-  cp custom-tools/target/release/pibash bin/pibash
+  install_native custom-tools/target/release/pibash bin/pibash
   echo "== pibash: built + installed to bin/pibash"
 else
   echo "== pibash: cargo not found — the shell tool stays on its built-in implementation." \
