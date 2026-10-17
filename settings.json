@@ -13,7 +13,7 @@
   "defaultTools": ["-read", "-bash", "-edit", "+codemode"],
   "codemode": {
     "mode": "on",
-    "inlineBudget": 3000
+    "inlineBudget": 0
   },
   "compaction": {
     "enabled": true,
