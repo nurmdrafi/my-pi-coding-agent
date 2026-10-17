@@ -154,6 +154,54 @@ durable equivalents are `daemon-exit.test.mjs`,
 `piread-daemon-settle.test.mjs`, `daemon-process-group.test.mjs`, and
 `pidoc-portability.test.mjs`. Delete once the related bugs stop being live.
 
+## 7. Gate blocks: surgical fix vs. effect-based approval
+
+Triggered by a real session incident: the gate blocked a `cd <dir> && seq …`
+command, the user approved a different command (`cargo build -p piread`), and
+the next step then wrote outside that scope (`cp` + `codesign` into `bin/`)
+because the *goal* matched. The approval was for a build; the effect was a
+mutating install. That is the failure mode to close.
+
+**Policy the evidence supports (proposed, not yet in AGENTS.md):**
+
+1. Blocks split into two classes and must be handled differently:
+   - **Mechanical** (wrong tool for the job, missing path/glob scope, BSD vs GNU
+     flag, shell-syntax error): apply the *narrowest* fix and name the fact that
+     was wrong. This is not evasion; re-sending the same text is the defect.
+   - **Approval-gated** (destructive/mutating, elevated privilege, secret
+     access, irreversible): stop, state the *effect*, ask once, wait. Never
+     rephrase to route around a decision already made.
+2. **Approval attaches to an effect and a scope, not to command wording.** A
+   build approval does not authorise an install, a re-sign, or a probe. If the
+   next step changes the blast radius, re-ask even when the goal is identical;
+   if it does not, proceed without re-asking (re-asking identical things trains
+   the user to click yes).
+3. **Decision rule:** not "does this look like the blocked command?" but "does
+   this change the set of things that can go wrong?" Same blast radius →
+   proceed. Different → ask.
+4. **Self-check:** if the justification is "this is technically a different
+   command," that technicality is the tell to stop and ask.
+
+**Open question A — are all rules actually needed?** The store gives evidence
+for pruning: families with 1-2 distinct events in 6 days (Codemode 2, Re-run 1,
+Toolchain pnpm 4) never reach any threshold, while `Anchor Guard` (103) and
+`Search (node_modules)` (59) dominate — and both were *tooling* friction the
+model hit while following the rules, not violations of intent. Audit each rule
+for: (a) does it prevent a real, observed harm? (b) is the harm cheaper than its
+friction? (c) is the rule mechanically checkable, or is it prose the model must
+remember? Rules that fail all three should go.
+
+**Open question B — time-based relaxation.** Proposal to review: allow
+re-writing a file that was already written if ≥60 s have passed, on the
+grounds that a re-write after a real interval is normally evidence-driven (new
+information arrived) rather than churn. Plausible, but it needs the gate to
+distinguish "same content" from "revised content", and it must not become a way
+to launder a destructive rewrite past H4/H5. Needs a concrete rule plus a test
+before adoption.
+
+**Next step:** decide A and B, then encode the accepted parts in AGENTS.md
+Safety and add gate tests for the mechanical-vs-approval split.
+
 ## Closed this round (for context)
 
 - `piread`/`piedit` event-loop drain: they ref'd `stdin`/`stdout` but not
