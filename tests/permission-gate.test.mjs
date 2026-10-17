@@ -1063,7 +1063,7 @@ const cases = [
     },
   ],
   [
-    "violation memory: compaction rewrites bloated store per family+session (H7)",
+    "violation memory: compaction migrates bloated store to the current shape (H7)",
     "pass",
     async () => {
       const now = Date.now();
@@ -1076,18 +1076,24 @@ const cases = [
             ts: now - (k % 7),
           }),
         );
+      // A legacy tool-fallback family: cause fixed (unsigned binary), no lesson.
+      lines.push(
+        JSON.stringify({ family: "Piread (fallback)", sid: "s0", ts: now }),
+      );
       writeFileSync(process.env.PGATE_MEMORY, lines.join("\n") + "\n");
-      freshGate(); // load triggers compaction when >200 lines
+      freshGate(); // load triggers the migration when >200 lines
       const after = readFileSync(process.env.PGATE_MEMORY, "utf8")
         .trim()
         .split("\n")
-        .filter(Boolean);
-      return after.length === 4
-        ? { blocked: false }
-        : {
-            blocked: true,
-            reason: `expected 4 compact lines, got ${after.length}`,
-          };
+        .filter(Boolean)
+        .map((l) => JSON.parse(l));
+      if (after.length !== 220)
+        return { blocked: true, reason: `expected 220 kept rows, got ${after.length}` };
+      if (after.some((r) => r.kind !== "violation"))
+        return { blocked: true, reason: "rows were not migrated to kind:violation" };
+      if (after.some((r) => r.family !== "Commitlint"))
+        return { blocked: true, reason: "legacy tool-fallback row survived migration" };
+      return { blocked: false };
     },
   ],
   // ---- R1 resume hydration (2026-10-07: coverage replays from the previous session file) ----

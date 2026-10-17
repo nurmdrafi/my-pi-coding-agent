@@ -110,6 +110,7 @@ import {
   adoptionRecord,
   blockFamilyOf,
   memorySid,
+  migrateRows,
   violationRecord,
 } from "./violation-memory.ts";
 import {
@@ -251,10 +252,6 @@ export default function (pi: ExtensionAPI) {
       // absent or corrupt legacy blob — start from NDJSON alone
     }
     let lines = 0;
-    const latest = new Map<
-      string,
-      { family: string; sid: string; ts: number }
-    >();
     try {
       const raw = readFileSync(memoryNdjson, "utf8").split("\n");
       for (let i = 0; i < raw.length; i++) {
@@ -274,15 +271,6 @@ export default function (pi: ExtensionAPI) {
           const key =
             typeof e.sid === "string" && e.sid ? e.sid : `legacy-line-${i}`;
           (distinct[e.family] ??= new Set()).add(key);
-          if (typeof e.sid === "string" && e.sid && typeof e.ts === "number") {
-            const prev = latest.get(`${e.family}\u0000${e.sid}`);
-            if (!prev || e.ts > prev.ts)
-              latest.set(`${e.family}\u0000${e.sid}`, {
-                family: e.family,
-                sid: e.sid,
-                ts: e.ts,
-              });
-          }
         } catch {
           continue; // torn tail append — tolerate like pi's session files
         }
@@ -290,19 +278,28 @@ export default function (pi: ExtensionAPI) {
     } catch {
       // no NDJSON yet — legacy counts (if any) stand alone
     }
-    // compact at load (H7): a long-lived store must not grow unboundedly —
-    // keep one entry per family+session (latest ts) when it has bloated
-    if (lines > 200 && latest.size > 0 && latest.size < lines) {
+    // Compact at load (H7) so a long-lived store does not grow unboundedly.
+    // The rewrite is also the migration: legacy rows become the current shape,
+    // legacy tool-fallback families are dropped (their cause was the unsigned
+    // binary, not the model's behaviour), and rows outside the window go away.
+    // Previously this kept one entry per family+session and silently discarded
+    // the `reason`, which is what left the store unable to explain itself.
+    if (lines > 200) {
       try {
+        const parsed: unknown[] = [];
+        for (const line of readFileSync(memoryNdjson, "utf8").split("\n")) {
+          if (!line.trim()) continue;
+          try {
+            parsed.push(JSON.parse(line));
+          } catch {
+            // torn tail append — tolerate like pi's session files
+          }
+        }
+        const migrated = migrateRows(parsed, { now: Date.now() });
         const tmp = `${memoryNdjson}.compact`;
         writeFileSync(
           tmp,
-          [...latest.values()]
-            .map(
-              (e) =>
-                `${JSON.stringify({ family: e.family, sid: e.sid, ts: e.ts })}\n`,
-            )
-            .join(""),
+          migrated.rows.map((e) => `${JSON.stringify(e)}\n`).join(""),
         );
         renameSync(tmp, memoryNdjson);
       } catch {

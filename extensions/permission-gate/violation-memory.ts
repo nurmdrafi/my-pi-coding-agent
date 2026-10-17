@@ -114,3 +114,87 @@ export function adoptionRecord(input: {
 }): AdoptionRow {
   return { kind: "adoption", tool: input.tool, sid: input.sid, ts: input.ts };
 }
+
+/**
+ * Families written by the native tools' FALLBACK path. They are not lessons
+ * (no FAMILY_LESSONS entry) and they were produced by a packaging defect —
+ * an unsigned binary the kernel SIGKILLs — so they are dropped by migration
+ * instead of being carried forward as history.
+ */
+export const LEGACY_TOOL_FAMILIES = [
+  "Piread (fallback)",
+  "Pibash (fallback)",
+  "Piedit (fallback)",
+  "Pidx (fallback)",
+] as const;
+
+/** True when this family can still produce a lesson. */
+export function isKnownFamily(family: string): boolean {
+  return Object.hasOwn(FAMILY_LESSONS, family);
+}
+
+export type MigrationResult = {
+  rows: (ViolationRow | AdoptionRow)[];
+  /** legacy rows rewritten into the current shape */
+  migrated: number;
+  /** rows discarded (legacy tool fallbacks, out-of-window) */
+  dropped: number;
+  /** non-object / unparsable inputs */
+  unparsable: number;
+};
+
+/**
+ * Rewrite legacy store rows into the current shape (pure; the caller writes).
+ *
+ * Same 30-day window loadCounts applies, so a migration can never resurrect a
+ * rolled-out family. A row's reason/path survive when present; a row that
+ * carries none stays without one, because inventing them is what made the
+ * store unable to explain itself.
+ */
+export function migrateRows(
+  input: unknown[],
+  opts: { now: number; windowMs?: number },
+): MigrationResult {
+  const windowMs = opts.windowMs ?? 30 * 24 * 60 * 60_000;
+  const out: MigrationResult = { rows: [], migrated: 0, dropped: 0, unparsable: 0 };
+  for (const raw of input) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      out.unparsable++;
+      continue;
+    }
+    const e = raw as Record<string, unknown>;
+    // Already current shape: pass through verbatim.
+    if (e.kind === "adoption" || e.kind === "violation") {
+      if (typeof e.ts === "number" && opts.now - e.ts > windowMs) {
+        out.dropped++;
+        continue;
+      }
+      out.rows.push(e as unknown as ViolationRow | AdoptionRow);
+      continue;
+    }
+    if (typeof e.family !== "string" || typeof e.ts !== "number") {
+      out.unparsable++;
+      continue;
+    }
+    if (opts.now - e.ts > windowMs) {
+      out.dropped++;
+      continue;
+    }
+    if (!isKnownFamily(e.family)) {
+      // Legacy tool-fallback family: cause fixed, lesson impossible.
+      out.dropped++;
+      continue;
+    }
+    out.rows.push(
+      violationRecord({
+        family: e.family,
+        sid: typeof e.sid === "string" && e.sid ? e.sid : `legacy-line-${out.rows.length}`,
+        ts: e.ts,
+        ...(typeof e.reason === "string" ? { reason: e.reason } : {}),
+        ...(typeof e.path === "string" ? { path: e.path } : {}),
+      }),
+    );
+    out.migrated++;
+  }
+  return out;
+}

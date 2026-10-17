@@ -97,6 +97,16 @@ correctness. Each terminal fallback writes exactly one stderr line
 (`<tool>: fallback (<reason>) path=<path>`) and appends to
 `logs/violation-memory.ndjson` — one line per event, not per rung.
 
+Rows are `{kind:"violation"|"adoption", family|tool, sid, ts, reason?, path?}`,
+where `sid` is the harness `PI_SESSION_ID` (shared by the gate and every native
+tool; a per-process `sid` made the store count processes instead of sessions).
+Binaries are installed through `scripts/lib/install-native.sh`, which re-signs
+them: a bare `cp` invalidates the adhoc signature and the kernel SIGKILLs the
+copy, which is indistinguishable from a missing binary and shows up here as
+fallback churn. Legacy rows are rewritten on load; to apply that rewrite without
+waiting for the next session, run `node scripts/migrate-violation-memory.mjs`
+(`--dry-run` to preview, a `.bak` copy is kept).
+
 Rung selection is recorded on `details.via` (`daemon` | `oneshot` | `builtin`),
 which never enters model-visible content.
 
