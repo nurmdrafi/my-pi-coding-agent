@@ -147,6 +147,12 @@ pub fn compact(text: &str, max_lines: usize, max_bytes: usize) -> Compacted {
     };
     let lines: Vec<&str> = split_lines(&body);
     let total_lines = lines.len();
+    // `omitted_chars` is computed as `original_chars - (head + tail)`, and
+    // head/tail are sliced from the body — so `original_chars` must be the
+    // body's char count too. Measuring it over the full input (notice
+    // included) silently counted the re-attached notice as "kept" content and
+    // under-reported what was dropped.
+    let original_chars = body.chars().count();
 
     // 2/3 head : 1/3 tail. Three lines are reserved for the marker and its two
     // blank separators so the TOTAL line count stays inside `max_lines`.
@@ -370,6 +376,34 @@ mod tests {
             js_byte_length(&out.content) <= COMPRESS_MAX_BYTES,
             "byte budget exceeded: {} > {COMPRESS_MAX_BYTES}",
             js_byte_length(&out.content)
+        );
+    }
+
+    #[test]
+    fn accounting_describes_the_body_not_the_notice() {
+        // `original_chars` / `omitted_chars` are measured over the body, with
+        // the trailing read notice split off; `visible_chars` counts the whole
+        // assembled output, notice included. So `original_chars - visible_chars`
+        // is NOT `omitted_chars` — it is `omitted_chars` plus the marker and the
+        // separator/notice bytes that compaction adds back. Pin the invariant
+        // that actually holds, so nobody "fixes" the apparent mismatch.
+        let body = (1..=867)
+            .map(|i| format!("line {i:04} {}", "x".repeat(48)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let notice = "[Showing lines 1-867 of 6001 (50.0KB limit). Use offset=868 to continue.]";
+        let text = format!("{body}\n\n{notice}");
+        let out = compact(text.as_str(), COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+
+        assert_eq!(
+            out.original_chars,
+            js_byte_length(&body),
+            "original_chars must exclude the trailing notice"
+        );
+        assert_eq!(out.visible_chars, js_byte_length(&out.content));
+        assert!(
+            out.omitted_chars > out.original_chars - out.visible_chars,
+            "added marker/notice bytes make omitted_chars exceed the naive delta"
         );
     }
 
