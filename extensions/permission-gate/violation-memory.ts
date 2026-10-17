@@ -198,3 +198,27 @@ export function migrateRows(
   }
   return out;
 }
+
+/**
+ * Merge the two lesson-count sources into one session-based number.
+ *
+ * `sessionCounts` is the NDJSON side: distinct sids per family in the window.
+ * `legacyDepth` is the frozen pre-NDJSON blob: one number per family with no
+ * session attribution. Because depth cannot be attributed to sessions, its only
+ * honest contribution is a floor of 1 — counting `n` would fabricate sessions
+ * and let a single old session clear MEMORY_THRESHOLD on its own, which is the
+ * exact failure H7 set out to prevent.
+ *
+ * Returns a new object; neither input is mutated.
+ */
+export function mergeLessonCounts(
+  sessionCounts: Record<string, number>,
+  legacyDepth: Record<string, number>,
+): Record<string, number> {
+  const counts: Record<string, number> = { ...sessionCounts };
+  for (const [family, depth] of Object.entries(legacyDepth)) {
+    if (!(depth > 0)) continue;
+    counts[family] = (counts[family] ?? 0) + 1;
+  }
+  return counts;
+}

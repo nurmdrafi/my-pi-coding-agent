@@ -110,6 +110,7 @@ import {
   adoptionRecord,
   blockFamilyOf,
   memorySid,
+  mergeLessonCounts,
   migrateRows,
   violationRecord,
 } from "./violation-memory.ts";
@@ -235,8 +236,9 @@ export default function (pi: ExtensionAPI) {
   // H7 (2026-10-08): count DISTINCT SESSIONS per family in a rolling 30-day
   // window, not all-time block depth — one session hammering a family used to
   // hit the threshold alone (breadth across sessions is the actual signal that
-  // a lesson belongs in the prompt). Per-process sid ≈ per-session: parallel
-  // gated subagents are separate processes; a resume is a new process anyway.
+  // a lesson belongs in the prompt). `sid` is the harness session id
+  // (memorySid), not a per-process uuid: the old per-process value made every
+  // writer disagree and counted processes instead of sessions.
   const sid = memorySid();
   const MEMORY_WINDOW_MS = 30 * 24 * 60 * 60_000;
   const loadCounts = (): Record<string, number> => {
@@ -309,9 +311,10 @@ export default function (pi: ExtensionAPI) {
     const counts: Record<string, number> = {};
     for (const [family, set] of Object.entries(distinct))
       counts[family] = set.size;
-    for (const [family, n] of Object.entries(legacy))
-      counts[family] = (counts[family] ?? 0) + (n > 0 ? 1 : 0);
-    return counts;
+    // The legacy blob's depth is depth, not sessions (see mergeLessonCounts):
+    // its contribution stays a floor of 1 so MEMORY_THRESHOLD keeps counting
+    // distinct sessions instead of mixing depth into a session count.
+    return mergeLessonCounts(counts, legacy);
   };
   const counts = loadCounts();
   /** record a block's family; persist top-offender telemetry for the next session's prompt */
