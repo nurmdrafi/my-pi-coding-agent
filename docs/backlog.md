@@ -33,25 +33,69 @@ away. Needs a micro-bench before/after to prove the win.
 
 ## 2. `doc:check` is non-deterministic
 
-`npm run doc:check` intermittently reports three false failures:
+`npm run doc:check` intermittently reports false failures — observed 3-4 at a
+time, varying run to run:
 
 ```
 FLAG NOT IN HELP: pidx --out
 FLAG NOT IN HELP: pi --extension
 FLAG NOT IN HELP: pi --session
+FLAG NOT IN HELP: docker run --rm
+FLAG NOT IN HELP: tvly search --json
+FLAG NOT IN HELP: tvly search --depth
+FLAG NOT IN HELP: tvly search --max-results
+FLAG NOT IN HELP: tvly search --time-range
+FLAG NOT IN HELP: tvly search --topic
+FLAG NOT IN HELP: tvly search --include-domains
+FLAG NOT IN HELP: tvly search --include-raw-content
 ```
 
-All three flags *are* in the respective `--help` output; a rerun passes. It
-appears in `scripts/doc-check.mjs`, which probes `--help` via a subprocess and
-caches into `helpCache`. Suspects: a subprocess timeout swallowed as empty
-stdout, or the cache being populated from a failed probe.
+All of these flags ARE in the respective `--help` output. Same command, same
+binary, same PATH — a rerun passes.
+
+**Investigated 2026-10-17 (unresolved, parked).** Findings so far:
+
+- Every flag is genuinely present: `pi --help` lists `--extension`/`--session`,
+  `pidx --help` lists `--out`, `docker run --help` lists `--rm`, and
+  `tvly search --help` lists all seven. Verified by direct probe.
+- The probe is correct in isolation: replicating `helpFlags()` exactly (same
+  `execFileSync`, same argv, same regex, same 15 s timeout) returns every flag.
+  Sizes: pidx 5 flags/81 B, pi 76/10705 B, docker run 127/11752 B,
+  tvly search 23/1662 B — all far inside the timeout.
+- **It correlates with the `npm run` path, not with the script.**
+  `node scripts/doc-check.mjs` passed 6/6 consecutive runs;
+  `npm run doc:check` failed 3/3. `npm run env` adds only `node_modules/.bin`
+  prefixes to PATH, and resolving pi/pidx/docker/tvly under that PATH gives the
+  same binaries.
+- Re-invoking `checkMdCommands()`/`runDocCheck()` twice in one process passes
+  both times, and an instrumented `execFileSync` wrapper shows the probes
+  succeeding (pidx 113 ms, pi 517 ms) — instrumentation perturbs it away, i.e. a
+  timing/race signature rather than a logic bug.
+- Wall time: `node scripts/doc-check.mjs` 33.8 s real (2.7 s user), so ~31 s is
+  subprocess wait across ~500 markdown files. That is also why iterating on this
+  is expensive: each hypothesis costs 34-50 s per run.
+
+Most likely causes, in order: (a) the 15 s timeout firing because the scan
+serializes hundreds of subprocesses and a busy machine pushes one probe past it —
+the `catch` treats a timeout exactly like a missing flag; (b) ambient state under
+`npm run` (`npm_lifecycle_*`, `NODE_OPTIONS`, stdio) making pi/pidx emit empty
+stdout.
+
+**Fix (not yet applied):**
+1. Distinguish "probe failed" from "flag absent": inspect the caught error, and
+   on timeout/ENOENT/empty stdout retry once with a larger timeout before
+   reporting. A probe that never succeeded is its own finding class, never
+   `FLAG NOT IN HELP`.
+2. Do not cache an empty flag set as a resolved result — a failed probe must stay
+   unresolved so a later lookup retries (this is the trap `helpCache.set` sets).
+3. Cut the 34 s runtime: `bash -c command -v` per command token (lines ~215,
+   ~264) dominates; replace it with an in-process PATH lookup plus `existsSync`.
+4. Add a test with a deliberately failing probe (a binary that exits 1 with empty
+   stdout) asserting it reports "unresolved", not "flag missing".
 
 **Impact:** a red CI gate that goes green on retry trains people to ignore it —
-worse than no gate.
+worse than no gate. **Effort:** small for (1)+(2), medium for (3).
 
-**Fix:** distinguish "probe failed" from "flag absent" and retry once before
-reporting; add a test with a deliberately failing probe.
-**Effort:** small.
 
 ## 3. `permission-gate` S4/S5 failures (pre-existing, unrelated)
 
