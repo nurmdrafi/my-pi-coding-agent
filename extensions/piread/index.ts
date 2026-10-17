@@ -28,7 +28,7 @@
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { memorySid, violationRecord } from "../permission-gate/violation-memory.ts";
 import { isAbsolute, join, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -106,13 +106,15 @@ function announceNativeTool(name: string, extensionPath: string): void {
  * logs/violation-memory.ndjson, reusing its {family, sid, ts} schema — no
  * new log file. Path derived from the extension dir (portability). */
 const PGATE_NDJSON = resolve(extDir, "../../logs/violation-memory.ndjson");
-const SESSION_ID = randomUUID();
+const SESSION_ID = memorySid();
 
 function logViolation(reason: string, path: string): void {
   try {
     appendFileSync(
       PGATE_NDJSON,
-      `${JSON.stringify({ family: "Piread (fallback)", sid: SESSION_ID, ts: Date.now(), reason, path })}\n`,
+      `${JSON.stringify(
+        violationRecord({ family: "Piread (fallback)", sid: SESSION_ID, ts: Date.now(), reason, path }),
+      )}\n`,
     );
   } catch {
     // Logging must never break a read.

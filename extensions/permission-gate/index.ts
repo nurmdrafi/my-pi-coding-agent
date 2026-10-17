@@ -107,7 +107,10 @@ import { validateCommitMessages } from "./commitlint.ts";
 import {
   FAMILY_LESSONS,
   MEMORY_THRESHOLD,
+  adoptionRecord,
   blockFamilyOf,
+  memorySid,
+  violationRecord,
 } from "./violation-memory.ts";
 import {
   certify,
@@ -233,7 +236,7 @@ export default function (pi: ExtensionAPI) {
   // hit the threshold alone (breadth across sessions is the actual signal that
   // a lesson belongs in the prompt). Per-process sid ≈ per-session: parallel
   // gated subagents are separate processes; a resume is a new process anyway.
-  const sid = randomUUID();
+  const sid = memorySid();
   const MEMORY_WINDOW_MS = 30 * 24 * 60 * 60_000;
   const loadCounts = (): Record<string, number> => {
     const distinct: Record<string, Set<string>> = {};
@@ -324,7 +327,7 @@ export default function (pi: ExtensionAPI) {
         mkdirSync(dirname(memoryNdjson), { recursive: true });
         appendFileSync(
           memoryNdjson,
-          `${JSON.stringify({ family, sid, ts: Date.now() })}\n`,
+          `${JSON.stringify(violationRecord({ family, sid, ts: Date.now(), reason }))}\n`,
         );
       } catch {
         // telemetry must never break the agent loop
@@ -347,7 +350,7 @@ export default function (pi: ExtensionAPI) {
       mkdirSync(dirname(memoryNdjson), { recursive: true });
       appendFileSync(
         memoryNdjson,
-        `${JSON.stringify({ kind: "adoption", tool: toolName, sid, ts: Date.now() })}\n`,
+        `${JSON.stringify(adoptionRecord({ tool: toolName, sid, ts: Date.now() }))}\n`,
       );
     } catch {
       // telemetry must never break the agent loop

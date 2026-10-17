@@ -44,3 +44,73 @@ export function blockFamilyOf(event: {
   const m = typeof txt === "string" ? BLOCK_FAMILY_RE.exec(txt) : null;
   return m ? m[0] : undefined;
 }
+
+/** Process-wide fallback, evaluated once: a resumed session is a new process,
+ * so this is the closest stable identity when the harness env is absent. */
+const PROCESS_SID = `pid-${process.pid}`;
+
+/**
+ * Session identity for the violation store.
+ *
+ * The harness exposes `PI_SESSION_ID`, the id that names the conversation in
+ * `sessions/*.jsonl`. Every producer used to mint its own `randomUUID()` per
+ * process instead, so the stored ids matched no session (0 of 365 overlapped)
+ * and each native tool disagreed with the gate about the same process —
+ * MEMORY_THRESHOLD then counted processes rather than sessions.
+ *
+ * Resolved lazily (not at module load) so a test can pass its own env, and
+ * memoized per process so one process keeps one id.
+ */
+export function memorySid(
+  env: Record<string, string | undefined> = process.env,
+  pid: number = process.pid,
+): string {
+  const explicit = env.PI_SESSION_ID;
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+  return pid === process.pid ? PROCESS_SID : `pid-${pid}`;
+}
+
+/** One row shape for every producer; `kind` separates the two signals. */
+export type ViolationRow = {
+  kind: "violation";
+  family: string;
+  sid: string;
+  ts: number;
+  reason?: string;
+  path?: string;
+};
+
+export type AdoptionRow = {
+  kind: "adoption";
+  tool: string;
+  sid: string;
+  ts: number;
+};
+
+/** Gate blocks and native-tool fallbacks both explain themselves with a reason. */
+export function violationRecord(input: {
+  family: string;
+  sid: string;
+  ts: number;
+  reason?: string;
+  path?: string;
+}): ViolationRow {
+  const row: ViolationRow = {
+    kind: "violation",
+    family: input.family,
+    sid: input.sid,
+    ts: input.ts,
+  };
+  if (input.reason !== undefined) row.reason = input.reason;
+  if (input.path !== undefined) row.path = input.path;
+  return row;
+}
+
+/** A completed native-tool call (AT1 adoption telemetry). */
+export function adoptionRecord(input: {
+  tool: string;
+  sid: string;
+  ts: number;
+}): AdoptionRow {
+  return { kind: "adoption", tool: input.tool, sid: input.sid, ts: input.ts };
+}

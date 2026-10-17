@@ -28,7 +28,7 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { memorySid, violationRecord } from "../permission-gate/violation-memory.ts";
 import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,7 +98,7 @@ const pibashBin = (): string => process.env.PI_BASH_BIN || PIBASH_BIN;
 
 /** Fallback lines land in the existing gate log, reusing its schema. */
 const PGATE_NDJSON = resolve(extDir, "../../logs/violation-memory.ndjson");
-const SESSION_ID = randomUUID();
+const SESSION_ID = memorySid();
 
 /** The built-in's MAX_TIMEOUT_MS / 1000. */
 const MAX_TIMEOUT_SECONDS = 2_147_483_647 / 1000;
@@ -175,7 +175,15 @@ function logFallback(reason: string, command: string): void {
   try {
     appendFileSync(
       PGATE_NDJSON,
-      `${JSON.stringify({ family: "Pibash (fallback)", sid: SESSION_ID, ts: Date.now(), reason, command: command.slice(0, 200) })}\n`,
+      `${JSON.stringify(
+        violationRecord({
+          family: "Pibash (fallback)",
+          sid: SESSION_ID,
+          ts: Date.now(),
+          reason,
+          path: command.slice(0, 200),
+        }),
+      )}\n`,
     );
   } catch {
     // Logging must never break a command.
