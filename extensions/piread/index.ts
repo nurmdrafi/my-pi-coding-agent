@@ -220,6 +220,9 @@ type DaemonState = {
   pending: Map<number, DaemonPending>;
   nextId: number;
   buffer: string;
+  /** Set by killDaemon: the slot can never answer again, even if a request
+   * still holds a reference to it. */
+  dying: boolean;
 };
 
 /** Child stdio pipes expose libuv handle refcounting (`ref`/`unref`) at
@@ -236,6 +239,8 @@ type PipeStdout = NonNullable<ChildProcess["stdout"]> & Refable;
 let daemon: DaemonState | null = null;
 
 function killDaemon(state: DaemonState, reason: string): void {
+  if (state.dying) return; // idempotent: 'exit' after a kill must not re-sweep
+  state.dying = true;
   if (daemon === state) daemon = null; // next dispatch lazily restarts
   for (const p of state.pending.values()) p.reject(new DaemonUnavailableError(reason));
   state.pending.clear();
@@ -266,7 +271,7 @@ function startDaemon(): DaemonState | null {
       if (daemon) daemon.proc.kill();
     });
   }
-  const state: DaemonState = { proc, stdin, stdout, pending: new Map(), nextId: 1, buffer: "" };
+  const state: DaemonState = { proc, stdin, stdout, pending: new Map(), nextId: 1, buffer: "", dying: false };
   // Any death (crash, spawn ENOENT, garbage protocol) fails pending requests
   // into the one-shot rung and clears the slot for a lazy restart.
   proc.on("error", () => killDaemon(state, "spawn error"));
@@ -291,6 +296,23 @@ function startDaemon(): DaemonState | null {
   return state;
 }
 
+/** Hold the loop while `pending` is non-empty.
+ *
+ * The daemon's streams and process are unref'd at start so an idle daemon never
+ * keeps the host alive. That makes liveness a refcount problem: a request in
+ * flight MUST keep the loop referenced, or Node drains and exits with the await
+ * unsettled — the "unsettled top-level await" hang (exit 13), which appears
+ * whenever nothing else (a timer, a socket) is holding the loop open.
+ * The PROCESS handle has to be ref'd too, not just the pipes: otherwise a
+ * daemon that exits can never report it, and the request never settles. */
+function refWhilePending(state: DaemonState): void {
+  if (state.pending.size > 0) {
+    state.proc.ref();
+    state.stdin.ref();
+    state.stdout.ref();
+  }
+}
+
 /** Streams may unref only when nothing is in flight — a ref'd stdout while
  * a response is pending is what keeps the loop (and the awaited call)
  * alive; an idle daemon must not hold the host process open. */
@@ -298,6 +320,9 @@ function maybeUnrefStreams(state: DaemonState): void {
   if (state.pending.size === 0) {
     state.stdin.unref();
     state.stdout.unref();
+    // The process handle was ref'd by refWhilePending; unref it too, or an
+    // idle daemon keeps the host's event loop (and the host) alive forever.
+    state.proc.unref();
   }
 }
 
@@ -337,6 +362,15 @@ function daemonRequest(
       reject(new DaemonUnavailableError("start failed"));
       return;
     }
+    // A slot that is already dying (killed, streams destroyed, pending
+    // already swept) can never answer this request: writing into it yields no
+    // 'data', no write error, and no further 'exit' — the awaited call would
+    // dangle for the life of the host process. Refuse it so the ladder moves
+    // to the one-shot rung; the next dispatch lazily starts a fresh daemon.
+    if (state.dying || state.stdin.destroyed || state.stdin.writableEnded) {
+      reject(new DaemonUnavailableError("daemon torn down"));
+      return;
+    }
     const id = state.nextId++;
     const onAbort = () => {
       if (state.pending.delete(id)) {
@@ -356,8 +390,7 @@ function daemonRequest(
       },
     };
     state.pending.set(id, settle);
-    state.stdin.ref(); // hold the loop until this response settles
-    state.stdout.ref();
+    refWhilePending(state); // hold the loop until this response settles
     const lineCap = readLineCap();
     const request = JSON.stringify({
       id,
@@ -368,9 +401,16 @@ function daemonRequest(
       cwd,
     });
     state.stdin.write(`${request}\n`, (err) => {
-      if (err && state.pending.delete(id)) {
+      // A write failure is the only failure signal left once the pipe has been
+      // destroyed (nothing follows: no 'exit' for a slot already swept), so the
+      // rejection must not be gated on the entry still being present — a
+      // swept-and-reinserted request would otherwise hang. Settle only the
+      // request that is still ours; the delete is unconditional.
+      if (err) {
+        const mine = state.pending.get(id) === settle;
+        if (mine) state.pending.delete(id);
         maybeUnrefStreams(state);
-        settle.reject(new DaemonUnavailableError("write failed"));
+        if (mine) settle.reject(new DaemonUnavailableError("write failed"));
       }
     });
   });

@@ -69,6 +69,9 @@ function announceNativeTool(name: string, extensionPath: string): void {
 /** Machine-local build output (scripts/bootstrap.sh), no absolute user paths. */
 const PIDX_BIN = resolve(extDir, "../../bin/pidx");
 
+/** Binary path; `PI_PIDX_BIN` overrides (non-standard installs). */
+const pidxBin = (): string => process.env.PI_PIDX_BIN || PIDX_BIN;
+
 /** Where default extracts go — beside the pidx cache, never in the repo. */
 const CACHE_DIR = join(homedir(), ".pi", "agent", ".cache");
 const DEFAULT_OUT = join(CACHE_DIR, "pidx-extracts.jsonl");
@@ -165,7 +168,7 @@ const pidxTool = defineTool({
     if (params.max !== undefined) args.push("--max", String(params.max));
     if (params.force) args.push("--force");
 
-    const { stdout, stderr } = await execFileAsync(PIDX_BIN, args, {
+    const { stdout, stderr } = await execFileAsync(pidxBin(), args, {
       maxBuffer: 64 * 1024 * 1024,
       signal,
     });
@@ -204,7 +207,7 @@ const pidxTool = defineTool({
 
     return {
       content: [{ type: "text", text: content }],
-      details: { summary, out: outPath, inline, bin: PIDX_BIN },
+      details: { summary, out: outPath, inline, bin: pidxBin() },
     };
   },
 

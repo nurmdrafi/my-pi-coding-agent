@@ -97,6 +97,9 @@ function logViolation(reason: string, path: string): void {
 /** Machine-local build output (scripts/bootstrap.sh), no absolute user paths. */
 const PIEDIT_BIN = resolve(extDir, "../../bin/piedit");
 
+/** Binary path; `PI_EDIT_BIN` overrides (parity tests / non-standard installs). */
+const pieditBin = (): string => process.env.PI_EDIT_BIN || PIEDIT_BIN;
+
 /** Mirror the built-in edit tool's `resolveToCwd` (pi `path-utils.ts`):
  * unicode-space normalization, leading-`@` strip, `~` expansion, `file://`
  * URLs, then lexical resolve against cwd. The SDK does not export it, so it is
@@ -231,7 +234,7 @@ let exitHooked = false;
 function startDaemon(): DaemonState | null {
   let proc: ChildProcess;
   try {
-    proc = spawn(PIEDIT_BIN, ["--serve"], { stdio: ["pipe", "pipe", "inherit"] });
+    proc = spawn(pieditBin(), ["--serve"], { stdio: ["pipe", "pipe", "inherit"] });
   } catch {
     return null; // sync spawn failure (rare); async ones arrive via 'error'
   }
@@ -296,6 +299,25 @@ function maybeUnrefStreams(state: DaemonState): void {
   if (state.pending.size === 0) {
     state.stdin.unref();
     state.stdout.unref();
+    // The process handle was ref'd by refWhilePending; unref it too, or an
+    // idle daemon keeps the host's event loop (and the host) alive forever.
+    state.proc.unref();
+  }
+}
+
+/** Hold the loop while `pending` is non-empty.
+ *
+ * The daemon's streams and process are unref'd at start so an idle daemon never
+ * keeps the host alive, which makes liveness a refcount problem: a request in
+ * flight MUST keep the loop referenced, or Node drains and exits with the await
+ * unsettled (the "unsettled top-level await" hang). The PROCESS handle has to be
+ * ref'd too, not just the pipes — otherwise an exiting daemon can never report
+ * it and the pending request never settles. */
+function refWhilePending(state: DaemonState): void {
+  if (state.pending.size > 0) {
+    state.proc.ref();
+    state.stdin.ref();
+    state.stdout.ref();
   }
 }
 
@@ -353,8 +375,7 @@ function daemonRequest(
       },
     };
     state.pending.set(id, settle);
-    state.stdin.ref(); // hold the loop until this response settles
-    state.stdout.ref();
+    refWhilePending(state); // hold the loop until this response settles
     const request = JSON.stringify({ id, path: displayPath, resolved: absPath, edits, renderDiff: true });
     state.stdin.write(`${request}\n`, (err) => {
       if (err && state.pending.delete(id)) {
@@ -387,7 +408,7 @@ async function oneshotDispatch(
     }
     let child;
     try {
-      child = spawn(PIEDIT_BIN, ["--path", absPath], { cwd: spawnCwd, stdio: ["pipe", "pipe", "inherit"] });
+      child = spawn(pieditBin(), ["--path", absPath], { cwd: spawnCwd, stdio: ["pipe", "pipe", "inherit"] });
     } catch (err) {
       rejectCall(new OneshotError(`spawn ${String(err)}`));
       return;

@@ -93,6 +93,9 @@ function announceNativeTool(name: string, extensionPath: string): void {
 /** Machine-local build output (scripts/bootstrap.sh), no absolute user paths. */
 const PIBASH_BIN = resolve(extDir, "../../bin/pibash");
 
+/** Binary path; `PI_BASH_BIN` overrides (parity tests / non-standard installs). */
+const pibashBin = (): string => process.env.PI_BASH_BIN || PIBASH_BIN;
+
 /** Fallback lines land in the existing gate log, reusing its schema. */
 const PGATE_NDJSON = resolve(extDir, "../../logs/violation-memory.ndjson");
 const SESSION_ID = randomUUID();
@@ -285,7 +288,7 @@ function killDaemon(state: DaemonState, reason: string): void {
 }
 
 function startDaemon(): DaemonState {
-  const proc = spawn(PIBASH_BIN, ["--serve"], { stdio: ["pipe", "pipe", "ignore"] });
+  const proc = spawn(pibashBin(), ["--serve"], { stdio: ["pipe", "pipe", "ignore"] });
   const state: DaemonState = {
     proc,
     stdin: proc.stdin as unknown as PipeStdin,
@@ -431,7 +434,7 @@ function oneShot(
   const args = ["--command", command, "--cwd", cwd];
   if (timeout !== undefined) args.push("--timeout", String(timeout));
   return new Promise<PibashEnvelope>((resolve, reject) => {
-    const proc = spawn(PIBASH_BIN, args, { stdio: ["ignore", "pipe", "ignore"], env });
+    const proc = spawn(pibashBin(), args, { stdio: ["ignore", "pipe", "ignore"], env });
     let stdout = "";
     proc.stdout?.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");
