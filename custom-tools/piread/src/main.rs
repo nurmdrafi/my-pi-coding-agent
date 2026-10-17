@@ -12,8 +12,10 @@ use std::fmt;
 use std::process::ExitCode;
 
 mod cli;
+mod compress;
 mod envelope;
 mod pipeline;
+mod procgroup;
 mod serve;
 
 use cli::{parse_args, Parsed};
@@ -38,7 +40,7 @@ fn main() -> ExitCode {
         Ok(Parsed::Serve) => serve::serve(),
         Ok(Parsed::Run(run)) => {
             let resolved = pipeline::resolve_path(&run.path);
-            match pipeline::read_text(&resolved, &run.path, run.offset, run.limit, run.line_cap) {
+            match pipeline::read_text_compacted(&resolved, &run.path, run.offset, run.limit, run.line_cap) {
                 Ok(out) => {
                     let json = success_envelope(
                         &out.content,

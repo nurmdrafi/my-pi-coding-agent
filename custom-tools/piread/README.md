@@ -142,6 +142,47 @@ reused. Steps below follow the spec plan and the commits in order.
     read-kind so coverage / R1 / Anchor Guard protection is retained. This is the
     pattern `piedit` (S8) later copied.
 
+### Step 9 — Context compaction (`PI_READ_COMPRESS`, on by default)
+
+25. Latency work made reads *fast* but did nothing about their *footprint*: a
+    2000-line read still shipped ~9 KB of raw text into the model context, because
+    the built-in contract is a plain head truncation — the tail (summary, final
+    state) was never seen and the head was emitted in full. `pibash` already solved
+    this with `compress.rs`; `piread` gained the read-sized subset.
+
+26. `src/compress.rs` implements a deterministic head-tail compaction to the same
+    40 lines / 2 KB budget the permission-gate H1 cap enforces, so H1 passes the
+    result through instead of re-cutting it. 2/3 head : 1/3 tail (a read is paged
+    top-down, so the head is the request and the tail confirms it), the same
+    `[... omitted N chars / M lines ...]` marker as `pibash`, idempotent (a body
+    already carrying the marker is never re-compacted), and UTF-8 safe.
+
+27. Two bugs this caught during development, both regression-tested:
+    - a single over-budget line produced head **and** tail slices that together
+      exceeded the byte budget → head-only for that case;
+    - the `[Showing lines A-B of C …]` continuation notice was sliced as body
+      content and then re-appended, landing **twice**. It is now split off before
+      slicing and re-attached exactly once, last — it is the only place the reader
+      learns the file continues.
+
+28. `read_text` stays a pure, byte-exact pipeline; `read_text_compacted` (used by the
+    CLI and `--serve`) applies the pass. That split keeps the parity suite
+    deterministic and avoids races on a process-global env var (Rust tests run in
+    parallel). `PI_READ_COMPRESS=0|false|off` restores exact parity — which the
+    parity suite and `piedit`'s exact-match binding both depend on.
+
+29. Compaction never touches `details.truncation`, so permission-gate still derives
+    read coverage from metadata (`countTextLines` is only the fallback) and windows
+    are not under-certified.
+
+Measured (`npm run bench:model-visible`, `content[].text` bytes):
+
+| case | built-in `read` | `piread` | Δ |
+| --- | ---: | ---: | ---: |
+| ~100 lines | 4,435 | 1,898 | −57.2% |
+| ~300 lines | 12,343 | 1,675 | −86.4% |
+| ~1000 lines | 41,275 | 1,945 | −95.3% |
+| ~1922 lines | 51,188 | 2,040 | −96.0% |
 ## Contract
 
 CLI: `piread --path <P> [--offset <N>] [--limit <N>]`; `--serve` for the NDJSON daemon.

@@ -36,9 +36,54 @@ pub struct PipelineOutput {
     pub total_bytes: u64,
 }
 
+/// `read_text` plus the model-visible head-tail compaction.
+///
+/// This is the entry point the CLI and `--serve` use. Compaction is **on by
+/// default** (`PI_READ_COMPRESS=0|false|off` restores byte parity) and only
+/// reshapes the model-visible text: `truncation` metadata is preserved, so the
+/// permission gate still learns the true line count and the reader still sees
+/// the `[Showing lines A-B of C ...]` continuation notice.
+///
+/// A body that already fits the budget is returned untouched, so small reads
+/// are byte-identical to the built-in in either mode.
+pub fn read_text_compacted(
+    resolved: &str,
+    raw_path: &str,
+    offset: Option<u64>,
+    limit: Option<u64>,
+    line_cap: Option<u64>,
+) -> Result<PipelineOutput, ToolError> {
+    let mut out = read_text(resolved, raw_path, offset, limit, line_cap)?;
+    if !crate::compress::compression_enabled() {
+        return Ok(out);
+    }
+    let compacted = crate::compress::compact(
+        &out.content,
+        crate::compress::COMPRESS_MAX_LINES,
+        crate::compress::COMPRESS_MAX_BYTES,
+    );
+    if compacted.omitted_chars > 0 {
+        // One stderr line per compaction, matching the fallback-notice
+        // convention. Never model-visible.
+        eprintln!(
+            "piread: compacted ({}) {} -> {} chars, omitted {} (partial={})",
+            compacted.strategy,
+            compacted.original_chars,
+            compacted.visible_chars,
+            compacted.omitted_chars,
+            compacted.partial,
+        );
+    }
+    out.content = compacted.content;
+    Ok(out)
+}
 /// Full pipeline: open `resolved`, apply 1-based `offset` (≥1) / `limit` (≥1),
 /// truncate, render notes. `raw_path` is the caller-supplied path used inside
 /// the sed fallback note, exactly like the built-in.
+///
+/// Compaction is NOT applied here — see `read_text_compacted`, which the CLI
+/// and the daemon call. Keeping this function pure is what lets the parity
+/// suite pin byte-identical output against the built-in read.
 pub fn read_text(
     resolved: &str,
     raw_path: &str,
@@ -120,6 +165,11 @@ pub fn read_text(
         user_limited,
         first_line_len,
     );
+    // NOTE: no compaction here. `read_text` stays a pure, byte-exact pipeline
+    // (the built-in read's contract) so the parity suite can assert against it
+    // deterministically. Compaction is applied by the CLI and daemon entry
+    // points via `read_text_compacted`, which keeps this function free of
+    // process-global env state (Rust tests run in parallel and would race).
     Ok(PipelineOutput {
         content,
         truncation,

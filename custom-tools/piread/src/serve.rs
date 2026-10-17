@@ -41,6 +41,9 @@ struct Request {
 /// Serve until stdin EOF or an unwritable stdout (parent gone). Always exits
 /// 0: per-request failures are error envelopes, not process failures.
 pub fn serve() -> ExitCode {
+    // Own process group: a group-wide kill from the client's group (pibash's
+    // kill_tree, job control, CI timeout) must not take the daemon down.
+    crate::procgroup::isolate_process_group("piread");
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut out = stdout.lock();
@@ -89,7 +92,7 @@ fn handle_into(req: &Request, buf: &mut Vec<u8>) {
             .into_owned()
     });
     let resolved = pipeline::resolve_path_against(&req.path, &base);
-    match pipeline::read_text(&resolved, &req.path, req.offset, req.limit, req.line_cap) {
+    match pipeline::read_text_compacted(&resolved, &req.path, req.offset, req.limit, req.line_cap) {
         Ok(out) => write_success_with_id(
             buf,
             Some(&req.id),

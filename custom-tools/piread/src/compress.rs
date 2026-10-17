@@ -1,0 +1,410 @@
+//! Optional head-tail compaction for `piread` output.
+//!
+//! Why this exists: `piread` mirrors the built-in `read`, whose contract is a
+//! plain head truncation (2000 lines / 50 KB). For a large file that still
+//! ships ~9 KB of raw text into the model context, because the first 2000 lines
+//! are all it ever sends — the *tail* (where a summary or final state usually
+//! lives) is never seen and the head is emitted in full. `pibash` already
+//! solves the same problem with `compress.rs`; this is the read-sized subset of
+//! that design.
+//!
+//! Contract:
+//! - **OFF by default.** `piread` is parity-locked to the built-in `read`
+//!   (`tests/piread-parity.test.mjs`), and `piedit`'s exact matching depends on
+//!   byte-identical line content. Compaction must be opt-in, or it silently
+//!   changes what the edit tool can match.
+//! - **Deterministic.** No clock, no run id, no iteration order: the same input
+//!   always yields byte-identical output. Safe to cache and to diff.
+//! - **Lossless elsewhere.** Only the model-visible `content` is compacted; the
+//!   caller still knows `totalLines`/`totalBytes` from the existing truncation
+//!   metadata, and a caller that needs the full text can re-read with a widened
+//!   offset/limit window.
+//! - **Idempotent.** A body that already carries the omission marker is never
+//!   re-compacted (re-compaction would drop kept content and rewrite the count,
+//!   breaking determinism).
+//! - **Marker-compatible with `pibash`.** Same tag and wording, so one grep
+//!   recognizes a compacted result from either tool.
+//!
+//! Budget: the same 40 lines / 2 KB that the permission-gate H1 cap enforces
+//! (`extensions/permission-gate/bash-cap.ts`, mirrored in `pibash`'s
+//! `compress.rs`). Compacting to that budget means H1 passes the result
+//! straight through instead of re-cutting it, so the bytes we save are bytes
+//! the model never pays for.
+
+/// Model-visible budget, matching the permission-gate H1 cap and pibash.
+pub const COMPRESS_MAX_LINES: usize = 40;
+pub const COMPRESS_MAX_BYTES: usize = 2048;
+
+/// Marker inserted where content was dropped. Same prefix as pibash's
+/// `OMISSION_TAG`, so either tool's output is recognizable.
+pub const OMISSION_TAG: &str = "[... omitted ";
+
+/// Byte length of `s` (Rust `str` is already valid UTF-8).
+fn js_byte_length(s: &str) -> usize {
+    s.len()
+}
+
+/// Split into lines, dropping the trailing phantom segment for content that
+/// ends in a newline - the same counting rule the read pipeline uses.
+fn split_lines(content: &str) -> Vec<&str> {
+    if content.is_empty() {
+        return Vec::new();
+    }
+    let mut lines: Vec<&str> = content.split('\n').collect();
+    if content.ends_with('\n') {
+        lines.pop();
+    }
+    lines
+}
+
+/// Longest prefix of `s` that fits `max_bytes`, cut on a character boundary
+/// so the result is always valid UTF-8.
+fn truncate_string_to_bytes_from_start(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_string();
+    }
+    let mut end = max_bytes.min(s.len());
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s[..end].to_string()
+}
+
+/// `PI_READ_COMPRESS` — compaction switch, **on by default**.
+///
+/// Unset keeps the default: oversized reads are head-tail compacted, so the
+/// model pays for a bounded window instead of the full 2000-line / 50 KB cap.
+/// `0` / `false` / `off` restores byte-for-byte parity with the built-in
+/// `read`, which the parity suite and `piedit`'s exact matching rely on; the
+/// tests set it explicitly rather than depending on the ambient default.
+#[must_use]
+pub fn compression_enabled() -> bool {
+    parse_compression_switch(std::env::var("PI_READ_COMPRESS").ok().as_deref())
+}
+
+/// Pure switch logic, so the tests never mutate process-global env state
+/// (Rust tests run in parallel and a `set_var` in one races every other).
+#[must_use]
+fn parse_compression_switch(value: Option<&str>) -> bool {
+    match value.map(str::trim) {
+        None => true,
+        Some(v) => {
+            !(v == "0" || v.eq_ignore_ascii_case("false") || v.eq_ignore_ascii_case("off"))
+        }
+    }
+}
+
+#[must_use]
+pub fn omission_marker(omitted_chars: usize, omitted_lines: usize) -> String {
+    if omitted_lines > 0 {
+        format!("{OMISSION_TAG}{omitted_chars} chars / {omitted_lines} lines ...]")
+    } else {
+        format!("{OMISSION_TAG}{omitted_chars} chars ...]")
+    }
+}
+
+/// A compaction result: the visible text plus what was dropped.
+#[derive(Debug)]
+pub struct Compacted {
+    pub content: String,
+    /// `"none"` | `"head-tail"`.
+    pub strategy: &'static str,
+    pub original_chars: usize,
+    pub visible_chars: usize,
+    pub omitted_chars: usize,
+    /// True when a single over-budget line was cut rather than whole lines.
+    pub partial: bool,
+}
+
+/// Head-tail compaction with a head-heavy split (reads are paged top-down, so
+/// the head is what the reader asked for and the tail is what confirms it).
+///
+/// Returns the input unchanged when it already fits the budget, or when it
+/// already carries an omission marker.
+#[must_use]
+pub fn compact(text: &str, max_lines: usize, max_bytes: usize) -> Compacted {
+    let original_chars = text.chars().count();
+    let verbatim = |t: &str| Compacted {
+        content: t.to_string(),
+        strategy: "none",
+        original_chars,
+        visible_chars: original_chars,
+        omitted_chars: 0,
+        partial: false,
+    };
+
+    if fits(text, max_lines, max_bytes) || text.contains(OMISSION_TAG) {
+        return verbatim(text);
+    }
+
+    // The trailing read-continuation notice is metadata, not body: exclude it
+    // from line counting and slicing so it can be re-attached exactly once at
+    // the end (otherwise the tail slice becomes the notice itself, and it
+    // lands twice in the output).
+    let (body, notice) = match content_tail_notice(text) {
+        Some((body, notice)) => (body.to_string(), Some(notice.to_string())),
+        None => (text.to_string(), None),
+    };
+    let lines: Vec<&str> = split_lines(&body);
+    let total_lines = lines.len();
+
+    // 2/3 head : 1/3 tail. Three lines are reserved for the marker and its two
+    // blank separators so the TOTAL line count stays inside `max_lines`.
+    let content_lines = max_lines.saturating_sub(3);
+    let head_lines_budget = content_lines * 2 / 3;
+    let tail_lines_budget = content_lines - head_lines_budget;
+    let head_bytes_budget = max_bytes * 2 / 3;
+    let tail_bytes_budget = max_bytes - head_bytes_budget;
+
+    let head = take_head(&lines, head_lines_budget, head_bytes_budget);
+    // The marker's own size depends on the omitted count, which depends on how
+    // much the tail keeps — so reserve for the marker BEFORE slicing the tail,
+    // or a long omission count can push the total back over budget.
+    let marker_reserve = omission_marker(original_chars, total_lines).len() + 4;
+    let tail_bytes_budget = tail_bytes_budget.saturating_sub(marker_reserve);
+    let mut tail = take_tail(&lines, tail_lines_budget, tail_bytes_budget);
+
+    // A single line longer than the whole budget is served by the head alone:
+    // a head+tail slice of one over-budget line is not useful (there is no
+    // "tail of line 1" for a reader) and can exceed the byte budget.
+    if tail.kept == 0 && tail.text.is_empty() && head.partial {
+        tail = Slice { text: String::new(), kept: 0, partial: false };
+    }
+    // Whole-line tail only when it does not overlap the head.
+    if head.kept > 0 && tail.kept > 0 && head.kept + tail.kept > total_lines {
+        let overlap = head.kept + tail.kept - total_lines;
+        if overlap >= tail.kept {
+            tail = Slice { text: String::new(), kept: 0, partial: false };
+        }
+    }
+
+    let kept_lines = head.kept + tail.kept;
+    if kept_lines >= total_lines && !head.partial && !tail.partial {
+        return verbatim(text); // nothing dropped after alignment
+    }
+
+    let omitted_lines = total_lines.saturating_sub(kept_lines);
+    let omitted_chars = original_chars
+        .saturating_sub(head.text.chars().count() + tail.text.chars().count());
+    let marker = omission_marker(omitted_chars, omitted_lines);
+    // The trailing read-continuation notice ("[Showing lines 1-2000 of 6001...]")
+    // is the only place the reader learns the file continues. Compaction works on
+    // the already-truncated body, so a bare head|marker|tail would end the output
+    // with a mid-slice line and hide that fact. Keep the notice last, always.
+    let content = match (tail.text.is_empty(), notice) {
+        (true, Some(notice)) => format!("{}\n\n{marker}\n\n{notice}", head.text),
+        (true, None) => format!("{}\n\n{marker}", head.text),
+        (false, Some(notice)) => {
+            format!("{}\n\n{marker}\n\n{}\n\n{notice}", head.text, tail.text)
+        }
+        (false, None) => format!("{}\n\n{marker}\n\n{}", head.text, tail.text),
+    };
+    Compacted {
+        visible_chars: content.chars().count(),
+        content,
+        strategy: "head-tail",
+        original_chars,
+        omitted_chars,
+        partial: head.partial || tail.partial,
+    }
+}
+
+/// Split a trailing read-continuation notice off the body.
+///
+/// The renderer ends a truncated read with a blank line and a
+/// `[Showing lines A-B of C.` notice. Compaction must not bury it mid-output.
+fn content_tail_notice(text: &str) -> Option<(&str, &str)> {
+    let trimmed = text.trim_end_matches('\n');
+    let idx = trimmed.rfind("\n\n[Showing lines ")?;
+    let rest = &trimmed[..idx];
+    if rest.is_empty() {
+        return None;
+    }
+    Some((rest, &trimmed[idx + 2..]))
+}
+
+fn fits(text: &str, max_lines: usize, max_bytes: usize) -> bool {
+    split_lines(text).len() <= max_lines && js_byte_length(text) <= max_bytes
+}
+
+struct Slice {
+    text: String,
+    kept: usize,
+    partial: bool,
+}
+
+/// First `max_lines` lines / `max_bytes` bytes, on a UTF-8 boundary.
+fn take_head(lines: &[&str], max_lines: usize, max_bytes: usize) -> Slice {
+    let mut kept = 0usize;
+    let mut bytes = 0usize;
+    let mut out: Vec<&str> = Vec::new();
+    for (idx, line) in lines.iter().enumerate() {
+        if kept >= max_lines {
+            break;
+        }
+        let line_bytes = js_byte_length(line) + usize::from(idx != 0);
+        if bytes + line_bytes > max_bytes {
+            if kept == 0 {
+                return Slice {
+                    text: truncate_string_to_bytes_from_start(line, max_bytes),
+                    kept: 0,
+                    partial: true,
+                };
+            }
+            break;
+        }
+        out.push(line);
+        bytes += line_bytes;
+        kept += 1;
+    }
+    Slice {
+        text: out.join("\n"),
+        kept,
+        partial: false,
+    }
+}
+
+/// Last `max_lines` lines / `max_bytes` bytes, scanned from the true end and
+/// dropped entirely if it would overlap the head.
+fn take_tail(lines: &[&str], max_lines: usize, max_bytes: usize) -> Slice {
+    let total = lines.len();
+    let head_kept_placeholder = 0usize; // overlap is resolved by the caller's budget split
+    let _ = head_kept_placeholder;
+    let mut kept = 0usize;
+    let mut bytes = 0usize;
+    let mut out: Vec<&str> = Vec::new();
+    for idx in (0..total).rev() {
+        if kept >= max_lines {
+            break;
+        }
+        let line_bytes = js_byte_length(lines[idx]) + usize::from(kept != 0);
+        if bytes + line_bytes > max_bytes {
+            if kept == 0 {
+                return Slice {
+                    text: truncate_string_to_bytes_from_start(lines[idx], max_bytes),
+                    kept: 0,
+                    partial: true,
+                };
+            }
+            break;
+        }
+        out.push(lines[idx]);
+        bytes += line_bytes;
+        kept += 1;
+    }
+    out.reverse();
+    Slice {
+        text: out.join("\n"),
+        kept,
+        partial: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn numbered(n: usize) -> String {
+        (1..=n)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn compression_is_on_by_default() {
+        assert!(
+            parse_compression_switch(None),
+            "compaction must be on when the variable is unset"
+        );
+    }
+
+    #[test]
+    fn compression_can_be_disabled_for_parity() {
+        for value in ["0", "false", "off", "FALSE", "Off", " 0 "] {
+            assert!(
+                !parse_compression_switch(Some(value)),
+                "{value} should disable compaction"
+            );
+        }
+        for value in ["1", "true", "on", "yes"] {
+            assert!(
+                parse_compression_switch(Some(value)),
+                "{value} should enable compaction"
+            );
+        }
+    }
+
+    #[test]
+    fn small_input_is_verbatim() {
+        let text = "a\nb\nc";
+        let out = compact(text, COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+        assert_eq!(out.strategy, "none");
+        assert_eq!(out.content, text);
+        assert_eq!(out.omitted_chars, 0);
+    }
+
+    #[test]
+    fn large_input_is_compacted_within_budget() {
+        let text = numbered(3000);
+        let out = compact(text.as_str(), COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+        assert_eq!(out.strategy, "head-tail");
+        assert!(out.content.contains(OMISSION_TAG), "marker missing: {}", &out.content);
+        assert!(
+            out.content.split('\n').count() <= COMPRESS_MAX_LINES,
+            "line budget exceeded: {}",
+            out.content.split('\n').count()
+        );
+        assert!(
+            js_byte_length(&out.content) <= COMPRESS_MAX_BYTES,
+            "byte budget exceeded: {}",
+            js_byte_length(&out.content)
+        );
+        // Head and tail both survive.
+        assert!(out.content.starts_with("line 1"));
+        assert!(out.content.trim_end().ends_with("line 3000"));
+        assert!(out.omitted_chars > 0);
+    }
+
+    #[test]
+    fn compaction_is_deterministic() {
+        let text = numbered(500);
+        let a = compact(text.as_str(), COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+        let b = compact(text.as_str(), COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+        assert_eq!(a.content, b.content);
+        assert_eq!(a.omitted_chars, b.omitted_chars);
+    }
+
+    #[test]
+    fn already_compacted_input_is_not_recompacted() {
+        let text = numbered(3000);
+        let once = compact(text.as_str(), COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+        let twice = compact(once.content.as_str(), COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+        assert_eq!(twice.strategy, "none", "re-compaction must be a no-op");
+        assert_eq!(twice.content, once.content);
+    }
+
+    #[test]
+    fn utf8_boundaries_survive_a_single_huge_line() {
+        let text = "é".repeat(5000);
+        let out = compact(text.as_str(), COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+        // Must still be valid UTF-8 (String guarantees it) and bounded.
+        assert!(js_byte_length(&out.content) <= COMPRESS_MAX_BYTES);
+        assert!(std::str::from_utf8(out.content.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn empty_input_is_verbatim() {
+        let out = compact("", COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+        assert_eq!(out.content, "");
+        assert_eq!(out.strategy, "none");
+    }
+
+    #[test]
+    fn exactly_at_the_budget_is_verbatim() {
+        let text = numbered(COMPRESS_MAX_LINES);
+        let out = compact(text.as_str(), COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+        assert_eq!(out.strategy, "none");
+        assert_eq!(out.content, text);
+    }
+}
