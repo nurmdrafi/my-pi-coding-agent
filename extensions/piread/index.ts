@@ -367,7 +367,16 @@ function daemonRequest(
     // 'data', no write error, and no further 'exit' — the awaited call would
     // dangle for the life of the host process. Refuse it so the ladder moves
     // to the one-shot rung; the next dispatch lazily starts a fresh daemon.
-    if (state.dying || state.stdin.destroyed || state.stdin.writableEnded) {
+    // `state.dying` is the authoritative flag: it is set before the pending
+    // sweep, so a request racing the teardown is refused rather than added to
+    // a map that is never swept again.
+    if (
+      state.dying ||
+      state.stdin.destroyed ||
+      state.stdin.writableEnded ||
+      state.proc.exitCode !== null ||
+      state.proc.signalCode !== null
+    ) {
       reject(new DaemonUnavailableError("daemon torn down"));
       return;
     }
@@ -425,6 +434,14 @@ function abortError(): Error {
 const isAbort = (err: unknown, signal: AbortSignal | undefined): boolean =>
   signal?.aborted === true || (err instanceof Error && err.name === "AbortError");
 
+/**
+ * Upper bound on a one-shot spawn. The daemon leg is bounded by its own death
+ * handlers, but a one-shot child that never exits (a wedged or wrong binary)
+ * otherwise hangs the call forever — the cross-rung hang the settle suite pins.
+ * On expiry the ladder falls through to the built-in, which always answers.
+ */
+const ONESHOT_TIMEOUT_MS = 15_000;
+
 /** One-shot rung: per-call spawn, the pre-daemon dispatch path verbatim. */
 async function oneshotDispatch(
   path: string,
@@ -443,13 +460,16 @@ async function oneshotDispatch(
     ({ stdout } = await execFileAsync(pireadBin(), args, {
       cwd: spawnCwd,
       signal,
+      timeout: ONESHOT_TIMEOUT_MS,
       maxBuffer: 16 * 1024 * 1024,
     }));
   } catch (err) {
-    const e = err as NodeJS.ErrnoException & { code?: string | number };
+    const e = err as NodeJS.ErrnoException & { code?: string | number; killed?: boolean };
     if (signal?.aborted || e.name === "AbortError") throw abortError();
-    // execFile failures: numeric `code` is the child's exit status (piread
+    // execFile failures: a killed child is our own timeout ("exit null" would
+    // be uninformative); numeric `code` is the child's exit status (piread
     // usage/I-O errors), anything else (ENOENT, EACCES…) is a spawn failure.
+    if (e.killed) throw new OneshotError(`timeout after ${ONESHOT_TIMEOUT_MS}ms`);
     throw new OneshotError(
       typeof e.code === "number" ? `exit ${e.code}` : `spawn ${String(e.code ?? e.message)}`,
     );

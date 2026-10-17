@@ -27,9 +27,23 @@ const file = join(dir, "f.txt");
 writeFileSync(file, "hello\nworld\n");
 const realBin = join(ROOT, "bin", "piread");
 // A "daemon" that keeps stdin open and never answers: the request is written
-// into a live pipe, then the daemon is killed out from under it.
+// into a live pipe, then the daemon is killed out from under it. It answers
+// correctly when invoked WITHOUT --serve, so the one-shot rung (the ladder's
+// fallback for a died daemon) resolves immediately instead of stalling on a
+// wedged child. The assertion below is about the DAEMON leg not leaking, not
+// about how long a mute binary takes to give up.
 const mute = join(dir, "mute-bin");
-writeFileSync(mute, "#!/bin/sh\nexec sleep 30\n");
+writeFileSync(
+  mute,
+  [
+    "#!/bin/sh",
+    'for a in "$@"; do [ "$a" = "--serve" ] && exec sleep 30; done',
+    `cat <<'JSON'`,
+    `{"ok":true,"content":"from-oneshot\\n","binary":false,"totalBytes":13}`,
+    `JSON`,
+    "",
+  ].join("\n"),
+);
 chmodSync(mute, 0o755);
 const ctx = { cwd: dir };
 
