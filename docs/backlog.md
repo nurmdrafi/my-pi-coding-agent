@@ -191,6 +191,45 @@ for: (a) does it prevent a real, observed harm? (b) is the harm cheaper than its
 friction? (c) is the rule mechanically checkable, or is it prose the model must
 remember? Rules that fail all three should go.
 
+**Why prose rules in AGENTS.md / SYSTEM.md do not stick (observed this round).**
+The question "the rule is written down, why does the model break it again
+anyway" has five concrete answers, all visible in the data above:
+
+1. **A prose rule is broader than the check it triggers.** `Search
+   (node_modules)` fired on commands whose *text* contained `node_modules`,
+   including `--glob '!node_modules'` where the exclusion is the correct
+   behavior. The rule "do not crawl node_modules" cannot distinguish crawling
+   from excluding, so it fires on the pattern. A rule is only as good as the
+   narrowest checkable predicate behind it.
+2. **Rules compete, and ties are resolved by whatever is most immediate.**
+   `Anchor Guard` (103 hits) is "oldText is exact bytes from a read this
+   session"; the competing pressure is "answer now". Skipping the read is not
+   defiance of the rule, it is the rule losing a tie-break nobody specified.
+   Rules without stated precedence lose to urgency.
+3. **Nothing removes rules, so salience decays.** Four families never passed
+   any threshold in six days. Every dead rule costs prompt budget on every call
+   and dilutes the live ones; 20 rules is not 20x safer than 5, it is 5% as
+   salient each.
+4. **A derived justification defeats an unwritten rule.** The build-approved /
+   install-performed incident had no rule saying "re-ask when the effect
+   differs". A general Safety section was *reasoned from* into a permission it
+   did not grant. Missing structure, not missing text.
+5. **Two instruction files with no precedence rule.** `SYSTEM.md` appeared
+   (commit 84657fe) after AGENTS.md was established. If both carry
+   instructions, contradictions have no defined resolution.
+
+**What works better, in priority order:** (a) mechanical guards over prose —
+the gate blocking a real command beats any sentence asking not to run it;
+(b) fewer, higher-salience rules, pruned with the (a)/(b)/(c) audit above;
+(c) explicit precedence for when rules conflict; (d) a single instructions
+file, or an explicit SYSTEM.md-overrides-AGENTS.md statement; (e) structural
+reminders ("read before edit" as a gate) rather than repeated admonition.
+
+**The structural limit:** nothing durable carries a lesson forward except the
+prompt. Chat corrections are compacted away, so a rule absent from the prompt
+at the moment of action will be broken again — which is precisely what
+violation-memory exists to mitigate.
+
 **Open question B — time-based relaxation.** Proposal to review: allow
 re-writing a file that was already written if ≥60 s have passed, on the
 grounds that a re-write after a real interval is normally evidence-driven (new
