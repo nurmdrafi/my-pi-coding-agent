@@ -25,6 +25,7 @@ mod cli;
 mod diff;
 mod envelope;
 mod pipeline;
+mod procgroup;
 mod serve;
 
 use cli::{parse_args, Parsed};

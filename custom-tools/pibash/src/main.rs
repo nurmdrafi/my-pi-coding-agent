@@ -9,6 +9,7 @@ mod accumulator;
 mod cli;
 mod compress;
 mod envelope;
+mod procgroup;
 mod render;
 mod runner;
 mod serve;

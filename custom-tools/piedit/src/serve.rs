@@ -48,6 +48,9 @@ struct Request {
 /// Serve until stdin EOF or an unwritable stdout (parent gone). Always exits
 /// 0: per-request failures are error envelopes, not process failures.
 pub fn serve() -> ExitCode {
+    // Own process group: a group-wide kill from the client's group must not
+    // take the daemon down.
+    crate::procgroup::isolate_process_group("piedit");
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     let stdout = io::stdout();

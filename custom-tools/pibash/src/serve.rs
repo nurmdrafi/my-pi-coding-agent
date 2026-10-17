@@ -32,6 +32,10 @@ const UPDATE_THROTTLE: Duration = Duration::from_millis(100);
 
 /// Read requests until stdin closes; never exits on a per-line error.
 pub fn run() -> Result<(), String> {
+    // Own process group: the daemon runs command trees, and pibash's own
+    // kill_tree signals the child's group. Sharing the client's group meant a
+    // timeout kill could reach the daemon itself.
+    crate::procgroup::isolate_process_group("pibash");
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut line = String::new();
