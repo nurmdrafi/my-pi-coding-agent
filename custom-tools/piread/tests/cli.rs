@@ -160,8 +160,14 @@ fn tiny_file_success_envelope_shape() {
     assert_eq!(json["truncation"], Value::Null);
     assert_eq!(json["binary"], false);
     assert_eq!(json["totalBytes"], 13);
+    // Compaction diagnostics ride in the envelope rather than on stderr; a
+    // read that fits the budget reports `null`.
+    assert_eq!(json["compaction"], Value::Null);
     // exactly the documented keys, in the documented order
     let keys: Vec<&str> =
         json.as_object().unwrap().keys().map(|k| k.as_str()).collect();
-    assert_eq!(keys, ["ok", "content", "truncation", "binary", "totalBytes"]);
+    assert_eq!(
+        keys,
+        ["ok", "content", "truncation", "binary", "totalBytes", "compaction"]
+    );
 }

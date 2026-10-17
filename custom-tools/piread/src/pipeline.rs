@@ -34,7 +34,14 @@ pub struct PipelineOutput {
     pub binary: bool,
     /// Raw file size in bytes.
     pub total_bytes: u64,
+    /// Head-tail compaction diagnostics, present only when the body was
+    /// compacted. Carried in the envelope's `compaction` field instead of
+    /// being printed: a stderr line surfaces in hosts that relay tool stderr,
+    /// where `piread: compacted (...)` reads as noise, not information.
+    pub compaction: Option<CompactionWire<'static>>,
 }
+
+pub use crate::envelope::CompactionWire;
 
 /// `read_text` plus the model-visible head-tail compaction.
 ///
@@ -63,20 +70,21 @@ pub fn read_text_compacted(
         crate::compress::COMPRESS_MAX_BYTES,
     );
     if compacted.omitted_chars > 0 {
-        // One stderr line per compaction, matching the fallback-notice
-        // convention. Never model-visible.
-        eprintln!(
-            "piread: compacted ({}) {} -> {} chars, omitted {} (partial={})",
-            compacted.strategy,
-            compacted.original_chars,
-            compacted.visible_chars,
-            compacted.omitted_chars,
-            compacted.partial,
-        );
+        // Structured, not printed: the notice travels in the JSON envelope so
+        // it stays available for debugging without ever reaching a stream a
+        // host might relay into the conversation.
+        out.compaction = Some(CompactionWire {
+            strategy: compacted.strategy,
+            original_chars: compacted.original_chars,
+            visible_chars: compacted.visible_chars,
+            omitted_chars: compacted.omitted_chars,
+            partial: compacted.partial,
+        });
     }
     out.content = compacted.content;
     Ok(out)
 }
+
 /// Full pipeline: open `resolved`, apply 1-based `offset` (≥1) / `limit` (≥1),
 /// truncate, render notes. `raw_path` is the caller-supplied path used inside
 /// the sed fallback note, exactly like the built-in.
@@ -175,6 +183,7 @@ pub fn read_text(
         truncation,
         binary: segs.binary,
         total_bytes: segs.raw_seen,
+        compaction: None,
     })
 }
 
@@ -682,7 +691,7 @@ mod tests {
     // ---- full pipeline over real files (fixtures from the Step 2 dump) ----
 
     mod file {
-        use super::super::{read_text, PipelineOutput};
+        use super::super::{read_text, read_text_compacted, PipelineOutput};
         use crate::envelope::{ErrorKind, TruncationKind};
         use crate::ToolError;
         use std::fs;
@@ -858,6 +867,26 @@ mod tests {
             let out = read(&tmp_file("limit", b"a\nb\nc\nd\n"), None, Some(2)).unwrap();
             assert_eq!(out.content, "a\nb\n\n[3 more lines in file. Use offset=3 to continue.]");
             assert!(out.truncation.is_none());
+        }
+
+        #[test]
+        fn compaction_diagnostics_are_envelope_only() {
+            // The head-tail compaction notice is a debugging detail. It must be
+            // readable from the envelope (`details.compaction`) and must never
+            // be written to a stream, so a host that surfaces stderr cannot
+            // echo `piread: compacted (...)` into the conversation.
+            let body: String = (0..2500).map(|i| format!("line{:04}\n", i)).collect();
+            let f = tmp_file("compacted-envelope", body.as_bytes());
+            let resolved = f.to_string_lossy().to_string();
+            let out = read_text_compacted(&resolved, &resolved, None, None, None).unwrap();
+            let notable = out.compaction.as_ref().expect("oversized read is compacted");
+            assert_eq!(notable.strategy, "head-tail");
+            assert!(notable.omitted_chars > 0);
+            assert!(out.content.contains(crate::compress::OMISSION_TAG));
+            assert!(
+                !out.content.contains("piread: compacted"),
+                "diagnostic must not enter model-visible content"
+            );
         }
 
         #[test]

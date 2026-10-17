@@ -47,6 +47,7 @@ fn main() -> ExitCode {
                         out.truncation.as_ref(),
                         out.binary,
                         out.total_bytes,
+                        out.compaction.as_ref(),
                     );
                     println!("{json}");
                     ExitCode::SUCCESS

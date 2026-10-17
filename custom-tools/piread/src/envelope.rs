@@ -54,6 +54,21 @@ struct Success<'a> {
     truncation: Option<&'a Truncation>,
     binary: bool,
     total_bytes: u64,
+    compaction: Option<CompactionWire<'a>>,
+}
+
+/// Head-tail compaction diagnostics carried in the success envelope
+/// (`compaction`). `Serialize + PartialEq` so the serde-derive parity test can
+/// compare it against the hand-rolled writer; owned by the envelope so
+/// `pipeline` re-exports it instead of defining a mirror type.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionWire<'a> {
+    pub strategy: &'a str,
+    pub original_chars: usize,
+    pub visible_chars: usize,
+    pub omitted_chars: usize,
+    pub partial: bool,
 }
 
 #[derive(Serialize)]
@@ -113,9 +128,18 @@ pub fn success_envelope(
     truncation: Option<&Truncation>,
     binary: bool,
     total_bytes: u64,
+    compaction: Option<&CompactionWire<'_>>,
 ) -> String {
     let mut buf = Vec::new();
-    write_success_with_id(&mut buf, None, content, truncation, binary, total_bytes);
+    write_success_with_id(
+        &mut buf,
+        None,
+        content,
+        truncation,
+        binary,
+        total_bytes,
+        compaction,
+    );
     String::from_utf8(buf).expect("success envelope is UTF-8")
 }
 
@@ -290,6 +314,7 @@ pub fn write_success_with_id(
     truncation: Option<&Truncation>,
     binary: bool,
     total_bytes: u64,
+    compaction: Option<&CompactionWire<'_>>,
 ) {
     buf.extend_from_slice(b"{");
     if let Some(id) = id {
@@ -308,6 +333,23 @@ pub fn write_success_with_id(
     write_bool(buf, binary);
     buf.extend_from_slice(b",\"totalBytes\":");
     write_u64(buf, total_bytes);
+    buf.extend_from_slice(b",\"compaction\":");
+    match compaction {
+        None => buf.extend_from_slice(b"null"),
+        Some(c) => {
+            buf.extend_from_slice(b"{\"strategy\":");
+            write_json_str(buf, c.strategy);
+            buf.extend_from_slice(b",\"originalChars\":");
+            write_u64(buf, c.original_chars as u64);
+            buf.extend_from_slice(b",\"visibleChars\":");
+            write_u64(buf, c.visible_chars as u64);
+            buf.extend_from_slice(b",\"omittedChars\":");
+            write_u64(buf, c.omitted_chars as u64);
+            buf.extend_from_slice(b",\"partial\":");
+            write_bool(buf, c.partial);
+            buf.push(b'}');
+        }
+    }
     buf.push(b'}');
 }
 
@@ -396,6 +438,13 @@ mod tests {
             kind: ErrorKind::Enoent,
             message: "ENOENT: no such file or directory, access '/tmp/\"quoted\"'".into(),
         };
+        let compaction = CompactionWire {
+            strategy: "head-tail",
+            original_chars: 9_000,
+            visible_chars: 1_800,
+            omitted_chars: 7_200,
+            partial: true,
+        };
         for id in [None, Some(serde_json::json!({"nonce": 7, "tag": "\"x\n"}))] {
             let mut fast = Vec::new();
             write_success_with_id(
@@ -405,6 +454,7 @@ mod tests {
                 Some(&truncation),
                 true,
                 123_456,
+                Some(&compaction),
             );
             let derived = serde_json::to_string(&Success {
                 id: id.as_ref(),
@@ -413,6 +463,7 @@ mod tests {
                 truncation: Some(&truncation),
                 binary: true,
                 total_bytes: 123_456,
+                compaction: Some(compaction.clone()),
             })
             .unwrap();
             assert_eq!(fast, derived.as_bytes());
@@ -431,7 +482,7 @@ mod tests {
             assert_eq!(fast, derived.as_bytes());
         }
         // untruncated success (truncation: null) via the one-shot wrapper
-        let plain = success_envelope("solo\n", None, false, 5);
+        let plain = success_envelope("solo\n", None, false, 5, None);
         let derived = serde_json::to_string(&Success {
             id: None,
             ok: true,
@@ -439,6 +490,7 @@ mod tests {
             truncation: None,
             binary: false,
             total_bytes: 5,
+            compaction: None,
         })
         .unwrap();
         assert_eq!(plain, derived);

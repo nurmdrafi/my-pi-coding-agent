@@ -203,6 +203,16 @@ type PireadEnvelope = {
   truncation?: unknown;
   binary?: boolean;
   totalBytes?: number;
+  /** Head-tail compaction diagnostics (null when the body fit the budget).
+   * Carried here rather than printed to stderr so it stays observable without
+   * a host echo of `piread: compacted (...)` reaching the conversation. */
+  compaction?: {
+    strategy: string;
+    originalChars: number;
+    visibleChars: number;
+    omittedChars: number;
+    partial: boolean;
+  } | null;
   error?: { kind: string; message: string };
 };
 
@@ -579,7 +589,11 @@ export default function pireadExtension(pi: ExtensionAPI): void {
 
     return {
       content: [{ type: "text", text: envelope.content }],
-      details: { via, ...(envelope.truncation ? { truncation: envelope.truncation } : {}) },
+      details: {
+        via,
+        ...(envelope.truncation ? { truncation: envelope.truncation } : {}),
+        ...(envelope.compaction ? { compaction: envelope.compaction } : {}),
+      },
       structuredContent: envelope.content,
     };
   };

@@ -100,6 +100,7 @@ fn handle_into(req: &Request, buf: &mut Vec<u8>) {
             out.truncation.as_ref(),
             out.binary,
             out.total_bytes,
+            out.compaction.as_ref(),
         ),
         Err(err) => write_fail_with_id(buf, Some(&req.id), &err),
     }
