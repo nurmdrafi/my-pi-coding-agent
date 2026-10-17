@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** pidoc — deterministic harness setup check (macOS + Linux).
+/** pidoc — deterministic harness setup check (macOS + Linux; degrades, never crashes, elsewhere).
  *
  * Usage: node scripts/pidoc.mjs [--fix] [--json]
  * Exit 0 = all pass (warnings allowed); exit 1 = any FAIL.
@@ -7,7 +7,7 @@
  * the skill body carries the ask-first install commands.
  */
 import { existsSync, accessSync, constants, statSync, readdirSync, cpSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, delimiter } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -21,8 +21,18 @@ const JSON_OUT = process.argv.includes('--json');
 const rows = [];
 const row = (status, check, detail, fixHint) => rows.push({ status, check, detail, fixHint: fixHint ?? null });
 const executable = (p) => { try { accessSync(p, constants.X_OK); return true; } catch { return false; } };
+// POSIX shell: /bin/sh on macOS+Linux, but never on Windows — fall back to PATH order
+// there so the health check stays runnable on any host.
+const SHELL = process.platform !== 'win32' && existsSync('/bin/sh') ? '/bin/sh' : null;
 const which = (bin) => {
-  const r = spawnSync('/bin/sh', ['-c', `command -v ${bin}`], { encoding: 'utf8' });
+  if (!SHELL) {
+    const exts = process.platform === 'win32' ? (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';') : [''];
+    for (const dir of (process.env.PATH || '').split(delimiter)) {
+      for (const ext of exts) if (dir && executable(join(dir, bin + (process.platform === 'win32' ? ext.toLowerCase() : '')))) return join(dir, bin);
+    }
+    return null;
+  }
+  const r = spawnSync(SHELL, ['-c', `command -v ${bin}`], { encoding: 'utf8' });
   return r.status === 0 ? r.stdout.trim() : null;
 };
 

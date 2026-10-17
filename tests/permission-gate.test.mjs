@@ -3190,8 +3190,9 @@ const cases = [
       writeFileSync(f, "alpha\nbeta\n");
       await read(pi, f);
       // runBash replays gate events only — the external writer must actually execute
-      execSync(`sed -i 's/^beta/BBB/' ${f}`);
-      await runBash(pi, `sed -i 's/^beta/BBB/' ${f}`);
+      // macOS BSD sed needs an empty backup suffix; GNU sed treats `-i ''` as in-place too
+      execSync(`sed -i '' 's/^beta/BBB/' ${f}`);
+      await runBash(pi, `sed -i '' 's/^beta/BBB/' ${f}`);
       const r = await edit(pi, f, [{ oldText: "alpha", newText: "ALPHA" }]);
       return r.blocked && r.reason.startsWith("Anchor Guard (Stale):")
         ? r

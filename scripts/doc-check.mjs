@@ -35,6 +35,11 @@ const ENV_VAR_ALLOWLIST = new Map([
   ['PI_CLAUDE_SENTINEL', 'internal — sentinel path passed to plugin/hooks/on-stop.sh'],
   ['PI_DENY_TOOLS', 'internal — set by pi core for sandboxed spawns; read-only here'],
   ['PI_SESSIONS_DIR', 'skill-local — session-audit override, not part of the harness contract'],
+  // Read by the Rust crates (custom-tools/*/src), which this scan does not cover:
+  // its inputs are extensions/**/*.ts, scripts/*.mjs, skills/*/scripts/**.
+  ['PI_READ_COMPRESS', 'native — custom-tools/piread/src/compress.rs, piread head-tail compaction switch'],
+  ['PI_READ_LINE_CAP', 'native — custom-tools/piread/src/pipeline.rs (forwarded by extensions/piread)'],
+  ['PI_BASH_SHELL', 'native — custom-tools/pibash/src/runner.rs, shell override for the native bash tool'],
 ]);
 
 // walk root for .md files, skipping non-doc trees (node_modules, .git, external clones)
