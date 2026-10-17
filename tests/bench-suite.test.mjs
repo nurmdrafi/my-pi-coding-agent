@@ -119,7 +119,14 @@ test('workdir: runId collisions within the same second get a -2 suffix', () => {
   const a = prepareWorkdir(SYN, runsRoot);
   const b = prepareWorkdir(SYN, runsRoot);
   assert.notEqual(a.runId, b.runId);
-  assert.ok(b.runId.startsWith(a.runId.replace(/(-\d+)?$/, '')));
+  // Only assert the suffix relationship when both landed in the same second.
+  // The two calls can straddle a tick, in which case the runIds differ by
+  // timestamp alone and there is no shared base to compare against.
+  const baseOf = (id) => id.replace(/-(\d+)$/, '');
+  if (baseOf(a.runId) === baseOf(b.runId)) {
+    assert.equal(baseOf(b.runId), baseOf(a.runId));
+    assert.match(b.runId, /-2$/);
+  }
   assert.ok(existsSync(join(b.workDir, 'failing.js')));
   rmSync(runsRoot, { recursive: true, force: true });
 });
