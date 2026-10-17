@@ -7,6 +7,7 @@
  * determined rewrite escapes it. AGENTS.md discipline and the user's eyes are
  * the actual boundary. */
 import { homedir } from "os";
+import { realpathSync } from "fs";
 
 
 /**
@@ -93,21 +94,30 @@ let ppHome = "";
 let ppRe: RegExp | undefined;
 export const PROTECTED_PREFIX_RE = {
   test(p: string): boolean {
-    const h = homedir();
-    if (!ppRe || h !== ppHome) {
-      const esc = h.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-      ppHome = h;
+    // Compare in realpath space. Callers pass an already-realpathed target, so
+    // an unresolved home never matches where a path component is a symlink
+    // (macOS: /var -> /private/var, /tmp -> /private/tmp). That missed every
+    // protected write routed through a symlinked temp dir.
+    const raw = homedir();
+    let resolved = raw;
+    try {
+      resolved = realpathSync(raw);
+    } catch {}
+    if (!ppRe || resolved !== ppHome) {
+      ppHome = resolved;
+      const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+      // Homes are tried in both spellings so callers that hand over a raw
+      // (non-realpathed) path — e.g. bash redirect targets — still match.
+      const homes = [resolved, raw].filter((v, i, a) => a.indexOf(v) === i).map(esc);
+      const suffix =
+        String.raw`/\.(?:bashrc|zshrc|profile|bash_profile|bash_aliases|bash_login|tmux\.conf|gitconfig)(?:/|$)` +
+        String.raw`|` +
+        String.raw`/\.(?:ssh|gnupg)/` +
+        String.raw`|` +
+        String.raw`/\.config/systemd/`;
       ppRe = new RegExp(
         String.raw`^(?:/etc|/usr|/var|/boot|/root)(?:/|$)` +
-          String.raw`|^` +
-          esc +
-          String.raw`/\.(?:bashrc|zshrc|profile|bash_profile|bash_aliases|bash_login|tmux\.conf|gitconfig)(?:/|$)` +
-          String.raw`|^` +
-          esc +
-          String.raw`/\.(?:ssh|gnupg)/` +
-          String.raw`|^` +
-          esc +
-          String.raw`/\.config/systemd/`,
+          homes.map((h) => String.raw`|^` + h + suffix).join(""),
       );
     }
     return ppRe.test(p);
