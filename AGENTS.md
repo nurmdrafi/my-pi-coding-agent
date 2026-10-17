@@ -71,6 +71,7 @@ Always loaded. Task-specific rules: `docs/`; read linked doc only when task touc
 - Request a narrower command, filter, range, or fields. Do not read the full overflow.
 - Codemode: multi-call scripted aggregation only. Its value is keeping bulk tool output out of history, not merely fewer turns.
 - One command / one read → direct `pibash` / `piread`.
+- Use Codemode for multi-call, parallel, or large-output tool workflows; filter and aggregate inside the script, returning only the compact result.
 
 ## Scoped rules
 
