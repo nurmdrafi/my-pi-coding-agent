@@ -153,8 +153,15 @@ pub fn compact(text: &str, max_lines: usize, max_bytes: usize) -> Compacted {
     let content_lines = max_lines.saturating_sub(3);
     let head_lines_budget = content_lines * 2 / 3;
     let tail_lines_budget = content_lines - head_lines_budget;
-    let head_bytes_budget = max_bytes * 2 / 3;
-    let tail_bytes_budget = max_bytes - head_bytes_budget;
+    // The trailing read-continuation notice is re-attached verbatim at the
+    // end, together with the "\n\n" that separates it from the body, so its
+    // bytes must come out of the budget up front — otherwise the assembled
+    // output overshoots `max_bytes` by roughly the notice length.
+    let notice_reserve = notice
+        .as_deref()
+        .map_or(0, |n| js_byte_length(n) + 2);
+    let head_bytes_budget = (max_bytes * 2 / 3).saturating_sub(notice_reserve);
+    let tail_bytes_budget = max_bytes.saturating_sub(max_bytes * 2 / 3);
 
     let head = take_head(&lines, head_lines_budget, head_bytes_budget);
     // The marker's own size depends on the omitted count, which depends on how
@@ -342,6 +349,28 @@ mod tests {
         assert_eq!(out.strategy, "none");
         assert_eq!(out.content, text);
         assert_eq!(out.omitted_chars, 0);
+    }
+
+    #[test]
+    fn byte_budget_holds_with_trailing_read_notice() {
+        // Regression: a truncated read ends with a "[Showing lines ...]"
+        // notice. `compact` splits that notice off and re-attaches it after
+        // the head/marker/tail slices, but never reserved its bytes — so the
+        // result overshot COMPRESS_MAX_BYTES by roughly the notice length.
+        let body = (1..=867)
+            .map(|i| format!("line {i:04} {}", "x".repeat(48)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let notice = "[Showing lines 1-867 of 6001 (50.0KB limit). Use offset=868 to continue.]";
+        let text = format!("{body}\n\n{notice}");
+        let out = compact(text.as_str(), COMPRESS_MAX_LINES, COMPRESS_MAX_BYTES);
+        assert_eq!(out.strategy, "head-tail");
+        assert!(out.content.ends_with(notice), "notice must stay last: {}", out.content);
+        assert!(
+            js_byte_length(&out.content) <= COMPRESS_MAX_BYTES,
+            "byte budget exceeded: {} > {COMPRESS_MAX_BYTES}",
+            js_byte_length(&out.content)
+        );
     }
 
     #[test]
