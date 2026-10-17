@@ -124,6 +124,13 @@ if [ -d "$PIBASH_CRATE/src" ] && [ -f "$PIBASH_CRATE/Cargo.toml" ]; then
   fi
 fi
 
+# 5b. Portable auto-heal: shell PATH pin + native-binary/PCRE2 check. Idempotent,
+#     never compiles (that is step 6's --fix), so a pull stays fast. Works on
+#     macOS and Linux, zsh and bash.
+if command -v node >/dev/null 2>&1; then
+  node scripts/sync-agent-bin.mjs || true
+fi
+
 # 6. Full health check; --fix rebuilds pidx when missing/stale and applies
 #    any other safe fix. FAIL/WARN rows print their own fix hints.
 if command -v node >/dev/null 2>&1; then
